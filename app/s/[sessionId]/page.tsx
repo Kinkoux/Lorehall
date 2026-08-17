@@ -21,13 +21,23 @@ import { asc } from "drizzle-orm";
 import { getBeats, setBeatStatus } from "@/lib/beat-actions";
 import { chooseActiveMap } from "@/lib/map-actions";
 import { getT } from "@/lib/locale";
-import type { T } from "@/lib/i18n";
+import { renderEventMessage } from "@/lib/session-log";
+import type { Locale, T } from "@/lib/i18n";
 import { SiteHeader } from "@/components/SiteHeader";
 import { AutoRefresh } from "@/components/AutoRefresh";
 import { DiceRoller } from "@/components/DiceRoller";
 import { AddCombatantForm } from "@/components/AddCombatantForm";
 import { MapViewer } from "@/components/MapViewer";
-import { IconDie, IconMap, IconSwords } from "@/components/Icons";
+import {
+  IconDie,
+  IconMap,
+  IconParty,
+  IconQuill,
+  IconScroll,
+  IconSkull,
+  IconSwords,
+  IconX,
+} from "@/components/Icons";
 import { BackLink, Button, Card, DmBadge, GhostButton, Input, Label, SectionTitle, Select, Textarea } from "@/components/ui";
 
 export default async function SessionPage({
@@ -47,40 +57,41 @@ export default async function SessionPage({
   if (!access?.canView) notFound();
 
   const live = session.status === "live";
-  const order = await getTurnOrder(sessionId);
+  // The AutoRefresh poll re-runs this render every 3s — keep it one batch.
+  const [order, beats, encounters, mapsList, activeMap, events] = await Promise.all([
+    getTurnOrder(sessionId),
+    access.isDm ? getBeats(session.campaignId) : Promise.resolve([]),
+    access.isDm
+      ? db
+          .select()
+          .from(encountersTable)
+          .where(eq(encountersTable.campaignId, session.campaignId))
+          .orderBy(asc(encountersTable.createdAt))
+      : Promise.resolve([]),
+    access.isDm
+      ? db
+          .select()
+          .from(campaignMaps)
+          .where(eq(campaignMaps.campaignId, session.campaignId))
+          .orderBy(asc(campaignMaps.createdAt))
+      : Promise.resolve([]),
+    db.query.campaignMaps.findFirst({
+      where: and(
+        eq(campaignMaps.campaignId, session.campaignId),
+        eq(campaignMaps.isActive, 1)
+      ),
+    }),
+    db
+      .select({ event: sessionEvents, user: users })
+      .from(sessionEvents)
+      .leftJoin(users, eq(sessionEvents.userId, users.id))
+      .where(eq(sessionEvents.sessionId, sessionId))
+      .orderBy(desc(sessionEvents.createdAt))
+      .limit(40),
+  ]);
   const iAmIn = order.some((c) => c.userId === user.id);
-  const beats = access.isDm ? await getBeats(session.campaignId) : [];
-  const encounters = access.isDm
-    ? await db
-        .select()
-        .from(encountersTable)
-        .where(eq(encountersTable.campaignId, session.campaignId))
-        .orderBy(asc(encountersTable.createdAt))
-    : [];
-
-  const mapsList = access.isDm
-    ? await db
-        .select()
-        .from(campaignMaps)
-        .where(eq(campaignMaps.campaignId, session.campaignId))
-        .orderBy(asc(campaignMaps.createdAt))
-    : [];
-  const activeMap = await db.query.campaignMaps.findFirst({
-    where: and(
-      eq(campaignMaps.campaignId, session.campaignId),
-      eq(campaignMaps.isActive, 1)
-    ),
-  });
   const shownMap =
     activeMap && (activeMap.visibility === "everyone" || access.isDm) ? activeMap : null;
-
-  const events = await db
-    .select({ event: sessionEvents, user: users })
-    .from(sessionEvents)
-    .leftJoin(users, eq(sessionEvents.userId, users.id))
-    .where(eq(sessionEvents.sessionId, sessionId))
-    .orderBy(desc(sessionEvents.createdAt))
-    .limit(40);
 
   return (
     <>
@@ -95,7 +106,10 @@ export default async function SessionPage({
           </h1>
           {live ? (
             <span className="flex items-center gap-2 rounded-full border border-emerald-700/60 bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-900">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-600" />
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-600 opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
+              </span>
               {t("session.liveRound", { round: session.round })}
             </span>
           ) : (
@@ -280,7 +294,7 @@ export default async function SessionPage({
 
             {live && access.isDm && (
               <details className="pt-4">
-                <summary className="cursor-pointer font-display text-sm uppercase tracking-wide text-blood-400 hover:text-blood-400">
+                <summary className="cursor-pointer font-display text-sm uppercase tracking-wide text-blood-400 hover:underline">
                   {t("session.end.title")}
                 </summary>
                 <Card className="mt-3">
@@ -375,37 +389,87 @@ export default async function SessionPage({
                 </form>
               )}
               {events.length === 0 && (
-                <p className="text-sm text-parchment-500">{t("session.log.empty")}</p>
+                <div className="flex flex-col items-center gap-2 py-4 text-parchment-500">
+                  <IconScroll size={24} />
+                  <p className="text-sm">{t("session.log.empty")}</p>
+                </div>
               )}
-              <ul className="space-y-2">
-                {events.map(({ event, user: actor }) => (
-                  <li key={event.id} className="text-sm leading-snug">
-                    <span className="mr-2 text-[11px] text-parchment-500">
-                      {new Date(event.createdAt).toLocaleTimeString("en-GB", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                    {event.kind === "roll" ? (
-                      <span className="text-parchment-100">
-                        <strong className="text-gold-300">
-                          {actor?.displayName ?? actor?.username ?? t("session.log.someone")}
-                        </strong>{" "}
-                        {event.message}
+              <ul className="max-h-96 space-y-1 overflow-y-auto pr-1">
+                {events.map(({ event, user: actor }, index) => {
+                  const rendered = renderEventMessage(event.message, t);
+
+                  if (rendered.key === "roundBegins") {
+                    return (
+                      <li key={event.id} className="anim-log-entry flex items-center gap-3 pb-1 pt-2">
+                        <span className="shrink-0 text-[11px] font-bold uppercase tracking-[0.18em] text-blood-400">
+                          {rendered.text}
+                        </span>
+                        <span aria-hidden className="h-[3px] flex-1 border-y border-ink-600/70" />
+                      </li>
+                    );
+                  }
+
+                  const Icon =
+                    event.kind === "roll"
+                      ? IconDie
+                      : event.kind === "join"
+                        ? IconParty
+                        : event.kind === "note"
+                          ? IconQuill
+                          : rendered.key === "hasDied"
+                            ? IconSkull
+                            : IconSwords;
+                  const iconColor =
+                    event.kind === "roll"
+                      ? "text-gold-400"
+                      : rendered.key === "hasDied" || rendered.key === "dropsToZero"
+                        ? "text-blood-400"
+                        : event.kind === "system"
+                          ? "text-parchment-500"
+                          : "text-parchment-300";
+
+                  return (
+                    <li
+                      key={event.id}
+                      className={`anim-log-entry flex items-start gap-2 rounded-sm px-1 py-1 text-sm leading-snug ${
+                        index % 2 === 1 ? "bg-ink-800/30" : ""
+                      }`}
+                    >
+                      <Icon size={14} className={`mt-0.5 shrink-0 ${iconColor}`} />
+                      <span className="min-w-0 flex-1">
+                        {(event.kind === "roll" || event.kind === "note") && (
+                          <strong className="mr-1 text-gold-300">
+                            {actor?.displayName ?? actor?.username ?? t("session.log.someone")}
+                          </strong>
+                        )}
+                        <span
+                          className={
+                            event.kind === "system"
+                              ? rendered.key
+                                ? "text-parchment-300"
+                                : "italic text-parchment-500"
+                              : "text-parchment-100"
+                          }
+                        >
+                          {rendered.text}
+                        </span>
+                        {rendered.rollDetail ? (
+                          <span className="ml-1 text-xs text-parchment-500">
+                            → {rendered.rollDetail}
+                          </span>
+                        ) : null}
+                        {rendered.rollTotal !== undefined && (
+                          <span className="ml-1 font-mono font-bold text-gold-400">
+                            = {rendered.rollTotal}
+                          </span>
+                        )}
                       </span>
-                    ) : (
-                      <span
-                        className={
-                          event.kind === "system"
-                            ? "italic text-parchment-500"
-                            : "text-parchment-100"
-                        }
-                      >
-                        {event.message}
+                      <span className="shrink-0 pt-0.5 text-[11px] text-parchment-500">
+                        {formatLogTime(event.createdAt, live, locale, t)}
                       </span>
-                    )}
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             </Card>
           </section>
@@ -413,6 +477,19 @@ export default async function SessionPage({
       </main>
     </>
   );
+}
+
+function formatLogTime(createdAt: number, live: boolean, locale: Locale, t: T) {
+  if (!live) {
+    return new Date(createdAt).toLocaleTimeString(locale === "tr" ? "tr-TR" : "en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+  const mins = Math.floor((Date.now() - createdAt) / 60_000);
+  if (mins < 1) return t("session.log.timeNow");
+  if (mins < 60) return t("session.log.timeMin", { n: mins });
+  return t("session.log.timeHour", { n: Math.floor(mins / 60) });
 }
 
 function CombatantRow({
@@ -445,7 +522,7 @@ function CombatantRow({
 
   return (
     <Card
-      className={`py-3 ${isTurn ? "border-gold-500 bg-ink-800" : ""}`}
+      className={`py-3 ${isTurn ? "anim-turn-flash border-gold-500 bg-ink-800" : ""}`}
     >
       <div className="flex items-center gap-3">
         <span className="w-8 text-center font-display text-lg font-bold text-gold-400">
@@ -471,6 +548,17 @@ function CombatantRow({
           </span>
         )}
       </div>
+
+      {hpRatio !== null && (
+        <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-ink-700">
+          <div
+            className={`h-full rounded-full transition-all duration-500 ${
+              hpRatio > 0.5 ? "bg-emerald-700" : hpRatio > 0.2 ? "bg-amber-700" : "bg-blood-500"
+            }`}
+            style={{ width: `${Math.round(Math.max(0, Math.min(1, hpRatio)) * 100)}%` }}
+          />
+        </div>
+      )}
 
       {combatant.userId && combatant.hp === 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-blood-500/50 bg-blood-500/10 px-2 py-1.5">
@@ -589,8 +677,9 @@ function CombatantRow({
               type="submit"
               className="rounded border border-ink-600 px-2 py-1 text-xs text-parchment-500 transition hover:border-blood-500 hover:text-blood-400 cursor-pointer"
               title={t("session.combatant.removeTitle")}
+              aria-label={t("session.combatant.removeTitle")}
             >
-              ✕
+              <IconX size={12} />
             </button>
           </form>
         </div>

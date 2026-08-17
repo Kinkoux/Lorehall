@@ -31,23 +31,29 @@ export async function hasDmPowers(worldId: string, userId: string) {
 
 /**
  * Access bundle for campaign-scoped pages/actions. `canView` covers campaign
- * members, the campaign's DM, and the world owner.
+ * members, the campaign's DM, and the world owner. One joined query — this
+ * helper runs on every campaign/session page and at the top of most actions.
  */
 export async function getCampaignAccess(campaignId: string, userId: string) {
-  const campaign = await db.query.campaigns.findFirst({ where: eq(campaigns.id, campaignId) });
-  if (!campaign) return null;
-  const world = await db.query.worlds.findFirst({ where: eq(worlds.id, campaign.worldId) });
-  if (!world) return null;
-  const membership = await db.query.campaignMembers.findFirst({
-    where: and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, userId)),
-  });
-  const isDm = campaign.dmUserId === userId;
+  const rows = await db
+    .select({ campaign: campaigns, world: worlds, membership: campaignMembers })
+    .from(campaigns)
+    .innerJoin(worlds, eq(campaigns.worldId, worlds.id))
+    .leftJoin(
+      campaignMembers,
+      and(eq(campaignMembers.campaignId, campaigns.id), eq(campaignMembers.userId, userId))
+    )
+    .where(eq(campaigns.id, campaignId))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  const isDm = row.campaign.dmUserId === userId;
   return {
-    campaign,
-    world,
-    membership: membership ?? null,
+    campaign: row.campaign,
+    world: row.world,
+    membership: row.membership ?? null,
     isDm,
-    canView: Boolean(membership) || isDm || world.ownerId === userId,
+    canView: Boolean(row.membership) || isDm || row.world.ownerId === userId,
   };
 }
 

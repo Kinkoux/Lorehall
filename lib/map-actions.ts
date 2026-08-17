@@ -6,6 +6,7 @@ import { nanoid } from "nanoid";
 import { db, campaignMaps, gameSessions } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
+import { getT } from "@/lib/locale";
 import { deleteMapFile, putMapFile } from "@/lib/storage";
 import type { FormState } from "@/lib/actions";
 
@@ -37,16 +38,18 @@ export async function uploadMap(
   formData: FormData
 ): Promise<FormState> {
   const user = await requireUser();
+  const { t } = await getT();
   const access = await getCampaignAccess(campaignId, user.id);
-  if (!access?.isDm) return { error: "Only the DM can upload maps." };
+  if (!access?.isDm) return { error: t("errors.maps.dmOnly") };
 
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Pick an image file." };
-  if (file.size > MAX_BYTES) return { error: "Image is larger than 10 MB." };
+  if (!(file instanceof File) || file.size === 0) return { error: t("errors.maps.noFile") };
+  if (file.size > MAX_BYTES) return { error: t("errors.maps.tooLarge") };
   const ext = EXT_BY_MIME[file.type];
-  if (!ext) return { error: "Use a PNG, JPG, or WebP image." };
+  if (!ext) return { error: t("errors.maps.badType") };
 
-  const title = str(formData, "title") || file.name.replace(/\.[^.]+$/, "") || "Map";
+  const title =
+    str(formData, "title") || file.name.replace(/\.[^.]+$/, "") || t("campaign.maps.untitled");
   const visibility = str(formData, "visibility") === "dm" ? ("dm" as const) : ("everyone" as const);
   const fileName = `${nanoid(16)}.${ext}`;
 

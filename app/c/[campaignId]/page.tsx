@@ -37,7 +37,7 @@ import { hasScores, statBlock } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { SiteHeader } from "@/components/SiteHeader";
 import { MapUploadForm } from "@/components/MapUploadForm";
-import { IconDie, IconSkull, IconSwords } from "@/components/Icons";
+import { IconDie, IconScroll, IconSkull, IconSwords, IconX } from "@/components/Icons";
 import {
   BackLink,
   Button,
@@ -45,6 +45,7 @@ import {
   DmBadge,
   Input,
   Label,
+  QuestStatusBadge,
   RoleBadge,
   SectionTitle,
   Textarea,
@@ -63,56 +64,60 @@ export default async function CampaignPage({
   if (!access?.canView) notFound();
   const { campaign, world, isDm } = access;
 
-  const members = await db
-    .select({ member: campaignMembers, user: users })
-    .from(campaignMembers)
-    .innerJoin(users, eq(campaignMembers.userId, users.id))
-    .where(eq(campaignMembers.campaignId, campaignId));
+  // Independent reads — one concurrent batch instead of nine roundtrips.
+  const [members, campaignCharacters, sessions, quests, ledger, loot, encounterList, beats, mapsList] =
+    await Promise.all([
+      db
+        .select({ member: campaignMembers, user: users })
+        .from(campaignMembers)
+        .innerJoin(users, eq(campaignMembers.userId, users.id))
+        .where(eq(campaignMembers.campaignId, campaignId)),
+      db.select().from(characters).where(eq(characters.campaignId, campaignId)),
+      db
+        .select()
+        .from(gameSessions)
+        .where(eq(gameSessions.campaignId, campaignId))
+        .orderBy(desc(gameSessions.startedAt)),
+      db
+        .select()
+        .from(questsTable)
+        .where(eq(questsTable.campaignId, campaignId))
+        .orderBy(asc(questsTable.createdAt)),
+      db
+        .select({ entry: partyLedger, user: users })
+        .from(partyLedger)
+        .leftJoin(users, eq(partyLedger.userId, users.id))
+        .where(eq(partyLedger.campaignId, campaignId))
+        .orderBy(desc(partyLedger.createdAt)),
+      db
+        .select()
+        .from(partyItems)
+        .where(eq(partyItems.campaignId, campaignId))
+        .orderBy(asc(partyItems.createdAt)),
+      isDm
+        ? db
+            .select()
+            .from(encountersTable)
+            .where(eq(encountersTable.campaignId, campaignId))
+            .orderBy(asc(encountersTable.createdAt))
+        : Promise.resolve([]),
+      isDm ? getBeats(campaignId) : Promise.resolve([]),
+      db
+        .select()
+        .from(campaignMaps)
+        .where(eq(campaignMaps.campaignId, campaignId))
+        .orderBy(asc(campaignMaps.createdAt)),
+    ]);
 
-  const campaignCharacters = await db
-    .select()
-    .from(characters)
-    .where(eq(characters.campaignId, campaignId));
   const characterOf = (userId: string) =>
     campaignCharacters.find((c) => c.userId === userId);
-
-  const sessions = await db
-    .select()
-    .from(gameSessions)
-    .where(eq(gameSessions.campaignId, campaignId))
-    .orderBy(desc(gameSessions.startedAt));
   const liveSession = sessions.find((s) => s.status === "live");
   const pastSessions = sessions.filter((s) => s.status === "ended");
-
-  const quests = await db
-    .select()
-    .from(questsTable)
-    .where(eq(questsTable.campaignId, campaignId))
-    .orderBy(asc(questsTable.createdAt));
   const activeQuests = quests.filter((q) => q.status === "active");
   const closedQuests = quests.filter((q) => q.status !== "active");
-
-  const ledger = await db
-    .select({ entry: partyLedger, user: users })
-    .from(partyLedger)
-    .leftJoin(users, eq(partyLedger.userId, users.id))
-    .where(eq(partyLedger.campaignId, campaignId))
-    .orderBy(desc(partyLedger.createdAt));
   const gold = ledger.reduce((sum, { entry }) => sum + entry.amount, 0);
+  const visibleMaps = isDm ? mapsList : mapsList.filter((m) => m.visibility === "everyone");
 
-  const loot = await db
-    .select()
-    .from(partyItems)
-    .where(eq(partyItems.campaignId, campaignId))
-    .orderBy(asc(partyItems.createdAt));
-
-  const encounterList = isDm
-    ? await db
-        .select()
-        .from(encountersTable)
-        .where(eq(encountersTable.campaignId, campaignId))
-        .orderBy(asc(encountersTable.createdAt))
-    : [];
   const encounterRows = encounterList.length
     ? await db
         .select()
@@ -120,15 +125,6 @@ export default async function CampaignPage({
         .where(inArray(encounterMonsters.encounterId, encounterList.map((e) => e.id)))
         .orderBy(asc(encounterMonsters.createdAt))
     : [];
-
-  const beats = isDm ? await getBeats(campaignId) : [];
-
-  const mapsList = await db
-    .select()
-    .from(campaignMaps)
-    .where(eq(campaignMaps.campaignId, campaignId))
-    .orderBy(asc(campaignMaps.createdAt));
-  const visibleMaps = isDm ? mapsList : mapsList.filter((m) => m.visibility === "everyone");
 
   return (
     <>
@@ -146,9 +142,12 @@ export default async function CampaignPage({
 
         {liveSession ? (
           <Link href={`/s/${liveSession.id}`} className="block">
-            <Card className="mb-8 border-emerald-700/60 bg-emerald-100/60 transition hover:border-emerald-700">
+            <Card className="mb-8 border-emerald-700/60 bg-emerald-100/60 transition hover:-translate-y-0.5 hover:border-emerald-700 hover:shadow-md hover:shadow-[#5e4420]/20">
               <div className="flex items-center gap-3">
-                <span className="h-3 w-3 animate-pulse rounded-full bg-emerald-600" />
+                <span className="relative flex h-3 w-3">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-600 opacity-60" />
+                  <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-600" />
+                </span>
                 <div className="flex-1">
                   <p className="font-display text-lg font-bold text-emerald-900">
                     {t("campaign.live.banner", {
@@ -249,28 +248,39 @@ export default async function CampaignPage({
               </p>
             )}
             {activeQuests.map((quest) => (
-              <Card key={quest.id} className="py-4">
+              <Card key={quest.id} className="border-l-2 !border-l-gold-500 py-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 className="font-display text-base font-bold text-parchment-100">
-                      ◈ {quest.title}
+                  <div className="min-w-0">
+                    <h3 className="flex items-center gap-2 font-display text-base font-bold text-parchment-100">
+                      <IconScroll size={15} className="shrink-0 text-gold-400" />
+                      <span className="min-w-0">{quest.title}</span>
+                      <QuestStatusBadge status="active" label={t("campaign.quests.stActive")} />
                     </h3>
                     {quest.description && (
                       <p className="mt-1 whitespace-pre-wrap text-sm text-parchment-300">
                         {quest.description}
                       </p>
                     )}
+                    <p className="mt-1 text-[11px] text-parchment-500">
+                      {new Date(quest.createdAt).toLocaleDateString(
+                        locale === "tr" ? "tr-TR" : "en-GB"
+                      )}
+                    </p>
                   </div>
                   {isDm && (
                     <span className="flex shrink-0 gap-1">
                       <form action={setQuestStatus.bind(null, quest.id, "done")}>
-                        <SmallButton label={t("campaign.quests.done")} />
+                        <SmallButton label={t("campaign.quests.done")} tone="success" />
                       </form>
                       <form action={setQuestStatus.bind(null, quest.id, "failed")}>
-                        <SmallButton label={t("campaign.quests.failed")} />
+                        <SmallButton label={t("campaign.quests.failed")} danger />
                       </form>
                       <form action={deleteQuest.bind(null, quest.id)}>
-                        <SmallButton label="✕" danger />
+                        <SmallButton
+                          label={<IconX size={12} />}
+                          danger
+                          ariaLabel={t("campaign.quests.delete")}
+                        />
                       </form>
                     </span>
                   )}
@@ -288,15 +298,22 @@ export default async function CampaignPage({
                   {closedQuests.map((quest) => (
                     <Card key={quest.id} className="py-3 opacity-70">
                       <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm text-parchment-300">
+                        <p className="flex min-w-0 items-center gap-2 text-sm">
+                          <QuestStatusBadge
+                            status={quest.status === "done" ? "done" : "failed"}
+                            label={
+                              quest.status === "done"
+                                ? t("campaign.quests.stDone")
+                                : t("campaign.quests.stFailed")
+                            }
+                          />
                           <span
                             className={
-                              quest.status === "done" ? "text-emerald-700" : "text-blood-400"
+                              quest.status === "done"
+                                ? "text-parchment-300"
+                                : "text-parchment-500 line-through"
                             }
                           >
-                            {quest.status === "done" ? "✓" : "✗"}
-                          </span>{" "}
-                          <span className={quest.status === "done" ? "" : "line-through"}>
                             {quest.title}
                           </span>
                         </p>
@@ -313,6 +330,9 @@ export default async function CampaignPage({
             )}
             {isDm && (
               <Card>
+                <h3 className="mb-3 font-display text-base text-gold-300">
+                  {t("campaign.quests.addHeading")}
+                </h3>
                 <form action={addQuest.bind(null, campaignId)} className="space-y-2">
                   <Input name="title" required placeholder={t("campaign.quests.titlePh")} />
                   <Textarea
@@ -345,7 +365,7 @@ export default async function CampaignPage({
               </p>
               <form
                 action={addLedgerEntry.bind(null, campaignId)}
-                className="mt-3 flex gap-2"
+                className="mt-3 flex flex-wrap gap-2"
               >
                 <Input
                   name="amount"
@@ -427,7 +447,7 @@ export default async function CampaignPage({
             )}
             {pastSessions.map((session) => (
               <Link key={session.id} href={`/s/${session.id}`} className="block">
-                <Card className="py-4 transition hover:border-gold-500">
+                <Card className="py-4 transition hover:-translate-y-0.5 hover:border-gold-500 hover:shadow-md hover:shadow-[#5e4420]/20">
                   <div className="flex items-center justify-between gap-3">
                     <h3 className="font-display text-base text-parchment-100">{session.title}</h3>
                     <span className="text-xs text-parchment-500">
@@ -462,7 +482,9 @@ export default async function CampaignPage({
                     <img
                       src={`/files/maps/${map.id}`}
                       alt={map.title}
-                      className="h-40 w-full rounded-sm border border-ink-700 object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      className="h-40 w-full rounded-sm border border-ink-700 object-cover transition hover:opacity-90"
                     />
                   </Link>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -506,7 +528,7 @@ export default async function CampaignPage({
                         />
                       </form>
                       <form action={deleteMap.bind(null, map.id)}>
-                        <SmallButton label="✕" danger />
+                        <SmallButton label={<IconX size={12} />} danger ariaLabel={t("common.delete")} />
                       </form>
                     </div>
                   )}
@@ -544,7 +566,7 @@ export default async function CampaignPage({
                         {encounter.name}
                       </h3>
                       <form action={deleteEncounter.bind(null, encounter.id)}>
-                        <SmallButton label="✕" danger />
+                        <SmallButton label={<IconX size={12} />} danger ariaLabel={t("common.delete")} />
                       </form>
                     </div>
                     <ul className="mt-2 space-y-1">
@@ -579,7 +601,7 @@ export default async function CampaignPage({
                             </span>
                           )}
                           <form action={removeEncounterMonster.bind(null, row.id)}>
-                            <SmallButton label="✕" danger />
+                            <SmallButton label={<IconX size={12} />} danger ariaLabel={t("common.delete")} />
                           </form>
                         </li>
                       ))}
@@ -662,7 +684,7 @@ export default async function CampaignPage({
                       </form>
                     )}
                     <form action={deleteBeat.bind(null, beat.id)}>
-                      <SmallButton label="✕" danger />
+                      <SmallButton label={<IconX size={12} />} danger ariaLabel={t("common.delete")} />
                     </form>
                   </div>
                 </div>
@@ -700,15 +722,27 @@ export default async function CampaignPage({
   );
 }
 
-function SmallButton({ label, danger = false }: { label: string; danger?: boolean }) {
+function SmallButton({
+  label,
+  danger = false,
+  tone,
+  ariaLabel,
+}: {
+  label: React.ReactNode;
+  danger?: boolean;
+  tone?: "success";
+  ariaLabel?: string;
+}) {
+  const style = danger
+    ? "border-ink-600 text-parchment-500 hover:border-blood-500 hover:text-blood-400"
+    : tone === "success"
+      ? "border-ink-600 text-parchment-300 hover:border-emerald-700 hover:text-emerald-800"
+      : "border-ink-600 text-parchment-300 hover:border-gold-500 hover:text-gold-300";
   return (
     <button
       type="submit"
-      className={`rounded border px-2 py-1 text-xs font-bold transition cursor-pointer ${
-        danger
-          ? "border-ink-600 text-parchment-500 hover:border-blood-500 hover:text-blood-400"
-          : "border-ink-600 text-parchment-300 hover:border-gold-500 hover:text-gold-300"
-      }`}
+      aria-label={ariaLabel}
+      className={`rounded border px-2 py-1 text-xs font-bold transition cursor-pointer ${style}`}
     >
       {label}
     </button>

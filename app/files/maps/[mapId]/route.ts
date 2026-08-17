@@ -24,14 +24,13 @@ export async function GET(
   if (!access?.canView) return new Response("Not found", { status: 404 });
   if (map.visibility === "dm" && !access.isDm) return new Response("Not found", { status: 404 });
 
-  const bytes = await readMapFile(map.fileName);
-  if (!bytes) return new Response("Not found", { status: 404 });
+  const file = await readMapFile(map.fileName);
+  if (!file) return new Response("Not found", { status: 404 });
 
-  return new Response(bytes, {
-    headers: {
-      "Content-Type": map.mimeType,
-      "Content-Length": String(bytes.byteLength),
-      "Cache-Control": "private, max-age=31536000, immutable",
-    },
-  });
+  const headers: Record<string, string> = {
+    "Content-Type": map.mimeType,
+    "Cache-Control": "private, max-age=31536000, immutable",
+  };
+  if (file.contentLength) headers["Content-Length"] = file.contentLength;
+  return new Response(file.body as BodyInit, { headers });
 }

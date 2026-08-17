@@ -33,6 +33,11 @@ export const campaign = {
       titlePh: "Quest title",
       descPh: "What the party knows (optional)",
       add: "Add quest",
+      addHeading: "Give the party a quest",
+      stActive: "Active",
+      stDone: "Done",
+      stFailed: "Failed",
+      delete: "Delete quest",
     },
     invite: {
       title: "Invite players",
@@ -88,6 +93,7 @@ export const campaign = {
       fileLabel: "Image — PNG, JPG or WebP, up to 10 MB",
       upload: "Upload map",
       uploading: "Uploading…",
+      untitled: "Map",
       viewer: {
         zoomIn: "Zoom in",
         zoomOut: "Zoom out",
@@ -144,6 +150,11 @@ export const campaign = {
       titlePh: "Görev başlığı",
       descPh: "Partinin bildikleri (opsiyonel)",
       add: "Görev ekle",
+      addHeading: "Partiye görev ver",
+      stActive: "Aktif",
+      stDone: "Tamamlandı",
+      stFailed: "Başarısız",
+      delete: "Görevi sil",
     },
     invite: {
       title: "Oyuncu davet et",
@@ -199,6 +210,7 @@ export const campaign = {
       fileLabel: "Görsel — PNG, JPG veya WebP, en fazla 10 MB",
       upload: "Haritayı yükle",
       uploading: "Yükleniyor…",
+      untitled: "Harita",
       viewer: {
         zoomIn: "Yaklaş",
         zoomOut: "Uzaklaş",

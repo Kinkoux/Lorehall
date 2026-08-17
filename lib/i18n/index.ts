@@ -12,6 +12,7 @@ import { session } from "./dict/session";
 import { character } from "./dict/character";
 import { compendium } from "./dict/compendium";
 import { reference } from "./dict/reference";
+import { errors } from "./dict/errors";
 
 export type Locale = "en" | "tr";
 export const LOCALES: Locale[] = ["en", "tr"];
@@ -29,6 +30,7 @@ const NAMESPACES: Record<string, { en: Dict; tr: Dict }> = {
   character,
   compendium,
   reference,
+  errors,
 };
 
 function lookup(dict: Dict | undefined, path: string[]): string | undefined {

@@ -17,8 +17,8 @@ export function MapUploadForm({ campaignId, locale }: { campaignId: string; loca
       // Pre-check the size client-side; past the action body limit the server
       // would reject the whole request with an opaque error.
       const file = formData.get("file");
-      if (!(file instanceof File) || file.size === 0) return { error: "Pick an image file." };
-      if (file.size > MAX_BYTES) return { error: "Image is larger than 10 MB." };
+      if (!(file instanceof File) || file.size === 0) return { error: t("errors.maps.noFile") };
+      if (file.size > MAX_BYTES) return { error: t("errors.maps.tooLarge") };
       const result = await uploadMap(campaignId, prev, formData);
       if (!result.error) formRef.current?.reset();
       return result;

@@ -15,6 +15,8 @@ import {
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
+import { getT } from "@/lib/locale";
+import { logMessage } from "@/lib/session-log";
 import type { FormState } from "@/lib/actions";
 
 function str(formData: FormData, key: string) {
@@ -96,13 +98,14 @@ export async function startSession(campaignId: string, formData: FormData) {
     .select({ id: gameSessions.id })
     .from(gameSessions)
     .where(eq(gameSessions.campaignId, campaignId));
+  const { t } = await getT();
   await db.insert(gameSessions).values({
     id,
     campaignId,
-    title: str(formData, "title") || `Session ${count.length + 1}`,
+    title: str(formData, "title") || t("campaign.start.placeholder", { n: count.length + 1 }),
     startedAt: Date.now(),
   });
-  await logEvent(id, "system", "The session begins.");
+  await logEvent(id, "system", logMessage("sessionBegins"));
   redirect(`/s/${id}`);
 }
 
@@ -119,7 +122,7 @@ export async function endSession(sessionId: string, formData: FormData) {
       recap: str(formData, "recap") || null,
     })
     .where(eq(gameSessions.id, sessionId));
-  await logEvent(sessionId, "system", "The session ends.");
+  await logEvent(sessionId, "system", logMessage("sessionEnds"));
   redirect(`/c/${ctx.session.campaignId}`);
 }
 
@@ -142,13 +145,14 @@ export async function saveRecap(sessionId: string, formData: FormData) {
 
 export async function addCombatant(sessionId: string, _prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser();
+  const { t } = await getT();
   const ctx = await requireLiveSession(sessionId, user.id);
-  if (!ctx?.access.isDm || ctx.session.status !== "live") return { error: "Only the DM can add combatants." };
+  if (!ctx?.access.isDm || ctx.session.status !== "live") return { error: t("errors.session.dmOnlyAdd") };
 
   const name = str(formData, "name");
   const initiative = int(formData, "initiative");
-  if (!name) return { error: "Name is required." };
-  if (initiative === null) return { error: "Initiative is required." };
+  if (!name) return { error: t("errors.session.nameRequired") };
+  if (initiative === null) return { error: t("errors.session.initiativeRequired") };
 
   const maxHp = int(formData, "maxHp");
   const id = nanoid(12);
@@ -209,13 +213,18 @@ export async function joinInitiative(sessionId: string, formData: FormData) {
     createdAt: Date.now(),
   });
   await bumpTurnIndexFor(sessionId, id, ctx.session.turnIndex);
-  const source =
-    manual !== null
-      ? "rolled at the table"
-      : dexMod !== 0
-        ? `app roll: d20 ${dexMod > 0 ? "+" : ""}${dexMod} DEX`
-        : "app roll";
-  await logEvent(sessionId, "join", `${name} joins the initiative with ${roll} (${source}).`, user.id);
+  const src = manual !== null ? "srcManual" : dexMod !== 0 ? "srcAppDex" : "srcApp";
+  await logEvent(
+    sessionId,
+    "join",
+    logMessage("joinsInitiative", {
+      name,
+      roll,
+      src,
+      mod: dexMod > 0 ? `+${dexMod}` : `${dexMod}`,
+    }),
+    user.id
+  );
   revalidatePath(`/s/${sessionId}`);
 }
 
@@ -226,8 +235,8 @@ export async function addTableNote(sessionId: string, formData: FormData) {
   if (!ctx || ctx.session.status !== "live") return;
   const text = str(formData, "note");
   if (!text) return;
-  const author = user.displayName ?? user.username;
-  await logEvent(sessionId, "note", `${author}: ${text}`, user.id);
+  // Author renders from the joined users row; store only the note itself.
+  await logEvent(sessionId, "note", text, user.id);
   revalidatePath(`/s/${sessionId}`);
 }
 
@@ -268,6 +277,9 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
   if (op === "temp") {
     // Temp HP doesn't stack — the new pool replaces the old one.
     await db.update(combatants).set({ tempHp: amount }).where(eq(combatants.id, combatantId));
+    if (amount > 0) {
+      await logEvent(sessionId, "system", logMessage("gainsTemp", { name: combatant.name, n: amount }));
+    }
   } else if (op === "heal") {
     const hp = Math.max(0, Math.min(cap, combatant.hp + amount));
     const revived = combatant.hp === 0 && hp > 0;
@@ -278,6 +290,13 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
         ...(revived ? { deathSuccesses: 0, deathFailures: 0 } : {}),
       })
       .where(eq(combatants.id, combatantId));
+    if (hp !== combatant.hp) {
+      await logEvent(
+        sessionId,
+        "system",
+        logMessage("heals", { name: combatant.name, n: hp - combatant.hp, from: combatant.hp, to: hp })
+      );
+    }
   } else {
     // Damage chews through temp HP first.
     const tempLeft = Math.max(0, combatant.tempHp - amount);
@@ -287,8 +306,15 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
       .update(combatants)
       .set({ hp, tempHp: tempLeft })
       .where(eq(combatants.id, combatantId));
+    if (amount > 0) {
+      await logEvent(
+        sessionId,
+        "system",
+        logMessage("takesDamage", { name: combatant.name, n: amount, from: combatant.hp, to: hp })
+      );
+    }
     if (hp === 0 && combatant.hp > 0) {
-      await logEvent(sessionId, "system", `${combatant.name} drops to 0 HP!`);
+      await logEvent(sessionId, "system", logMessage("dropsToZero", { name: combatant.name }));
     }
   }
   revalidatePath(`/s/${sessionId}`);
@@ -317,13 +343,13 @@ export async function recordDeathSave(
     const deathSuccesses = Math.min(3, combatant.deathSuccesses + 1);
     await db.update(combatants).set({ deathSuccesses }).where(eq(combatants.id, combatantId));
     if (deathSuccesses === 3 && combatant.deathSuccesses < 3) {
-      await logEvent(sessionId, "system", `${combatant.name} is stable.`);
+      await logEvent(sessionId, "system", logMessage("isStable", { name: combatant.name }));
     }
   } else {
     const deathFailures = Math.min(3, combatant.deathFailures + 1);
     await db.update(combatants).set({ deathFailures }).where(eq(combatants.id, combatantId));
     if (deathFailures === 3 && combatant.deathFailures < 3) {
-      await logEvent(sessionId, "system", `${combatant.name} has died. ☠`);
+      await logEvent(sessionId, "system", logMessage("hasDied", { name: combatant.name }));
     }
   }
   revalidatePath(`/s/${sessionId}`);
@@ -353,7 +379,7 @@ export async function nextTurn(sessionId: string) {
   if (turnIndex >= order.length) {
     turnIndex = 0;
     round += 1;
-    await logEvent(sessionId, "system", `Round ${round} begins.`);
+    await logEvent(sessionId, "system", logMessage("roundBegins", { n: round }));
   }
   await db.update(gameSessions).set({ turnIndex, round }).where(eq(gameSessions.id, sessionId));
   revalidatePath(`/s/${sessionId}`);
@@ -377,7 +403,7 @@ export async function rollDice(sessionId: string, formData: FormData) {
   const total = rolls.reduce((a, b) => a + b, 0) + modifier;
 
   const notation = `${count}d${sides}${modifier ? (modifier > 0 ? `+${modifier}` : modifier) : ""}`;
-  const detail = count > 1 || modifier ? ` → [${rolls.join(", ")}]` : "";
-  await logEvent(sessionId, "roll", `rolled ${notation}${detail} = ${total}`, user.id);
+  const detail = count > 1 || modifier ? `[${rolls.join(", ")}]` : "";
+  await logEvent(sessionId, "roll", logMessage("rolled", { notation, detail, total }), user.id);
   revalidatePath(`/s/${sessionId}`);
 }

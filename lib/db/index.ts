@@ -13,9 +13,12 @@ function createDb() {
   if (!url) {
     throw new Error("DATABASE_URL is not set — copy .env.example to .env.local (see DEPLOY.md)");
   }
+  // The transaction pooler absorbs client connections cheaply; max > 1 lets
+  // Promise.all'd page queries actually run concurrently on the wire.
   const client = postgres(url, {
     prepare: false,
-    max: process.env.NODE_ENV === "production" ? 1 : 5,
+    max: 8,
+    idle_timeout: 20,
     connect_timeout: 15,
   });
   return drizzle(client, { schema });

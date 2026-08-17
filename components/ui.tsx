@@ -104,6 +104,28 @@ export function TypeBadge({ type, locale = "en" }: { type: CodexType; locale?: L
   );
 }
 
+const QUEST_STATUS_STYLES = {
+  active: "border-gold-500 bg-gold-500/10 text-gold-300",
+  done: "border-emerald-700/60 bg-emerald-100/60 text-emerald-900",
+  failed: "border-blood-500 bg-blood-500/15 text-blood-400",
+} as const;
+
+export function QuestStatusBadge({
+  status,
+  label,
+}: {
+  status: keyof typeof QUEST_STATUS_STYLES;
+  label: string;
+}) {
+  return (
+    <span
+      className={`rounded-sm border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${QUEST_STATUS_STYLES[status]}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 export function DmBadge({ label = "DM only" }: { label?: string }) {
   return (
     <span className="rounded-sm border border-blood-500 bg-blood-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-blood-400">

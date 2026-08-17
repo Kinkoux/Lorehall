@@ -46,6 +46,40 @@ body {
   color: var(--color-ink-900);
 }
 
+/* Fresh ink: new session-log rows fade in. RSC reconciliation keeps existing
+   keyed nodes, so only genuinely new events replay the animation. */
+@keyframes log-entry-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.anim-log-entry {
+  animation: log-entry-in 0.3s ease-out;
+}
+
+/* One-shot gold pulse when a combatant card becomes the active turn. */
+@keyframes turn-flash {
+  0% {
+    box-shadow: 0 0 0 5px rgba(138, 101, 22, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(138, 101, 22, 0);
+  }
+}
+.anim-turn-flash {
+  animation: turn-flash 0.8s ease-out;
+}
+
+/* Ledger flap: content revealed by <details> unfolds. */
+details[open] > *:not(summary) {
+  animation: log-entry-in 0.25s ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

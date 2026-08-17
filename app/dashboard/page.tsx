@@ -17,18 +17,19 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const { t, locale } = await getT();
 
-  const myWorlds = await db
-    .select({ world: worlds, role: worldMembers.role })
-    .from(worldMembers)
-    .innerJoin(worlds, eq(worldMembers.worldId, worlds.id))
-    .where(eq(worldMembers.userId, user.id));
-
-  const myCampaigns = await db
-    .select({ campaign: campaigns, world: worlds })
-    .from(campaignMembers)
-    .innerJoin(campaigns, eq(campaignMembers.campaignId, campaigns.id))
-    .innerJoin(worlds, eq(campaigns.worldId, worlds.id))
-    .where(eq(campaignMembers.userId, user.id));
+  const [myWorlds, myCampaigns] = await Promise.all([
+    db
+      .select({ world: worlds, role: worldMembers.role })
+      .from(worldMembers)
+      .innerJoin(worlds, eq(worldMembers.worldId, worlds.id))
+      .where(eq(worldMembers.userId, user.id)),
+    db
+      .select({ campaign: campaigns, world: worlds })
+      .from(campaignMembers)
+      .innerJoin(campaigns, eq(campaignMembers.campaignId, campaigns.id))
+      .innerJoin(worlds, eq(campaigns.worldId, worlds.id))
+      .where(eq(campaignMembers.userId, user.id)),
+  ]);
 
   return (
     <>

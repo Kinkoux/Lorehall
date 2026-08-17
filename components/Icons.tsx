@@ -168,6 +168,15 @@ export function IconExpand(props: IconProps) {
   );
 }
 
+/** Diagonal cross (delete / remove) — replaces raw ✕ glyphs. */
+export function IconX(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </Svg>
+  );
+}
+
 // ---------- spell school sigils ----------
 
 const SIGILS: Record<string, (props: IconProps) => React.ReactElement> = {

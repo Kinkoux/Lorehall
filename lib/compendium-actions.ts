@@ -16,7 +16,7 @@ import {
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
-import { getMonster, getSpell, spellSummary } from "@/lib/srd-data";
+import { logMessage } from "@/lib/session-log";
 import { fmt } from "@/lib/dnd";
 
 function str(formData: FormData, key: string) {
@@ -35,6 +35,8 @@ function int(formData: FormData, key: string): number | null {
 
 export async function addSpellToCharacter(spellIndex: string, characterId: string) {
   const user = await requireUser();
+  // Lazy import keeps ~900KB of SRD JSON out of the campaign/session chunks.
+  const { getSpell, spellSummary } = await import("@/lib/srd-data");
   const spell = getSpell(spellIndex);
   if (!spell) return;
   const character = await db.query.characters.findFirst({
@@ -99,6 +101,7 @@ export async function deleteEncounter(encounterId: string) {
 /** From a monster detail page: add an SRD monster to one of my encounters. */
 export async function addMonsterToEncounter(monsterIndex: string, formData: FormData) {
   const user = await requireUser();
+  const { getMonster } = await import("@/lib/srd-data");
   const monster = getMonster(monsterIndex);
   if (!monster) return;
   const encounterId = str(formData, "encounterId");
@@ -218,7 +221,7 @@ export async function deployEncounter(sessionId: string, formData: FormData) {
     sessionId,
     userId: user.id,
     kind: "system",
-    message: `Encounter "${encounter.name}" joins the fight (${total} creature${total > 1 ? "s" : ""}, initiative d20${rows.some((r) => r.dexMod) ? " + DEX" : ""}).`,
+    message: logMessage("encounterDeployed", { name: encounter.name, n: total }),
     createdAt: Date.now(),
   });
   revalidatePath(`/s/${sessionId}`);
@@ -227,6 +230,7 @@ export async function deployEncounter(sessionId: string, formData: FormData) {
 /** From a monster detail page: throw it straight into a live session I'm running. */
 export async function addMonsterToLiveSession(monsterIndex: string, formData: FormData) {
   const user = await requireUser();
+  const { getMonster } = await import("@/lib/srd-data");
   const monster = getMonster(monsterIndex);
   if (!monster) return;
   const sessionId = str(formData, "sessionId");
@@ -252,7 +256,7 @@ export async function addMonsterToLiveSession(monsterIndex: string, formData: Fo
     sessionId,
     userId: user.id,
     kind: "system",
-    message: `${monster.name} joins the fight with ${roll} (d20 ${fmt(monster.dexMod)} DEX).`,
+    message: logMessage("monsterJoins", { name: monster.name, roll, mod: fmt(monster.dexMod) }),
     createdAt: Date.now(),
   });
   revalidatePath(`/s/${sessionId}`);

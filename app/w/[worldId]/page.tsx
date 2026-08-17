@@ -4,7 +4,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { db, worlds, campaigns, codexEntries, CODEX_TYPES, type CodexType } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { getWorldMembership, hasDmPowers } from "@/lib/perms";
+import { getWorldMembership } from "@/lib/perms";
 import { createCampaign } from "@/lib/actions";
 import { SiteHeader } from "@/components/SiteHeader";
 import {
@@ -34,10 +34,19 @@ export default async function WorldPage({
 
   const world = await db.query.worlds.findFirst({ where: eq(worlds.id, worldId) });
   if (!world) notFound();
-  const membership = await getWorldMembership(worldId, user.id);
+  const [membership, worldCampaigns] = await Promise.all([
+    getWorldMembership(worldId, user.id),
+    db
+      .select()
+      .from(campaigns)
+      .where(eq(campaigns.worldId, worldId))
+      .orderBy(desc(campaigns.createdAt)),
+  ]);
   if (!membership) notFound();
 
-  const dmPowers = await hasDmPowers(worldId, user.id);
+  // The campaign list already answers "do I DM anything here?" — no extra queries.
+  const dmPowers =
+    world.ownerId === user.id || worldCampaigns.some((c) => c.dmUserId === user.id);
   const activeType = (CODEX_TYPES as readonly string[]).includes(type ?? "")
     ? (type as CodexType)
     : null;
@@ -51,12 +60,6 @@ export default async function WorldPage({
     .from(codexEntries)
     .where(and(...entryFilters))
     .orderBy(desc(codexEntries.updatedAt));
-
-  const worldCampaigns = await db
-    .select()
-    .from(campaigns)
-    .where(eq(campaigns.worldId, worldId))
-    .orderBy(desc(campaigns.createdAt));
 
   return (
     <>

@@ -51,17 +51,27 @@ export async function putMapFile(
   await fs.writeFile(localPath(name), bytes);
 }
 
-export async function readMapFile(name: string): Promise<Uint8Array<ArrayBuffer> | null> {
+export type MapFile = {
+  body: ReadableStream<Uint8Array> | Uint8Array<ArrayBuffer>;
+  contentLength: string | null;
+};
+
+/**
+ * Streams from Supabase (no in-memory buffering of multi-MB maps);
+ * local files are read whole — they're on the same disk anyway.
+ */
+export async function readMapFile(name: string): Promise<MapFile | null> {
   const sb = supabase();
   if (sb) {
     const res = await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${name}`, {
       headers: authHeaders(sb.key),
     });
-    if (!res.ok) return null;
-    return new Uint8Array(await res.arrayBuffer());
+    if (!res.ok || !res.body) return null;
+    return { body: res.body, contentLength: res.headers.get("content-length") };
   }
   try {
-    return new Uint8Array(await fs.readFile(localPath(name)));
+    const bytes = new Uint8Array(await fs.readFile(localPath(name)));
+    return { body: bytes, contentLength: String(bytes.byteLength) };
   } catch {
     return null;
   }

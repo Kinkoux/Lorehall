@@ -18,6 +18,7 @@ import {
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { canEditEntry, getWorldMembership, hasDmPowers } from "@/lib/perms";
+import { getT } from "@/lib/locale";
 
 export type FormState = { error?: string };
 
@@ -35,14 +36,15 @@ export async function register(_prev: FormState, formData: FormData): Promise<Fo
   const displayName = str(formData, "displayName");
   const password = formData.get("password");
 
+  const { t } = await getT();
   if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-    return { error: "Username must be 3-20 characters: letters, numbers, underscore." };
+    return { error: t("errors.auth.usernameFormat") };
   }
   if (typeof password !== "string" || password.length < 6) {
-    return { error: "Password must be at least 6 characters." };
+    return { error: t("errors.auth.passwordTooShort") };
   }
   const existing = await db.query.users.findFirst({ where: eq(users.username, username) });
-  if (existing) return { error: "That username is taken." };
+  if (existing) return { error: t("errors.auth.usernameTaken") };
 
   const id = nanoid(12);
   await db.insert(users).values({
@@ -61,7 +63,7 @@ export async function login(_prev: FormState, formData: FormData): Promise<FormS
   const password = formData.get("password");
   const user = await db.query.users.findFirst({ where: eq(users.username, username) });
   if (!user || typeof password !== "string" || !bcrypt.compareSync(password, user.passwordHash)) {
-    return { error: "Wrong username or password." };
+    return { error: (await getT()).t("errors.auth.badCredentials") };
   }
   await createSession(user.id);
   redirect("/dashboard");
@@ -122,10 +124,10 @@ export async function createCampaign(worldId: string, formData: FormData) {
 export async function joinCampaign(_prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser();
   const code = str(formData, "code").toUpperCase();
-  if (!code) return { error: "Enter a join code." };
+  if (!code) return { error: (await getT()).t("errors.join.emptyCode") };
 
   const campaign = await db.query.campaigns.findFirst({ where: eq(campaigns.joinCode, code) });
-  if (!campaign) return { error: "No campaign found for that code." };
+  if (!campaign) return { error: (await getT()).t("errors.join.notFound") };
 
   const now = Date.now();
   const alreadyIn = await db.query.campaignMembers.findFirst({
@@ -167,17 +169,18 @@ function parseCodexType(value: string): CodexType | null {
 
 export async function createCodexEntry(worldId: string, _prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser();
+  const { t } = await getT();
   const membership = await getWorldMembership(worldId, user.id);
-  if (!membership) return { error: "You are not a member of this world." };
+  if (!membership) return { error: t("errors.codex.notMember") };
 
   const type = parseCodexType(str(formData, "type"));
   const title = str(formData, "title");
-  if (!type) return { error: "Pick a valid entry type." };
-  if (!title) return { error: "A title is required." };
+  if (!type) return { error: t("errors.codex.badType") };
+  if (!title) return { error: t("errors.codex.titleRequired") };
 
   const visibility: "everyone" | "dm" = str(formData, "visibility") === "dm" ? "dm" : "everyone";
   if (visibility === "dm" && !(await hasDmPowers(worldId, user.id))) {
-    return { error: "Only DMs can create DM-only entries." };
+    return { error: t("errors.codex.dmOnlyCreate") };
   }
 
   const id = nanoid(12);
@@ -198,13 +201,14 @@ export async function createCodexEntry(worldId: string, _prev: FormState, formDa
 
 export async function updateCodexEntry(entryId: string, _prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser();
+  const { t } = await getT();
   const entry = await db.query.codexEntries.findFirst({ where: eq(codexEntries.id, entryId) });
-  if (!entry) return { error: "Entry not found." };
-  if (!(await canEditEntry(entry, user.id))) return { error: "You cannot edit this entry." };
+  if (!entry) return { error: t("errors.codex.entryNotFound") };
+  if (!(await canEditEntry(entry, user.id))) return { error: t("errors.codex.cannotEdit") };
 
   const type = parseCodexType(str(formData, "type")) ?? entry.type;
   const title = str(formData, "title");
-  if (!title) return { error: "A title is required." };
+  if (!title) return { error: t("errors.codex.titleRequired") };
 
   let visibility: "everyone" | "dm" = str(formData, "visibility") === "dm" ? "dm" : "everyone";
   if (visibility === "dm" && !(await hasDmPowers(entry.worldId, user.id))) {
