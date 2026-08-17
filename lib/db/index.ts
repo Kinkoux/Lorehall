@@ -27,7 +27,19 @@ const globalForDb = globalThis as unknown as {
   __dndDb?: PostgresJsDatabase<typeof schema>;
 };
 
-export const db = globalForDb.__dndDb ?? createDb();
-globalForDb.__dndDb = db;
+function getDb() {
+  if (!globalForDb.__dndDb) globalForDb.__dndDb = createDb();
+  return globalForDb.__dndDb;
+}
+
+// Lazy proxy: `next build` imports route modules while collecting page
+// data, and must not require DATABASE_URL — only real queries do.
+export const db = new Proxy({} as PostgresJsDatabase<typeof schema>, {
+  get(_target, prop) {
+    const real = getDb();
+    const value = Reflect.get(real as object, prop);
+    return typeof value === "function" ? value.bind(real) : value;
+  },
+});
 
 export * from "./schema";
