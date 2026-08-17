@@ -10,10 +10,11 @@ DM in one campaign, player in another. Parchment look.
 
 - Next.js 16 (App Router, Turbopack) + React 19 + TypeScript
 - Tailwind CSS v4 (theme tokens in `app/globals.css`)
-- SQLite via better-sqlite3 + Drizzle ORM (`lib/db/`) — DB file at `data/dnd-hub.db`,
-  schema auto-bootstraps on first run (no migration tool needed yet)
+- Supabase Postgres via postgres-js + Drizzle ORM (`lib/db/`) — schema DDL in
+  `scripts/bootstrap-db.mjs` (`npm run db:bootstrap`, idempotent); uploaded
+  map images in Supabase Storage (`lib/storage.ts`, private `maps` bucket)
 - Own lightweight auth: username/password (bcryptjs) + JWT session cookie (jose).
-  `AUTH_SECRET` in `.env.local` (generated, gitignored).
+  Secrets in `.env.local` (gitignored) — copy `.env.example` and fill in.
 
 ## Run
 
@@ -115,6 +116,7 @@ npm run dev -- -p 3456
 
 ## Deploy note
 
-`data/` (SQLite + uploaded maps) works locally only. The deploy target is
-**Vercel + Supabase** (Postgres + Storage): storage is already abstracted in
-`lib/storage.ts`; the Postgres port and step-by-step setup live in `DEPLOY.md`.
+DB and storage both live in **Supabase** (Postgres + Storage) as of 2026-08-17;
+the old local SQLite file only matters as the source for the one-time
+`npm run db:migrate-local`. Vercel setup steps and the upload-size caveat are
+in `DEPLOY.md`.

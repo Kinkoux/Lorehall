@@ -1,24 +1,30 @@
-import { sqliteTable, text, integer, primaryKey } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, bigint, primaryKey } from "drizzle-orm/pg-core";
 
-export const users = sqliteTable("users", {
+// Timestamps are Date.now() ms kept as BIGINT (mode: number) so no call
+// site changed in the SQLite -> Postgres port.
+const ms = (name: string) => bigint(name, { mode: "number" });
+
+export const users = pgTable("users", {
   id: text("id").primaryKey(),
+  // Column is CITEXT in the database (see scripts/bootstrap-db.mjs) so
+  // username uniqueness + lookups stay case-insensitive like SQLite NOCASE.
   username: text("username").notNull().unique(),
   displayName: text("display_name"),
   passwordHash: text("password_hash").notNull(),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const worlds = sqliteTable("worlds", {
+export const worlds = pgTable("worlds", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
   ownerId: text("owner_id")
     .notNull()
     .references(() => users.id),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const worldMembers = sqliteTable(
+export const worldMembers = pgTable(
   "world_members",
   {
     worldId: text("world_id")
@@ -30,12 +36,12 @@ export const worldMembers = sqliteTable(
     role: text("role", { enum: ["owner", "member"] })
       .notNull()
       .default("member"),
-    joinedAt: integer("joined_at").notNull(),
+    joinedAt: ms("joined_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.worldId, t.userId] })]
 );
 
-export const campaigns = sqliteTable("campaigns", {
+export const campaigns = pgTable("campaigns", {
   id: text("id").primaryKey(),
   worldId: text("world_id")
     .notNull()
@@ -46,10 +52,10 @@ export const campaigns = sqliteTable("campaigns", {
     .notNull()
     .references(() => users.id),
   joinCode: text("join_code").notNull().unique(),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const campaignMembers = sqliteTable(
+export const campaignMembers = pgTable(
   "campaign_members",
   {
     campaignId: text("campaign_id")
@@ -59,7 +65,7 @@ export const campaignMembers = sqliteTable(
       .notNull()
       .references(() => users.id),
     characterName: text("character_name"),
-    joinedAt: integer("joined_at").notNull(),
+    joinedAt: ms("joined_at").notNull(),
   },
   (t) => [primaryKey({ columns: [t.campaignId, t.userId] })]
 );
@@ -67,7 +73,7 @@ export const campaignMembers = sqliteTable(
 export const CODEX_TYPES = ["npc", "location", "faction", "item", "lore"] as const;
 export type CodexType = (typeof CODEX_TYPES)[number];
 
-export const codexEntries = sqliteTable("codex_entries", {
+export const codexEntries = pgTable("codex_entries", {
   id: text("id").primaryKey(),
   worldId: text("world_id")
     .notNull()
@@ -81,11 +87,11 @@ export const codexEntries = sqliteTable("codex_entries", {
   createdBy: text("created_by")
     .notNull()
     .references(() => users.id),
-  createdAt: integer("created_at").notNull(),
-  updatedAt: integer("updated_at").notNull(),
+  createdAt: ms("created_at").notNull(),
+  updatedAt: ms("updated_at").notNull(),
 });
 
-export const gameSessions = sqliteTable("sessions", {
+export const gameSessions = pgTable("sessions", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
@@ -97,11 +103,11 @@ export const gameSessions = sqliteTable("sessions", {
   round: integer("round").notNull().default(1),
   turnIndex: integer("turn_index").notNull().default(0),
   recap: text("recap"),
-  startedAt: integer("started_at").notNull(),
-  endedAt: integer("ended_at"),
+  startedAt: ms("started_at").notNull(),
+  endedAt: ms("ended_at"),
 });
 
-export const combatants = sqliteTable("combatants", {
+export const combatants = pgTable("combatants", {
   id: text("id").primaryKey(),
   sessionId: text("session_id")
     .notNull()
@@ -115,10 +121,10 @@ export const combatants = sqliteTable("combatants", {
   deathFailures: integer("death_failures").notNull().default(0),
   conditions: text("conditions"),
   userId: text("user_id").references(() => users.id),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const sessionEvents = sqliteTable("session_events", {
+export const sessionEvents = pgTable("session_events", {
   id: text("id").primaryKey(),
   sessionId: text("session_id")
     .notNull()
@@ -126,10 +132,10 @@ export const sessionEvents = sqliteTable("session_events", {
   userId: text("user_id").references(() => users.id),
   kind: text("kind", { enum: ["roll", "join", "system", "note"] }).notNull(),
   message: text("message").notNull(),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const characters = sqliteTable("characters", {
+export const characters = pgTable("characters", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
@@ -155,10 +161,10 @@ export const characters = sqliteTable("characters", {
     .notNull()
     .default("alive"),
   notes: text("notes"),
-  updatedAt: integer("updated_at").notNull(),
+  updatedAt: ms("updated_at").notNull(),
 });
 
-export const characterItems = sqliteTable("character_items", {
+export const characterItems = pgTable("character_items", {
   id: text("id").primaryKey(),
   characterId: text("character_id")
     .notNull()
@@ -166,10 +172,10 @@ export const characterItems = sqliteTable("character_items", {
   name: text("name").notNull(),
   qty: integer("qty").notNull().default(1),
   notes: text("notes"),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const characterAbilities = sqliteTable("character_abilities", {
+export const characterAbilities = pgTable("character_abilities", {
   id: text("id").primaryKey(),
   characterId: text("character_id")
     .notNull()
@@ -181,10 +187,10 @@ export const characterAbilities = sqliteTable("character_abilities", {
   notes: text("notes"),
   usesMax: integer("uses_max"),
   usesLeft: integer("uses_left"),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const storyBeats = sqliteTable("story_beats", {
+export const storyBeats = pgTable("story_beats", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
@@ -196,10 +202,10 @@ export const storyBeats = sqliteTable("story_beats", {
     .notNull()
     .default("pending"),
   position: integer("position").notNull(),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const quests = sqliteTable("quests", {
+export const quests = pgTable("quests", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
@@ -209,10 +215,10 @@ export const quests = sqliteTable("quests", {
   status: text("status", { enum: ["active", "done", "failed"] })
     .notNull()
     .default("active"),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const partyLedger = sqliteTable("party_ledger", {
+export const partyLedger = pgTable("party_ledger", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
@@ -220,10 +226,10 @@ export const partyLedger = sqliteTable("party_ledger", {
   amount: integer("amount").notNull(),
   reason: text("reason").notNull(),
   userId: text("user_id").references(() => users.id),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const partyItems = sqliteTable("party_items", {
+export const partyItems = pgTable("party_items", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
@@ -231,19 +237,19 @@ export const partyItems = sqliteTable("party_items", {
   name: text("name").notNull(),
   qty: integer("qty").notNull().default(1),
   notes: text("notes"),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const encounters = sqliteTable("encounters", {
+export const encounters = pgTable("encounters", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
     .references(() => campaigns.id),
   name: text("name").notNull(),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const encounterMonsters = sqliteTable("encounter_monsters", {
+export const encounterMonsters = pgTable("encounter_monsters", {
   id: text("id").primaryKey(),
   encounterId: text("encounter_id")
     .notNull()
@@ -253,10 +259,10 @@ export const encounterMonsters = sqliteTable("encounter_monsters", {
   maxHp: integer("max_hp"),
   dexMod: integer("dex_mod").notNull().default(0),
   srdIndex: text("srd_index"),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
-export const campaignMaps = sqliteTable("campaign_maps", {
+export const campaignMaps = pgTable("campaign_maps", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
@@ -268,7 +274,7 @@ export const campaignMaps = sqliteTable("campaign_maps", {
     .notNull()
     .default("everyone"),
   isActive: integer("is_active").notNull().default(0),
-  createdAt: integer("created_at").notNull(),
+  createdAt: ms("created_at").notNull(),
 });
 
 export type User = typeof users.$inferSelect;

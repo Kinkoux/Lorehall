@@ -4,14 +4,19 @@ Target: GitHub → Vercel (Next.js), Supabase for Postgres + Storage.
 
 ## Status
 
-- [x] Map images go through `lib/storage.ts`: local disk in dev, Supabase
+- [x] Map images go through `lib/storage.ts`: local disk fallback, Supabase
       Storage automatically once `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`
       are set. The bucket stays **private**; every read is proxied through
       `app/files/maps/[mapId]/route.ts`, which enforces campaign permissions.
 - [x] Repo on GitHub, `.env.example` documents all env vars.
-- [ ] **Database port**: the app still runs on SQLite (`better-sqlite3`,
-      `data/dnd-hub.db`). Porting to Supabase Postgres is blocked on a
-      Supabase project existing (needs `DATABASE_URL`). Change list below.
+- [x] **Database ported to Supabase Postgres** (2026-08-17): pg-core schema,
+      postgres-js driver with `prepare: false` (transaction pooler),
+      timestamps stay ms-integers (BIGINT), username is CITEXT (preserves
+      SQLite's case-insensitive uniqueness). Schema DDL:
+      `npm run db:bootstrap`. Local SQLite data + map files migrated with
+      `npm run db:migrate-local` (better-sqlite3 now a devDependency, kept
+      only for that script). Verified live: reads, writes, and Storage-served
+      map images all work through the pooler.
 - [ ] Vercel project.
 
 ## 1. Supabase project (owner does this once)
@@ -20,7 +25,9 @@ Target: GitHub → Vercel (Next.js), Supabase for Postgres + Storage.
    - `DATABASE_URL` — use the **Transaction pooler** URI (port 6543) for
      serverless; the direct URI (5432) works for local dev.
    - `SUPABASE_URL` (Project Settings → API → Project URL)
-   - `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → API → service_role)
+   - `SUPABASE_SERVICE_ROLE_KEY` — Project Settings → API Keys →
+     **secret key** (`sb_secret_…`; older projects call it `service_role`).
+     `lib/storage.ts` accepts either format.
 2. Storage → create bucket `maps`, **private** (do not enable public access).
 3. Put the values into `.env.local` (locally) and Vercel env vars (deploy).
 

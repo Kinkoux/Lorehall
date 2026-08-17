@@ -17,6 +17,11 @@ function supabase() {
   return url && key ? { url: url.replace(/\/$/, ""), key } : null;
 }
 
+/** Works with both legacy JWT service_role keys and new sb_secret_ keys. */
+function authHeaders(key: string): Record<string, string> {
+  return { Authorization: `Bearer ${key}`, apikey: key };
+}
+
 function localPath(name: string) {
   return path.join(process.cwd(), "data", "uploads", "maps", path.basename(name));
 }
@@ -31,7 +36,7 @@ export async function putMapFile(
     const res = await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${name}`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${sb.key}`,
+        ...authHeaders(sb.key),
         "Content-Type": contentType,
         "x-upsert": "true",
       },
@@ -50,7 +55,7 @@ export async function readMapFile(name: string): Promise<Uint8Array<ArrayBuffer>
   const sb = supabase();
   if (sb) {
     const res = await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${name}`, {
-      headers: { Authorization: `Bearer ${sb.key}` },
+      headers: authHeaders(sb.key),
     });
     if (!res.ok) return null;
     return new Uint8Array(await res.arrayBuffer());
@@ -67,7 +72,7 @@ export async function deleteMapFile(name: string) {
   if (sb) {
     await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${name}`, {
       method: "DELETE",
-      headers: { Authorization: `Bearer ${sb.key}` },
+      headers: authHeaders(sb.key),
     });
     return;
   }
