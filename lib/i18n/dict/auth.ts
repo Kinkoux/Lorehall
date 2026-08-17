@@ -1,0 +1,48 @@
+export const auth = {
+  en: {
+    login: {
+      title: "SIGN IN",
+      username: "Username",
+      password: "Password",
+      submit: "Sign in",
+      submitting: "Entering the hall…",
+      newHere: "New here?",
+      createAccount: "Create an account",
+    },
+    register: {
+      title: "JOIN THE HALL",
+      username: "Username",
+      usernameHint: "3-20 characters: letters, numbers, underscore",
+      displayName: "Display name (what your party sees)",
+      optionalPh: "Optional",
+      password: "Password",
+      submit: "Create account",
+      submitting: "Forging…",
+      haveAccount: "Already a member?",
+      signIn: "Sign in",
+    },
+  },
+  tr: {
+    login: {
+      title: "GİRİŞ YAP",
+      username: "Kullanıcı adı",
+      password: "Şifre",
+      submit: "Giriş yap",
+      submitting: "Salona giriliyor…",
+      newHere: "Yeni misin?",
+      createAccount: "Hesap aç",
+    },
+    register: {
+      title: "SALONA KATIL",
+      username: "Kullanıcı adı",
+      usernameHint: "3-20 karakter: harf, rakam, alt çizgi",
+      displayName: "Görünen ad (partinin göreceği isim)",
+      optionalPh: "İsteğe bağlı",
+      password: "Şifre",
+      submit: "Hesap aç",
+      submitting: "Hesabın dövülüyor…",
+      haveAccount: "Zaten üye misin?",
+      signIn: "Giriş yap",
+    },
+  },
+} as const;

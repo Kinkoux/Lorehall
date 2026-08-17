@@ -1,0 +1,56 @@
+export const dashboard = {
+  en: {
+    metaTitle: "Dashboard",
+    welcome: "Welcome back, {name}",
+    worlds: {
+      heading: "Your worlds",
+      empty: "No worlds yet — create one below, or join a friend's campaign with a code.",
+      forge: "Forge a new world",
+      name: "World name",
+      namePh: "e.g. The Shattered Realms",
+      desc: "Description",
+      descPh: "Optional one-liner about your world",
+      create: "Create world",
+    },
+    campaigns: {
+      heading: "Your campaigns",
+      empty: "Not in any campaign yet. Got a code from your DM? Enter it below.",
+      inWorld: "in {world}",
+      join: "Join a campaign",
+      rolePlayer: "Player",
+    },
+    roleOwner: "Owner",
+    joinForm: {
+      codePh: "Join code, e.g. K7KKQD",
+      join: "Join",
+      joining: "Joining…",
+    },
+  },
+  tr: {
+    metaTitle: "Dünyalarım",
+    welcome: "Tekrar hoş geldin, {name}",
+    worlds: {
+      heading: "Dünyaların",
+      empty: "Henüz dünyan yok — aşağıdan bir tane kur ya da elindeki kodla arkadaşının kampanyasına katıl.",
+      forge: "Yeni bir dünya kur",
+      name: "Dünya adı",
+      namePh: "örn. Kırık Diyarlar",
+      desc: "Açıklama",
+      descPh: "Dünyan hakkında isteğe bağlı tek cümle",
+      create: "Dünyayı kur",
+    },
+    campaigns: {
+      heading: "Kampanyaların",
+      empty: "Henüz bir kampanyada değilsin. DM'inden kod aldın mı? Aşağıya gir.",
+      inWorld: "{world} dünyasında",
+      join: "Kampanyaya katıl",
+      rolePlayer: "Oyuncu",
+    },
+    roleOwner: "Kurucu",
+    joinForm: {
+      codePh: "Katılım kodu, örn. K7KKQD",
+      join: "Katıl",
+      joining: "Katılınıyor…",
+    },
+  },
+} as const;

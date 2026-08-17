@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/*
+ * Parchment theme. The scales are ROLE-based, kept from the original dark
+ * theme so components don't change:
+ *   ink-*       = surfaces (950 page, 900 card, 800 highlight, 700/600 borders)
+ *   parchment-* = ink/text (100 primary, 300 secondary, 500 muted)
+ *   gold-*      = accent (antique gold/bronze)
+ *   blood-*     = danger / DM-only
+ */
+@theme {
+  --color-ink-950: #eee3c8;
+  --color-ink-900: #f6eedb;
+  --color-ink-800: #e9dbb8;
+  --color-ink-700: #d3c19b;
+  --color-ink-600: #bda87e;
+
+  --color-parchment-100: #33261a;
+  --color-parchment-300: #54422c;
+  --color-parchment-500: #7c6950;
+
+  --color-gold-300: #8f6b16;
+  --color-gold-400: #9c7418;
+  --color-gold-500: #8a6516;
+
+  --color-blood-400: #8f2c2c;
+  --color-blood-500: #7a2424;
+
+  --font-display: var(--font-display), serif;
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-ink-950);
+  background-image:
+    radial-gradient(ellipse 120% 90% at 50% 40%, rgba(255, 250, 230, 0.5), transparent 70%),
+    radial-gradient(ellipse 80% 60% at 8% 8%, rgba(120, 90, 45, 0.1), transparent),
+    radial-gradient(ellipse 70% 55% at 95% 90%, rgba(120, 90, 45, 0.12), transparent),
+    radial-gradient(ellipse 150% 110% at 50% 50%, transparent 60%, rgba(94, 68, 32, 0.18));
+  background-attachment: fixed;
+  color: var(--color-parchment-100);
+}
+
+::selection {
+  background: var(--color-parchment-300);
+  color: var(--color-ink-900);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
