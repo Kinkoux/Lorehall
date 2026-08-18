@@ -18,6 +18,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { logMessage } from "@/lib/session-log";
+import { campaignLog } from "@/lib/campaign-log";
 import { fmt } from "@/lib/dnd";
 
 function str(formData: FormData, key: string) {
@@ -66,6 +67,10 @@ export async function addSpellToCharacter(spellIndex: string, characterId: strin
     notes: spellSummary(spell),
     createdAt: Date.now(),
   });
+  await campaignLog(character.campaignId, user.id, "spellAdded", {
+    name: spell.name,
+    character: character.name,
+  });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
 
@@ -89,13 +94,19 @@ export async function addItemToCharacter(itemIndex: string, formData: FormData) 
     if (!access?.isDm) return;
   }
 
+  const qty = Math.min(Math.max(int(formData, "qty") ?? 1, 1), 999);
   await db.insert(characterItems).values({
     id: nanoid(12),
     characterId,
     name: item.name,
-    qty: Math.min(Math.max(int(formData, "qty") ?? 1, 1), 999),
+    qty,
     notes: itemSummary(item),
     createdAt: Date.now(),
+  });
+  await campaignLog(character.campaignId, user.id, "srdItemAdded", {
+    name: item.name,
+    n: qty,
+    character: character.name,
   });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }

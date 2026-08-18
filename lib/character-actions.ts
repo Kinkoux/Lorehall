@@ -13,6 +13,8 @@ import {
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
+import { campaignLog } from "@/lib/campaign-log";
+import { fmt } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
 import type { FormState } from "@/lib/actions";
@@ -80,6 +82,7 @@ export async function createCharacter(formData: FormData) {
         and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id))
       );
   }
+  await campaignLog(campaignId, user.id, "characterCreated", { name: cap(name, 150) });
   redirect(`/c/${campaignId}/ch/${user.id}?ch=${id}`);
 }
 
@@ -93,6 +96,7 @@ export async function approveCharacter(characterId: string) {
   const access = await getCampaignAccess(character.campaignId, user.id);
   if (!access?.isDm) return;
   await db.update(characters).set({ approval: "approved" }).where(eq(characters.id, characterId));
+  await campaignLog(character.campaignId, user.id, "characterApproved", { name: character.name });
   revalidatePath(`/c/${character.campaignId}`);
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
   revalidatePath("/characters");
@@ -110,6 +114,7 @@ export async function rejectCharacter(characterId: string) {
   await db.delete(characterItems).where(eq(characterItems.characterId, characterId));
   await db.delete(characterAbilities).where(eq(characterAbilities.characterId, characterId));
   await db.delete(characters).where(eq(characters.id, characterId));
+  await campaignLog(character.campaignId, user.id, "characterRejected", { name: character.name });
   revalidatePath(`/c/${character.campaignId}`);
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
   revalidatePath("/characters");
@@ -125,6 +130,10 @@ export async function setCharacterStatus(characterId: string, status: "alive" | 
   const access = await getCampaignAccess(character.campaignId, user.id);
   if (!access?.isDm) return;
   await db.update(characters).set({ status }).where(eq(characters.id, characterId));
+  await campaignLog(character.campaignId, user.id, "statusChanged", {
+    character: character.name,
+    status,
+  });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
   revalidatePath(`/c/${character.campaignId}`);
   revalidatePath("/characters");
@@ -210,6 +219,12 @@ export async function upsertCharacter(
     .where(
       and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, sheetUserId))
     );
+  // A save on someone else's sheet is a DM write — the feed says so out loud.
+  const byDm = sheetUserId !== user.id;
+  await campaignLog(campaignId, user.id, byDm ? "sheetSavedByDm" : "sheetSaved", {
+    character: values.name,
+    dm: byDm ? 1 : 0,
+  });
   revalidatePath(`/c/${campaignId}/ch/${sheetUserId}`);
   revalidatePath(`/c/${campaignId}`);
 }
@@ -268,6 +283,9 @@ export async function uploadPortrait(
     .set({ imageFile: fileName, imageMime: file.type })
     .where(eq(characters.id, characterId));
   if (character.imageFile) await deletePortraitFile(character.imageFile);
+  await campaignLog(character.campaignId, user.id, "portraitChanged", {
+    character: character.name,
+  });
   revalidatePortraitPages(character.campaignId, character.userId);
   return {};
 }
@@ -281,6 +299,9 @@ export async function removePortrait(characterId: string) {
     .set({ imageFile: null, imageMime: null })
     .where(eq(characters.id, characterId));
   await deletePortraitFile(character.imageFile);
+  await campaignLog(character.campaignId, user.id, "portraitRemoved", {
+    character: character.name,
+  });
   revalidatePortraitPages(character.campaignId, character.userId);
 }
 
@@ -292,13 +313,20 @@ export async function addItem(characterId: string, formData: FormData) {
   if (!character) return;
   const name = str(formData, "name");
   if (!name) return;
+  const itemName = cap(name, 150);
+  const qty = Math.min(Math.max(int(formData, "qty") ?? 1, 1), 9999);
   await db.insert(characterItems).values({
     id: nanoid(12),
     characterId,
-    name: cap(name, 150),
-    qty: Math.min(Math.max(int(formData, "qty") ?? 1, 1), 9999),
+    name: itemName,
+    qty,
     notes: cap(str(formData, "notes"), 2_000) || null,
     createdAt: Date.now(),
+  });
+  await campaignLog(character.campaignId, user.id, "itemAdded", {
+    name: itemName,
+    n: qty,
+    character: character.name,
   });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
@@ -315,6 +343,15 @@ export async function adjustItemQty(itemId: string, delta: number) {
   } else {
     await db.update(characterItems).set({ qty: Math.min(qty, 9999) }).where(eq(characterItems.id, itemId));
   }
+  // The last one off the pile is a removal, not a quantity tweak.
+  await campaignLog(
+    character.campaignId,
+    user.id,
+    qty <= 0 ? "itemRemoved" : "itemQty",
+    qty <= 0
+      ? { name: item.name, character: character.name }
+      : { name: item.name, d: fmt(delta), n: Math.min(qty, 9999), character: character.name }
+  );
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
 
@@ -325,6 +362,10 @@ export async function deleteItem(itemId: string) {
   const character = await getEditableCharacter(item.characterId, user.id);
   if (!character) return;
   await db.delete(characterItems).where(eq(characterItems.id, itemId));
+  await campaignLog(character.campaignId, user.id, "itemRemoved", {
+    name: item.name,
+    character: character.name,
+  });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
 
@@ -339,15 +380,20 @@ export async function addAbility(characterId: string, formData: FormData) {
   const kindRaw = str(formData, "kind");
   const kind = kindRaw === "spell" || kindRaw === "trait" ? kindRaw : "ability";
   const usesMax = int(formData, "usesMax");
+  const abilityName = cap(name, 150);
   await db.insert(characterAbilities).values({
     id: nanoid(12),
     characterId,
-    name: cap(name, 150),
+    name: abilityName,
     kind,
     notes: cap(str(formData, "notes"), 2_000) || null,
     usesMax,
     usesLeft: usesMax,
     createdAt: Date.now(),
+  });
+  await campaignLog(character.campaignId, user.id, "abilityAdded", {
+    name: abilityName,
+    character: character.name,
   });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
@@ -385,6 +431,10 @@ export async function longRest(characterId: string) {
         .where(eq(characterAbilities.id, ability.id));
     }
   }
+  await campaignLog(character.campaignId, user.id, "longRest", {
+    character: character.name,
+    n: abilities.filter((a) => a.usesMax !== null).length,
+  });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
 
@@ -397,5 +447,9 @@ export async function deleteAbility(abilityId: string) {
   const character = await getEditableCharacter(ability.characterId, user.id);
   if (!character) return;
   await db.delete(characterAbilities).where(eq(characterAbilities.id, abilityId));
+  await campaignLog(character.campaignId, user.id, "abilityRemoved", {
+    name: ability.name,
+    character: character.name,
+  });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }

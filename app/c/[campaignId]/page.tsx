@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import {
   db,
+  campaignEvents,
   campaignMaps,
   campaignMembers,
   characters,
@@ -13,6 +14,7 @@ import {
   encounters as encountersTable,
   encounterMonsters,
   users,
+  type CampaignEvent,
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
@@ -45,12 +47,19 @@ import {
 import { deleteMap, setActiveMap, setMapVisibility } from "@/lib/map-actions";
 import { approveCharacter, rejectCharacter } from "@/lib/character-actions";
 import { hasScores, statBlock } from "@/lib/dnd";
+import { renderCampaignEvent } from "@/lib/campaign-log";
 import { getT } from "@/lib/locale";
 import { SiteHeader } from "@/components/SiteHeader";
 import { MapUploadForm } from "@/components/MapUploadForm";
 import {
   IconBookmark,
+  IconChest,
+  IconChevron,
+  IconCoin,
   IconDie,
+  IconFlask,
+  IconParty,
+  IconQuill,
   IconScroll,
   IconSkull,
   IconSwords,
@@ -72,18 +81,58 @@ import {
   Textarea,
 } from "@/components/ui";
 
+type FeedKind = CampaignEvent["kind"];
+
+/** Feed filter chips → the event kinds each one lets through. */
+const FEED_FILTERS: Record<string, FeedKind[]> = {
+  gold: ["gold"],
+  items: ["item", "loot"],
+  sheets: ["sheet", "ability"],
+  characters: ["character", "status"],
+};
+const FEED_CHIPS = [
+  { key: "gold", label: "campaign.feed.fGold" },
+  { key: "items", label: "campaign.feed.fItems" },
+  { key: "sheets", label: "campaign.feed.fSheets" },
+  { key: "characters", label: "campaign.feed.fCharacters" },
+] as const;
+const FEED_ICONS: Record<FeedKind, (props: { size?: number; className?: string }) => React.ReactElement> = {
+  sheet: IconQuill,
+  item: IconChest,
+  loot: IconChest,
+  ability: IconFlask,
+  gold: IconCoin,
+  character: IconParty,
+  status: IconParty,
+};
+/** Below this many entries the change log opens on its own. */
+const FEED_OPEN_UNDER = 10;
+
 export default async function CampaignPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ campaignId: string }>;
+  searchParams: Promise<{ feed?: string }>;
 }) {
   const user = await requireUser();
   const { t, locale } = await getT();
   const { campaignId } = await params;
+  const { feed } = await searchParams;
 
   const access = await getCampaignAccess(campaignId, user.id);
   if (!access?.canView) notFound();
   const { campaign, world, isDm } = access;
+
+  // ?feed=gold|items|sheets|characters narrows the DM's change log; anything
+  // else falls back to the unfiltered feed.
+  const activeFeed = feed && FEED_FILTERS[feed] ? feed : null;
+  const feedWhere = activeFeed
+    ? and(
+        eq(campaignEvents.campaignId, campaignId),
+        inArray(campaignEvents.kind, FEED_FILTERS[activeFeed])
+      )
+    : eq(campaignEvents.campaignId, campaignId);
 
   // Independent reads — one concurrent batch instead of nine roundtrips.
   const [
@@ -97,6 +146,7 @@ export default async function CampaignPage({
     beats,
     chapters,
     mapsList,
+    feedEvents,
   ] = await Promise.all([
     db
       .select({ member: campaignMembers, user: users })
@@ -139,6 +189,17 @@ export default async function CampaignPage({
       .from(campaignMaps)
       .where(eq(campaignMaps.campaignId, campaignId))
       .orderBy(asc(campaignMaps.createdAt)),
+    // The change log is the DM's alone — and append-only, so 50 is the whole
+    // read path: no delete UI, no pagination, just the recent tail.
+    isDm
+      ? db
+          .select({ event: campaignEvents, user: users })
+          .from(campaignEvents)
+          .leftJoin(users, eq(campaignEvents.actorId, users.id))
+          .where(feedWhere)
+          .orderBy(desc(campaignEvents.createdAt))
+          .limit(50)
+      : Promise.resolve([]),
   ]);
 
   // Approved characters show to everyone; pending ones only to the DM
@@ -154,6 +215,15 @@ export default async function CampaignPage({
   const closedQuests = quests.filter((q) => q.status !== "active");
   const gold = ledger.reduce((sum, { entry }) => sum + entry.amount, 0);
   const visibleMaps = isDm ? mapsList : mapsList.filter((m) => m.visibility === "everyone");
+  // Same locale tags the rest of the page uses; day + clock, since a change log
+  // is mostly read as "what happened since last session".
+  const feedStamp = (ms: number) =>
+    new Date(ms).toLocaleString(locale === "tr" ? "tr-TR" : "en-GB", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
   // Story book: chapters in order, then whatever never got filed into one.
   const plotBeats = beats.filter((b) => b.kind === "plot");
@@ -639,6 +709,92 @@ export default async function CampaignPage({
         </section>
 
         {isDm && (
+          <details
+            id="changelog"
+            // Short logs sit open; a long one folds away so the page doesn't
+            // grow — but a filtered view always opens, or the chip you just
+            // clicked would answer into a closed drawer.
+            open={feedEvents.length < FEED_OPEN_UNDER || Boolean(activeFeed)}
+            className="group mt-10"
+          >
+            <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
+              <IconChevron
+                size={14}
+                className="shrink-0 text-blood-400 transition-transform group-open:rotate-90"
+              />
+              <div className="min-w-0 flex-1">
+                <SectionTitle>
+                  {t("campaign.feed.title")}
+                  <span className="ml-2 text-[11px] font-semibold normal-case tracking-normal text-parchment-500">
+                    {feedEvents.length === 1
+                      ? t("campaign.feed.countOne", { n: feedEvents.length })
+                      : t("campaign.feed.countMany", { n: feedEvents.length })}
+                  </span>
+                </SectionTitle>
+              </div>
+            </summary>
+
+            <div className="mt-4 space-y-4">
+              <p className="text-xs text-parchment-500">{t("campaign.feed.hint")}</p>
+              <div className="flex flex-wrap gap-2">
+                <FilterChip
+                  href={`/c/${campaignId}#changelog`}
+                  active={!activeFeed}
+                  label={t("campaign.feed.all")}
+                />
+                {FEED_CHIPS.map((chip) => (
+                  <FilterChip
+                    key={chip.key}
+                    href={`/c/${campaignId}?feed=${chip.key}#changelog`}
+                    active={activeFeed === chip.key}
+                    label={t(chip.label)}
+                  />
+                ))}
+              </div>
+              <Card>
+                {feedEvents.length === 0 ? (
+                  <div className="flex flex-col items-center gap-2 py-4 text-parchment-500">
+                    <IconScroll size={24} />
+                    <p className="text-sm">{t("campaign.feed.empty")}</p>
+                  </div>
+                ) : (
+                  <ul className="space-y-1">
+                    {feedEvents.map(({ event, user: actor }, index) => {
+                      const rendered = renderCampaignEvent(event.message, t);
+                      const Icon = FEED_ICONS[event.kind];
+                      return (
+                        <li
+                          key={event.id}
+                          className={`flex items-start gap-2 rounded-sm px-1 py-1 text-sm leading-snug ${
+                            index % 2 === 1 ? "bg-ink-800/30" : ""
+                          }`}
+                        >
+                          <Icon
+                            size={14}
+                            className={`mt-0.5 shrink-0 ${
+                              event.kind === "gold" ? "text-gold-400" : "text-parchment-500"
+                            }`}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <strong className="mr-1 text-gold-300">
+                              {actor?.displayName ?? actor?.username ?? t("campaign.feed.someone")}
+                            </strong>
+                            <span className="text-parchment-300">{rendered.text}</span>
+                          </span>
+                          <span className="shrink-0 pt-0.5 text-[11px] text-parchment-500">
+                            {feedStamp(event.createdAt)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </Card>
+            </div>
+          </details>
+        )}
+
+        {isDm && (
           <section className="mt-10 space-y-4">
             <SectionTitle>{t("campaign.encounters.title")}</SectionTitle>
             <p className="-mt-2 text-xs text-parchment-500">
@@ -942,6 +1098,21 @@ export default async function CampaignPage({
         )}
       </main>
     </>
+  );
+}
+
+function FilterChip({ href, active, label }: { href: string; active: boolean; label: string }) {
+  return (
+    <Link
+      href={href as never}
+      className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+        active
+          ? "border-gold-500 bg-gold-500/15 text-gold-300"
+          : "border-ink-600 text-parchment-500 hover:border-gold-500 hover:text-gold-300"
+      }`}
+    >
+      {label}
+    </Link>
   );
 }
 

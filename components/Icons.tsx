@@ -221,6 +221,15 @@ export function IconCart(props: IconProps) {
   );
 }
 
+/** Right-pointing chevron — disclosure marker for collapsible sections. */
+export function IconChevron(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9 5l7 7-7 7" />
+    </Svg>
+  );
+}
+
 /** Diagonal cross (delete / remove) — replaces raw ✕ glyphs. */
 export function IconX(props: IconProps) {
   return (

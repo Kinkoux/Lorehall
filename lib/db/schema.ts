@@ -1,4 +1,4 @@
-import { pgTable, text, integer, bigint, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, integer, bigint, primaryKey, index } from "drizzle-orm/pg-core";
 
 // Timestamps are Date.now() ms kept as BIGINT (mode: number) so no call
 // site changed in the SQLite -> Postgres port.
@@ -316,6 +316,31 @@ export const campaignMaps = pgTable("campaign_maps", {
   createdAt: ms("created_at").notNull(),
 });
 
+/**
+ * DM change-log feed: an append-only record of player-side changes (sheets,
+ * items, abilities, gold, loot, character lifecycle) so the DM gets
+ * observability instead of edit authority. DM writes to other players' sheets
+ * land here too — rare writes stay visible. `message` is JSON {k, p} rendered
+ * through the dictionary at display time (see lib/campaign-log.ts).
+ */
+export const campaignEvents = pgTable(
+  "campaign_events",
+  {
+    id: text("id").primaryKey(),
+    campaignId: text("campaign_id")
+      .notNull()
+      .references(() => campaigns.id),
+    // NULL only if the acting user is ever removed — the entry survives.
+    actorId: text("actor_id").references(() => users.id),
+    kind: text("kind", {
+      enum: ["sheet", "item", "ability", "status", "character", "gold", "loot"],
+    }).notNull(),
+    message: text("message").notNull(),
+    createdAt: ms("created_at").notNull(),
+  },
+  (t) => [index("idx_campaign_events").on(t.campaignId, t.createdAt)]
+);
+
 export type User = typeof users.$inferSelect;
 export type World = typeof worlds.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
@@ -332,3 +357,4 @@ export type Quest = typeof quests.$inferSelect;
 export type Encounter = typeof encounters.$inferSelect;
 export type EncounterMonster = typeof encounterMonsters.$inferSelect;
 export type CampaignMap = typeof campaignMaps.$inferSelect;
+export type CampaignEvent = typeof campaignEvents.$inferSelect;

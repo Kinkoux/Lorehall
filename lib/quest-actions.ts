@@ -6,6 +6,8 @@ import { nanoid } from "nanoid";
 import { db, quests, partyLedger, partyItems } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
+import { campaignLog } from "@/lib/campaign-log";
+import { fmt } from "@/lib/dnd";
 
 function str(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -69,14 +71,17 @@ export async function addLedgerEntry(campaignId: string, formData: FormData) {
   const amount = int(formData, "amount");
   const reason = str(formData, "reason");
   if (amount === null || amount === 0 || !reason) return;
+  const clamped = Math.max(-1_000_000, Math.min(1_000_000, amount));
+  const why = cap(reason, 200);
   await db.insert(partyLedger).values({
     id: nanoid(12),
     campaignId,
-    amount: Math.max(-1_000_000, Math.min(1_000_000, amount)),
-    reason: cap(reason, 200),
+    amount: clamped,
+    reason: why,
     userId: user.id,
     createdAt: Date.now(),
   });
+  await campaignLog(campaignId, user.id, "goldChanged", { amount: fmt(clamped), reason: why });
   revalidatePath(`/c/${campaignId}`);
 }
 
@@ -86,14 +91,17 @@ export async function addPartyItem(campaignId: string, formData: FormData) {
   if (!access?.canView) return;
   const name = str(formData, "name");
   if (!name) return;
+  const lootName = cap(name, 200);
+  const qty = Math.min(Math.max(int(formData, "qty") ?? 1, 1), 9999);
   await db.insert(partyItems).values({
     id: nanoid(12),
     campaignId,
-    name: cap(name, 200),
-    qty: Math.min(Math.max(int(formData, "qty") ?? 1, 1), 9999),
+    name: lootName,
+    qty,
     notes: cap(str(formData, "notes"), 200) || null,
     createdAt: Date.now(),
   });
+  await campaignLog(campaignId, user.id, "lootAdded", { name: lootName, n: qty });
   revalidatePath(`/c/${campaignId}`);
 }
 
@@ -109,5 +117,10 @@ export async function adjustPartyItemQty(itemId: string, delta: number) {
   } else {
     await db.update(partyItems).set({ qty: Math.min(qty, 9999) }).where(eq(partyItems.id, itemId));
   }
+  await campaignLog(item.campaignId, user.id, "lootQty", {
+    name: item.name,
+    d: fmt(delta),
+    n: qty <= 0 ? 0 : Math.min(qty, 9999),
+  });
   revalidatePath(`/c/${item.campaignId}`);
 }

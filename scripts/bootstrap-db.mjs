@@ -238,6 +238,17 @@ CREATE TABLE IF NOT EXISTS campaign_maps (
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_maps_campaign ON campaign_maps(campaign_id);
+-- DM change-log feed (2026-08-18): append-only record of player-side changes.
+-- message is JSON {k, p} rendered through the dictionary at display time.
+CREATE TABLE IF NOT EXISTS campaign_events (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT NOT NULL REFERENCES campaigns(id),
+  actor_id TEXT REFERENCES users(id),
+  kind TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_campaign_events ON campaign_events(campaign_id, created_at);
 
 -- Guarded migrations for databases created before these changes:
 -- multi-character support (2026-08-18) drops the one-per-user constraint
