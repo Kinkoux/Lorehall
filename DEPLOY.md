@@ -50,15 +50,18 @@ Target: GitHub → Vercel (Next.js), Supabase for Postgres + Storage.
    `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`.
 3. Deploy. `/reference` and `/compendium` are public; the rest needs sign-in.
 
-## Known constraint: upload size on Vercel
+## Upload size on Vercel — solved for maps
 
 Vercel's serverless request-body limit is ~4.5 MB, below the app's 10 MB map
-cap (`next.config.ts` raises the server-action limit to 12 MB, which only
-helps self-hosted). On Vercel, either:
+cap. Maps now bypass it entirely (2026-08-19): `requestMapUpload` returns a
+Supabase *signed upload URL*, the browser PUTs the file straight to Storage,
+and `finalizeMapUpload` records the row after asking Storage what actually
+landed under that key. Nothing but the key crosses a server action.
 
-- accept smaller maps (drop the cap to 4 MB), or
-- **better**: switch the upload path to a Supabase Storage *signed upload
-  URL* — server action creates the signed URL, the browser uploads the file
-  straight to Supabase (bypassing Vercel), then a second action records the
-  DB row. Small change, only touches `lib/map-actions.ts` +
-  `components/MapUploadForm.tsx`.
+Portraits (4 MB cap) still post their bytes through an action, which fits
+under the limit; `next.config.ts` sets `bodySizeLimit: "5mb"` for them.
+
+Worth setting on the bucket: Storage → `maps` → a **file size limit** of
+10 MB. A signed URL carries no size cap of its own, so that setting is what
+stops an oversized object from ever being written — the server-side check
+only refuses to record it afterwards.

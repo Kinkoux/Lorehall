@@ -2,10 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   experimental: {
-    // Map uploads go through a server action; default limit is 1 MB.
-    // 12mb = 10 MB image cap + multipart overhead headroom.
+    // Character portraits still post their bytes through a server action, and
+    // the default limit is 1 MB. 5mb = 4 MB portrait cap + multipart overhead
+    // headroom. Maps no longer figure into this: they go from the browser
+    // straight to Storage over a signed upload URL, so only their key travels
+    // through an action.
     serverActions: {
-      bodySizeLimit: "12mb",
+      bodySizeLimit: "5mb",
     },
   },
 };

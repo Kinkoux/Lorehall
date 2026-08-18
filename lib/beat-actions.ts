@@ -17,7 +17,11 @@ function str(formData: FormData, key: string) {
 const cap = (s: string, n: number) => s.slice(0, n);
 
 /** Postgres unique_violation — a double-click losing the race, not a bug. */
-const isUniqueViolation = (e: unknown) => (e as { code?: string }).code === "23505";
+const isUniqueViolation = (e: unknown) => {
+  // drizzle wraps driver errors; the SQLSTATE may sit on the error or its cause.
+  const err = e as { code?: string; cause?: { code?: string } };
+  return err.code === "23505" || err.cause?.code === "23505";
+};
 
 async function requireDm(campaignId: string, userId: string) {
   const access = await getCampaignAccess(campaignId, userId);

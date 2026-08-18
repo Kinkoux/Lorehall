@@ -7,7 +7,7 @@ import { db, campaignMaps, gameSessions } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { getT } from "@/lib/locale";
-import { deleteMapFile, putMapFile } from "@/lib/storage";
+import { createMapUploadUrl, deleteMapFile, statMapFile } from "@/lib/storage";
 import type { FormState } from "@/lib/actions";
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -16,9 +16,22 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/webp": "webp",
 };
+/**
+ * The only key shape finalizeMapUpload accepts: exactly what requestMapUpload
+ * mints. No slash can pass it, so a claimed key cannot reach out of the maps
+ * area of the bucket (portraits/ shares it), and no path trick survives.
+ */
+const FILE_NAME_RE = /^[A-Za-z0-9_-]{16}\.(png|jpe?g|webp)$/;
+
+/** Where the browser should put the file, and what to call it afterwards. */
+type UploadTicket = { uploadUrl: string; fileName: string };
 
 /** Postgres unique_violation — a double-click losing the race, not a bug. */
-const isUniqueViolation = (e: unknown) => (e as { code?: string }).code === "23505";
+const isUniqueViolation = (e: unknown) => {
+  // drizzle wraps driver errors; the SQLSTATE may sit on the error or its cause.
+  const err = e as { code?: string; cause?: { code?: string } };
+  return err.code === "23505" || err.cause?.code === "23505";
+};
 
 function str(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -44,9 +57,49 @@ async function revalidateMapPages(campaignId: string, mapId?: string) {
   for (const s of liveSessions) revalidatePath(`/s/${s.id}`);
 }
 
-export async function uploadMap(
+/**
+ * Step one of an upload: the browser describes the file it wants to send and
+ * gets back somewhere to put it. Only the description crosses the wire here —
+ * the bytes go straight to Storage over the returned URL, because a request
+ * body through the app server runs out of room well below the 10 MB map cap.
+ */
+export async function requestMapUpload(
   campaignId: string,
-  _prev: FormState,
+  formData: FormData
+): Promise<FormState & { ticket?: UploadTicket }> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const access = await getCampaignAccess(campaignId, user.id);
+  if (!access?.isDm) return { error: t("errors.maps.dmOnly") };
+
+  // Both are claims, not measurements — Storage is asked what really arrived
+  // when the row is written. They still gate the URL: no point handing out an
+  // upload slot for something this app would refuse to record.
+  const size = Number(str(formData, "size"));
+  if (!Number.isFinite(size) || size <= 0) return { error: t("errors.maps.noFile") };
+  if (size > MAX_BYTES) return { error: t("errors.maps.tooLarge") };
+  const ext = EXT_BY_MIME[str(formData, "type")];
+  if (!ext) return { error: t("errors.maps.badType") };
+
+  // Minted here and never accepted from the browser: the key is the one thing
+  // step two has to take on trust, and a caller-chosen one could name any
+  // object in the bucket.
+  const fileName = `${nanoid(16)}.${ext}`;
+  const uploadUrl = await createMapUploadUrl(fileName);
+  // Only reachable with Storage unconfigured (local-disk mode), where there is
+  // nowhere for the browser to upload to.
+  if (!uploadUrl) return { error: t("errors.maps.uploadFailed") };
+  return { ticket: { uploadUrl, fileName } };
+}
+
+/**
+ * Step two: the bytes are already in Storage, so all that is left is the row.
+ * Nothing from the browser is taken at face value — the key has to look like
+ * one this server minted, and Storage is asked what actually sits under it
+ * before a map is written down.
+ */
+export async function finalizeMapUpload(
+  campaignId: string,
   formData: FormData
 ): Promise<FormState> {
   const user = await requireUser();
@@ -54,26 +107,34 @@ export async function uploadMap(
   const access = await getCampaignAccess(campaignId, user.id);
   if (!access?.isDm) return { error: t("errors.maps.dmOnly") };
 
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: t("errors.maps.noFile") };
-  if (file.size > MAX_BYTES) return { error: t("errors.maps.tooLarge") };
-  const ext = EXT_BY_MIME[file.type];
-  if (!ext) return { error: t("errors.maps.badType") };
+  const fileName = str(formData, "fileName");
+  if (!FILE_NAME_RE.test(fileName)) return { error: t("errors.maps.uploadFailed") };
 
-  const title =
-    str(formData, "title") || file.name.replace(/\.[^.]+$/, "") || t("campaign.maps.untitled");
+  const info = await statMapFile(fileName);
+  if (!info || info.size <= 0 || info.size > MAX_BYTES || !EXT_BY_MIME[info.contentType]) {
+    // Whatever is up there is not something this app will serve. No row will
+    // point at it, so leaving it in the bucket only costs space — dropping it
+    // is best effort, since the caller's error is the one worth reporting.
+    if (info) {
+      await deleteMapFile(fileName).catch((e) =>
+        console.error("finalizeMapUpload: reject cleanup failed", e)
+      );
+    }
+    return { error: t("errors.maps.uploadFailed") };
+  }
+
+  const title = str(formData, "title") || t("campaign.maps.untitled");
   const visibility = str(formData, "visibility") === "dm" ? ("dm" as const) : ("everyone" as const);
-  const fileName = `${nanoid(16)}.${ext}`;
-
-  await putMapFile(fileName, new Uint8Array(await file.arrayBuffer()), file.type);
   try {
     await db.insert(campaignMaps).values({
       id: nanoid(12),
       campaignId,
       title: title.slice(0, 120),
       fileName,
-      mimeType: file.type,
+      // Storage's own answer, not the type the browser announced in step one.
+      mimeType: info.contentType,
       visibility,
+      isActive: 0,
       createdAt: Date.now(),
     });
   } catch (e) {
@@ -81,7 +142,7 @@ export async function uploadMap(
     // pointing at it, the uploaded object is unreachable dead weight. A failed
     // cleanup is noted and dropped — the original error is the one to report.
     await deleteMapFile(fileName).catch((err) =>
-      console.error("uploadMap: orphan cleanup failed", err)
+      console.error("finalizeMapUpload: orphan cleanup failed", err)
     );
     throw e;
   }

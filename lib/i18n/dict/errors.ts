@@ -29,6 +29,9 @@ export const errors = {
       noFile: "Pick an image file.",
       tooLarge: "Image is larger than 10 MB.",
       badType: "Use a PNG, JPG, or WebP image.",
+      // The map goes to storage from the browser, so this covers every step
+      // of that trip that can fail without the app learning anything useful.
+      uploadFailed: "Upload failed. Please try again.",
     },
     portrait: {
       notAllowed: "You cannot edit this character sheet.",
@@ -69,6 +72,7 @@ export const errors = {
       noFile: "Bir görsel dosyası seç.",
       tooLarge: "Görsel 10 MB'den büyük.",
       badType: "PNG, JPG veya WebP kullan.",
+      uploadFailed: "Yükleme başarısız oldu. Tekrar dene.",
     },
     portrait: {
       notAllowed: "Bu karakter sayfasını düzenleyemezsin.",

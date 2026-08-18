@@ -91,6 +91,56 @@ async function readFile(area: Area, name: string): Promise<MapFile | null> {
   }
 }
 
+/**
+ * A short-lived URL the browser can PUT a single object to. Bytes routed
+ * through the app server hit the serverless request-body cap long before the
+ * app's own size limit does, so a large upload travels straight to Supabase
+ * and only the key comes back. Supabase-only: with local-disk storage there
+ * is no third party for the browser to hand the file to.
+ */
+async function createSignedUploadUrl(area: Area, name: string): Promise<string | null> {
+  const sb = supabase();
+  if (!sb) return null;
+  const res = await fetch(
+    `${sb.url}/storage/v1/object/upload/sign/${BUCKET}/${objectKey(area, name)}`,
+    {
+      method: "POST",
+      headers: { ...authHeaders(sb.key), "Content-Type": "application/json" },
+      body: "{}",
+    }
+  );
+  if (!res.ok) {
+    throw new Error(`Storage sign failed: ${res.status} ${await res.text()}`);
+  }
+  const { url } = (await res.json()) as { url?: string };
+  // The signed path comes back relative to /storage/v1.
+  return url ? `${sb.url}/storage/v1${url.startsWith("/") ? url : `/${url}`}` : null;
+}
+
+export type StoredObjectInfo = { size: number; contentType: string };
+
+/**
+ * What is actually stored under a key, or null if there is nothing there.
+ * An upload that went straight from the browser to Storage never passed
+ * through here, so this is the only way to find out what really landed.
+ */
+async function statFile(area: Area, name: string): Promise<StoredObjectInfo | null> {
+  const sb = supabase();
+  if (!sb) return null;
+  const res = await fetch(`${sb.url}/storage/v1/object/${BUCKET}/${objectKey(area, name)}`, {
+    method: "HEAD",
+    headers: authHeaders(sb.key),
+  });
+  if (!res.ok) return null;
+  const length = res.headers.get("content-length");
+  const contentType = res.headers.get("content-type");
+  if (!length || !contentType) return null;
+  const size = Number(length);
+  if (!Number.isFinite(size)) return null;
+  // Strip any "; charset=…" tail so the value compares against a plain MIME.
+  return { size, contentType: contentType.split(";")[0].trim() };
+}
+
 async function deleteFile(area: Area, name: string) {
   const sb = supabase();
   if (sb) {
@@ -103,12 +153,18 @@ async function deleteFile(area: Area, name: string) {
   await fs.unlink(localPath(area, name)).catch(() => {});
 }
 
-export function putMapFile(name: string, bytes: Uint8Array<ArrayBuffer>, contentType: string) {
-  return putFile(MAPS, name, bytes, contentType);
-}
-
+// No putMapFile: map bytes reach Storage from the browser, over the signed
+// URL createMapUploadUrl hands out.
 export function readMapFile(name: string): Promise<MapFile | null> {
   return readFile(MAPS, name);
+}
+
+export function createMapUploadUrl(name: string): Promise<string | null> {
+  return createSignedUploadUrl(MAPS, name);
+}
+
+export function statMapFile(name: string): Promise<StoredObjectInfo | null> {
+  return statFile(MAPS, name);
 }
 
 export function deleteMapFile(name: string) {
