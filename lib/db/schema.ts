@@ -10,6 +10,13 @@ export const users = pgTable("users", {
   // username uniqueness + lookups stay case-insensitive like SQLite NOCASE.
   username: text("username").notNull().unique(),
   displayName: text("display_name"),
+  // Also CITEXT, so a link sent to Ada@… belongs to the account that typed
+  // ada@…. Nullable because accounts predate the column and because the
+  // address is only ever a recovery route, never the identity: uniqueness is
+  // a partial index over the non-NULL rows (see scripts/bootstrap-db.mjs).
+  email: text("email"),
+  // When the owner followed the link we mailed. NULL = unconfirmed.
+  emailVerifiedAt: ms("email_verified_at"),
   passwordHash: text("password_hash").notNull(),
   // Bumped to retire every cookie issued so far — a session token carries the
   // version it was signed with and stops verifying once this moves past it.
@@ -27,6 +34,28 @@ export const authAttempts = pgTable("auth_attempts", {
   key: text("key").primaryKey(),
   count: integer("count").notNull(),
   resetAt: ms("reset_at").notNull(),
+});
+
+export const EMAIL_TOKEN_KINDS = ["verify", "reset"] as const;
+export type EmailTokenKind = (typeof EMAIL_TOKEN_KINDS)[number];
+
+/**
+ * One-shot links mailed to an address: "confirm this is you" and "set a new
+ * password". Only the sha256 of the token is stored, so the message in the
+ * inbox is the single copy of the secret — a database dump hands over nothing
+ * that can be redeemed. `used_at` spends the row, `expires_at` retires it
+ * regardless (see lib/email-tokens.ts).
+ */
+export const emailTokens = pgTable("email_tokens", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => users.id),
+  kind: text("kind", { enum: EMAIL_TOKEN_KINDS }).notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: ms("expires_at").notNull(),
+  usedAt: ms("used_at"),
+  createdAt: ms("created_at").notNull(),
 });
 
 export const worlds = pgTable("worlds", {
@@ -357,6 +386,7 @@ export const campaignEvents = pgTable(
 );
 
 export type User = typeof users.$inferSelect;
+export type EmailToken = typeof emailTokens.$inferSelect;
 export type World = typeof worlds.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type CodexEntry = typeof codexEntries.$inferSelect;

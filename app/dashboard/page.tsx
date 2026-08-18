@@ -6,6 +6,7 @@ import { createWorld, logoutEverywhere } from "@/lib/actions";
 import { getT } from "@/lib/locale";
 import { SiteHeader } from "@/components/SiteHeader";
 import { JoinCampaignForm } from "@/components/JoinCampaignForm";
+import { AccountEmail } from "@/components/AccountEmail";
 import {
   Button,
   Card,
@@ -122,6 +123,17 @@ export default async function DashboardPage() {
             </Card>
           </section>
         </div>
+
+        <section className="mt-10 max-w-xl space-y-4">
+          <SectionTitle>{t("dashboard.account.heading")}</SectionTitle>
+          <Card>
+            <AccountEmail
+              email={user.email}
+              verified={user.emailVerifiedAt !== null}
+              locale={locale}
+            />
+          </Card>
+        </section>
 
         <form
           action={logoutEverywhere}

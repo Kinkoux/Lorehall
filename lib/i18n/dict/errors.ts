@@ -8,6 +8,10 @@ export const errors = {
       passwordTooLong: "Password must be at most 128 characters.",
       usernameTaken: "That username is taken.",
       badCredentials: "Wrong username or password.",
+      emailInvalid: "Enter a valid email address.",
+      emailTaken: "That email address is already on another account.",
+      emailMissing: "There is no address on this account yet.",
+      resetLinkInvalid: "This reset link has expired or has already been used.",
       // Deliberately says nothing about which limit was hit or when it lifts.
       tooManyAttempts: "Too many attempts. Please try again later.",
     },
@@ -52,6 +56,10 @@ export const errors = {
       passwordTooLong: "Parola en fazla 128 karakter olabilir.",
       usernameTaken: "Bu kullanıcı adı alınmış.",
       badCredentials: "Kullanıcı adı veya şifre hatalı.",
+      emailInvalid: "Geçerli bir e-posta adresi gir.",
+      emailTaken: "Bu e-posta adresi başka bir hesapta kayıtlı.",
+      emailMissing: "Bu hesapta henüz bir adres yok.",
+      resetLinkInvalid: "Bu sıfırlama bağlantısının süresi dolmuş ya da daha önce kullanılmış.",
       tooManyAttempts: "Çok fazla deneme yapıldı. Lütfen daha sonra tekrar deneyin.",
     },
     join: {

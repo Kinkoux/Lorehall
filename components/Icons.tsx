@@ -230,6 +230,28 @@ export function IconChevron(props: IconProps) {
   );
 }
 
+/** Open eye — a hidden password field is about to be shown. */
+export function IconEye(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2.5 12C5.5 7 8.5 5 12 5s6.5 2 9.5 7c-3 5-6 7-9.5 7s-6.5-2-9.5-7z" />
+      <circle cx="12" cy="12" r="3" />
+    </Svg>
+  );
+}
+
+/** Struck-through eye — the same field, about to be covered again. */
+export function IconEyeOff(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9.9 5.4A9.6 9.6 0 0 1 12 5c3.5 0 6.5 2 9.5 7-1 1.7-2.2 3.1-3.4 4.2" />
+      <path d="M6.4 7.9C4.8 9 3.5 10.4 2.5 12c3 5 6 7 9.5 7 1.2 0 2.4-.2 3.5-.7" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+      <path d="M4 4l16 16" />
+    </Svg>
+  );
+}
+
 /** Diagonal cross (delete / remove) — replaces raw ✕ glyphs. */
 export function IconX(props: IconProps) {
   return (

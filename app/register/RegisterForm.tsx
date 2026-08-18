@@ -5,6 +5,7 @@ import { useActionState } from "react";
 import { register, type FormState } from "@/lib/actions";
 import { makeT, type Locale } from "@/lib/i18n";
 import { Button, Card, ErrorText, Input, Label } from "@/components/ui";
+import { PasswordInput } from "@/components/PasswordInput";
 
 export function RegisterForm({ locale }: { locale: Locale }) {
   const t = makeT(locale);
@@ -33,8 +34,29 @@ export function RegisterForm({ locale }: { locale: Locale }) {
             <Input name="displayName" placeholder={t("auth.register.optionalPh")} />
           </label>
           <label className="block">
+            <Label>{t("auth.register.email")}</Label>
+            <Input
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              maxLength={254}
+              placeholder={t("auth.register.emailPh")}
+            />
+            <span className="mt-1 block text-xs text-parchment-500">
+              {t("auth.register.emailHint")}
+            </span>
+          </label>
+          <label className="block">
             <Label>{t("auth.register.password")}</Label>
-            <Input name="password" type="password" required minLength={6} autoComplete="new-password" />
+            <PasswordInput
+              locale={locale}
+              name="password"
+              required
+              minLength={6}
+              maxLength={128}
+              autoComplete="new-password"
+            />
           </label>
           <ErrorText>{state.error}</ErrorText>
           <Button type="submit" disabled={pending} className="w-full">

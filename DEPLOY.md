@@ -48,7 +48,11 @@ Target: GitHub → Vercel (Next.js), Supabase for Postgres + Storage.
 1. Import the GitHub repo (framework auto-detected: Next.js).
 2. Env vars: `AUTH_SECRET`, `DATABASE_URL`, `SUPABASE_URL`,
    `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`.
-3. Deploy. `/reference` and `/compendium` are public; the rest needs sign-in.
+3. Optional, for confirmation links and password resets: `SMTP_HOST`,
+   `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM`, and `APP_URL` (the
+   base the mailed links point at — defaults to the production hostname).
+   Leave them unset and the app runs unchanged, sending nothing.
+4. Deploy. `/reference` and `/compendium` are public; the rest needs sign-in.
 
 ## Upload size on Vercel — solved for maps
 

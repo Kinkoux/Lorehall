@@ -256,6 +256,19 @@ CREATE TABLE IF NOT EXISTS auth_attempts (
   count INTEGER NOT NULL,
   reset_at BIGINT NOT NULL
 );
+-- Mailed one-shot links (2026-08-19): 'verify' confirms an address, 'reset'
+-- sets a new password. token_hash is the sha256 of the token that went out —
+-- the raw value exists only in the message, so this table cannot be redeemed.
+CREATE TABLE IF NOT EXISTS email_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id),
+  kind TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at BIGINT NOT NULL,
+  used_at BIGINT,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_email_tokens_user ON email_tokens(user_id, kind);
 
 -- Guarded migrations for databases created before these changes:
 -- multi-character support (2026-08-18) drops the one-per-user constraint
@@ -313,6 +326,16 @@ WHERE b.status = 'current' AND EXISTS (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS campaign_maps_one_active ON campaign_maps (campaign_id) WHERE is_active = 1;
 CREATE UNIQUE INDEX IF NOT EXISTS story_beats_one_current ON story_beats (campaign_id) WHERE status = 'current';
+-- account email (2026-08-19): CITEXT like username, so the address is matched
+-- the way people actually retype it. Every account created before this column
+-- has none, hence NULL — and uniqueness has to be a partial index, because a
+-- plain UNIQUE would be satisfied by any number of NULLs but would still have
+-- to be added to a table that already holds them. email_verified_at is the ms
+-- epoch the owner followed the link; it returns to NULL whenever the address
+-- changes.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email CITEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at BIGINT;
+CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email) WHERE email IS NOT NULL;
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

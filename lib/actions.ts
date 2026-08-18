@@ -1,7 +1,6 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { and, eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
@@ -21,6 +20,8 @@ import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { canEditEntry, getCampaignAccess, hasDmPowers } from "@/lib/perms";
 import { campaignLog } from "@/lib/campaign-log";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { clientIp } from "@/lib/client-ip";
+import { isEmailAddress, normalizeEmail, sendVerification } from "@/lib/email";
 import { getT } from "@/lib/locale";
 
 export type FormState = { error?: string };
@@ -47,24 +48,13 @@ const HOUR = 60 * MINUTE;
  */
 const PASSWORD_MAX = 128;
 
-/**
- * Caller's address, used only as a rate-limit key. Behind a proxy the
- * left-most x-forwarded-for entry is the client; "unknown" buckets everything
- * we cannot place together, which is the conservative direction here.
- */
-async function clientIp(): Promise<string> {
-  const h = await headers();
-  const forwarded = h.get("x-forwarded-for")?.split(",")[0]?.trim();
-  if (forwarded) return forwarded;
-  return h.get("x-real-ip")?.trim() || "unknown";
-}
-
 export async function register(_prev: FormState, formData: FormData): Promise<FormState> {
   const username = str(formData, "username").toLowerCase();
   const displayName = str(formData, "displayName");
+  const email = normalizeEmail(str(formData, "email"));
   const password = formData.get("password");
 
-  const { t } = await getT();
+  const { t, locale } = await getT();
   // A handful of new accounts an hour per address: plenty for a household
   // sharing a connection, and a low ceiling for anything automated.
   if (!(await checkRateLimit(`register:ip:${await clientIp()}`, 5, HOUR))) {
@@ -72,6 +62,9 @@ export async function register(_prev: FormState, formData: FormData): Promise<Fo
   }
   if (!/^[a-z0-9_]{3,20}$/.test(username)) {
     return { error: t("errors.auth.usernameFormat") };
+  }
+  if (!isEmailAddress(email)) {
+    return { error: t("errors.auth.emailInvalid") };
   }
   if (typeof password !== "string" || password.length < 6) {
     return { error: t("errors.auth.passwordTooShort") };
@@ -81,15 +74,23 @@ export async function register(_prev: FormState, formData: FormData): Promise<Fo
   }
   const existing = await db.query.users.findFirst({ where: eq(users.username, username) });
   if (existing) return { error: t("errors.auth.usernameTaken") };
+  const claimed = await db.query.users.findFirst({ where: eq(users.email, email) });
+  if (claimed) return { error: t("errors.auth.emailTaken") };
 
   const id = nanoid(12);
   await db.insert(users).values({
     id,
     username,
     displayName: cap(displayName, 80) || username,
+    email,
+    // Unconfirmed until the link we are about to send is followed.
+    emailVerifiedAt: null,
     passwordHash: await bcrypt.hash(password, 10),
     createdAt: Date.now(),
   });
+  // The account exists either way: an unsent confirmation costs nothing but a
+  // badge on the dashboard, and there is a button there to ask for another.
+  await sendVerification(id, email, locale);
   // A brand-new row is at session_version 1 (the column default).
   await createSession(id, 1);
   redirect("/dashboard");
