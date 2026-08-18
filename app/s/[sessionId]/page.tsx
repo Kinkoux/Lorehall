@@ -6,6 +6,7 @@ import { getCampaignAccess } from "@/lib/perms";
 import {
   addTableNote,
   adjustHp,
+  endCombat,
   endSession,
   getTurnOrder,
   joinInitiative,
@@ -14,11 +15,12 @@ import {
   removeCombatant,
   saveRecap,
   setConditions,
+  startCombat,
 } from "@/lib/session-actions";
 import { deployEncounter } from "@/lib/compendium-actions";
 import { encounters as encountersTable } from "@/lib/db";
 import { asc } from "drizzle-orm";
-import { getBeats, setBeatStatus } from "@/lib/beat-actions";
+import { getBeats, getChapters, setBeatStatus } from "@/lib/beat-actions";
 import { chooseActiveMap } from "@/lib/map-actions";
 import { getT } from "@/lib/locale";
 import { renderEventMessage } from "@/lib/session-log";
@@ -29,6 +31,7 @@ import { DiceRoller } from "@/components/DiceRoller";
 import { AddCombatantForm } from "@/components/AddCombatantForm";
 import { MapViewer } from "@/components/MapViewer";
 import {
+  IconBookmark,
   IconDie,
   IconMap,
   IconParty,
@@ -57,10 +60,12 @@ export default async function SessionPage({
   if (!access?.canView) notFound();
 
   const live = session.status === "live";
+  const combatActive = live && session.combatActive === 1;
   // The AutoRefresh poll re-runs this render every 3s — keep it one batch.
-  const [order, beats, encounters, mapsList, activeMap, events, myCharacters] = await Promise.all([
+  const [order, beats, chapters, encounters, mapsList, activeMap, events, myCharacters] = await Promise.all([
     getTurnOrder(sessionId),
     access.isDm ? getBeats(session.campaignId) : Promise.resolve([]),
+    access.isDm ? getChapters(session.campaignId) : Promise.resolve([]),
     access.isDm
       ? db
           .select()
@@ -104,6 +109,15 @@ export default async function SessionPage({
   const shownMap =
     activeMap && (activeMap.visibility === "everyone" || access.isDm) ? activeMap : null;
 
+  // The DM script reads like the story book: chapters first, unfiled beats last.
+  const scriptGroups = [
+    ...chapters.map((chapter) => ({
+      chapter,
+      beats: beats.filter((b) => b.chapterId === chapter.id),
+    })),
+    { chapter: null, beats: beats.filter((b) => !b.chapterId) },
+  ].filter((group) => group.beats.length > 0);
+
   return (
     <>
       {live && <AutoRefresh intervalMs={3000} />}
@@ -121,7 +135,7 @@ export default async function SessionPage({
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-600 opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-600" />
               </span>
-              {t("session.liveRound", { round: session.round })}
+              {combatActive ? t("session.liveRound", { round: session.round }) : t("session.live")}
             </span>
           ) : (
             <span className="rounded-full border border-ink-600 px-3 py-1 text-xs font-bold uppercase tracking-wide text-parchment-500">
@@ -234,12 +248,33 @@ export default async function SessionPage({
 
         <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
           <section className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <SectionTitle>{t("session.initiative.title")}</SectionTitle>
-              {live && access.isDm && order.length > 0 && (
-                <form action={nextTurn.bind(null, sessionId)}>
-                  <Button type="submit">{t("session.initiative.nextTurn")}</Button>
-                </form>
+              {live && access.isDm && (
+                <div className="flex shrink-0 items-center gap-2">
+                  {combatActive ? (
+                    <>
+                      {order.length > 0 && (
+                        <form action={nextTurn.bind(null, sessionId)}>
+                          <Button type="submit">{t("session.initiative.nextTurn")}</Button>
+                        </form>
+                      )}
+                      <form action={endCombat.bind(null, sessionId)}>
+                        <GhostButton type="submit" className="!px-3 !py-1.5 text-xs">
+                          {t("session.initiative.endCombat")}
+                        </GhostButton>
+                      </form>
+                    </>
+                  ) : (
+                    order.length > 0 && (
+                      <form action={startCombat.bind(null, sessionId)}>
+                        <Button type="submit">
+                          <IconSwords size={16} /> {t("session.initiative.startCombat")}
+                        </Button>
+                      </form>
+                    )
+                  )}
+                </div>
               )}
             </div>
 
@@ -252,7 +287,7 @@ export default async function SessionPage({
               <CombatantRow
                 key={combatant.id}
                 combatant={combatant}
-                isTurn={live && index === session.turnIndex}
+                isTurn={combatActive && index === session.turnIndex}
                 isDm={access.isDm}
                 isMe={combatant.userId === user.id}
                 live={live}
@@ -349,57 +384,80 @@ export default async function SessionPage({
               <Card>
                 <h3 className="mb-1 font-display text-base text-gold-300">{t("session.script.title")}</h3>
                 <p className="mb-3 text-[11px] text-parchment-500">{t("session.script.onlyYou")}</p>
-                <ul className="space-y-2">
-                  {beats.map((beat) => (
-                    <li key={beat.id} className="flex items-start gap-2">
-                      <span
-                        className={`mt-0.5 w-4 text-center font-bold ${
-                          beat.status === "current" ? "text-gold-400" : "text-parchment-500"
-                        }`}
-                      >
-                        {beat.status === "done" ? "✓" : beat.status === "current" ? "▶" : "•"}
-                      </span>
-                      <div className={`flex-1 ${beat.status === "done" ? "opacity-50" : ""}`}>
-                        <p
-                          className={`text-sm font-semibold ${
-                            beat.status === "current" ? "text-parchment-100" : "text-parchment-300"
-                          }`}
-                        >
-                          {beat.title}
+                <div className="space-y-4">
+                  {scriptGroups.map((group) => (
+                    <div key={group.chapter?.id ?? "unfiled"}>
+                      {chapters.length > 0 && (
+                        <p className="mb-2 flex items-center gap-2 font-display text-[10px] font-bold uppercase tracking-[0.16em] text-parchment-500">
+                          <span className="shrink-0">
+                            {group.chapter ? group.chapter.title : t("campaign.beats.unfiled")}
+                          </span>
+                          <span aria-hidden className="h-px flex-1 bg-ink-700" />
                         </p>
-                        {beat.status === "current" && beat.narrative && (
-                          <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-parchment-300">
-                            {beat.narrative}
-                          </p>
-                        )}
-                        {beat.status === "current" && beat.rollNote && (
-                          <p className="mt-1 inline-block rounded border border-blood-500/50 bg-blood-500/10 px-1.5 py-0.5 text-[11px] font-bold text-blood-400">
-                            <IconDie size={12} className="mr-1 inline-block align-[-2px]" />
-                            {beat.rollNote}
-                          </p>
-                        )}
-                      </div>
-                      {beat.status !== "done" && (
-                        <form
-                          action={setBeatStatus.bind(
-                            null,
-                            beat.id,
-                            beat.status === "current" ? "done" : "current"
-                          )}
-                        >
-                          <button
-                            type="submit"
-                            className="rounded border border-ink-600 px-1.5 py-0.5 text-[11px] font-bold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300 cursor-pointer"
-                          >
-                            {beat.status === "current"
-                              ? t("session.script.done")
-                              : t("session.script.play")}
-                          </button>
-                        </form>
                       )}
-                    </li>
+                      <ul className="space-y-2">
+                        {group.beats.map((beat) => (
+                          <li key={beat.id} className="flex items-start gap-2">
+                            <span
+                              className={`mt-0.5 w-4 text-center font-bold ${
+                                beat.status === "current" ? "text-gold-400" : "text-parchment-500"
+                              }`}
+                            >
+                              {beat.status === "done" ? "✓" : beat.status === "current" ? "▶" : "•"}
+                            </span>
+                            <div className={`flex-1 ${beat.status === "done" ? "opacity-50" : ""}`}>
+                              <p
+                                className={`text-sm font-semibold ${
+                                  beat.status === "current"
+                                    ? "text-parchment-100"
+                                    : "text-parchment-300"
+                                }`}
+                              >
+                                {beat.kind === "plot" && (
+                                  <IconBookmark
+                                    size={12}
+                                    className="mr-1 inline-block align-[-1px] text-gold-400"
+                                    aria-label={t("campaign.beats.plotPoint")}
+                                  />
+                                )}
+                                {beat.title}
+                              </p>
+                              {beat.status === "current" && beat.narrative && (
+                                <p className="mt-1 whitespace-pre-wrap text-xs leading-relaxed text-parchment-300">
+                                  {beat.narrative}
+                                </p>
+                              )}
+                              {beat.status === "current" && beat.rollNote && (
+                                <p className="mt-1 inline-block rounded border border-blood-500/50 bg-blood-500/10 px-1.5 py-0.5 text-[11px] font-bold text-blood-400">
+                                  <IconDie size={12} className="mr-1 inline-block align-[-2px]" />
+                                  {beat.rollNote}
+                                </p>
+                              )}
+                            </div>
+                            {beat.status !== "done" && (
+                              <form
+                                action={setBeatStatus.bind(
+                                  null,
+                                  beat.id,
+                                  beat.status === "current" ? "done" : "current"
+                                )}
+                              >
+                                <button
+                                  type="submit"
+                                  className="rounded border border-ink-600 px-1.5 py-0.5 text-[11px] font-bold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300 cursor-pointer"
+                                >
+                                  {beat.status === "current"
+                                    ? t("session.script.done")
+                                    : t("session.script.play")}
+                                </button>
+                              </form>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               </Card>
             )}
 

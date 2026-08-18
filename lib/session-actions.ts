@@ -376,10 +376,43 @@ export async function setConditions(sessionId: string, combatantId: string, form
   revalidatePath(`/s/${sessionId}`);
 }
 
+/**
+ * Combat is an explicit phase: the party may roll initiative long before the
+ * first blow lands, so nothing ticks until the DM opens the fight.
+ */
+export async function startCombat(sessionId: string) {
+  const user = await requireUser();
+  const ctx = await requireLiveSession(sessionId, user.id);
+  if (!ctx?.access.isDm || ctx.session.status !== "live") return;
+  if (ctx.session.combatActive === 1) return;
+
+  await db
+    .update(gameSessions)
+    .set({ combatActive: 1, round: 1, turnIndex: 0 })
+    .where(eq(gameSessions.id, sessionId));
+  await logEvent(sessionId, "system", logMessage("combatStarts"));
+  revalidatePath(`/s/${sessionId}`);
+}
+
+export async function endCombat(sessionId: string) {
+  const user = await requireUser();
+  const ctx = await requireLiveSession(sessionId, user.id);
+  if (!ctx?.access.isDm || ctx.session.status !== "live") return;
+  if (ctx.session.combatActive !== 1) return;
+
+  await db
+    .update(gameSessions)
+    .set({ combatActive: 0 })
+    .where(eq(gameSessions.id, sessionId));
+  await logEvent(sessionId, "system", logMessage("combatEnds", { rounds: ctx.session.round }));
+  revalidatePath(`/s/${sessionId}`);
+}
+
 export async function nextTurn(sessionId: string) {
   const user = await requireUser();
   const ctx = await requireLiveSession(sessionId, user.id);
   if (!ctx?.access.isDm || ctx.session.status !== "live") return;
+  if (ctx.session.combatActive !== 1) return;
 
   const order = await getTurnOrder(sessionId);
   if (order.length === 0) return;

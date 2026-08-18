@@ -54,6 +54,15 @@ export function IconBook(props: IconProps) {
   );
 }
 
+/** Ribbon bookmark (plot points in the story book). */
+export function IconBookmark(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M6.5 3.5h11a1 1 0 0 1 1 1v16l-6.5-4.3-6.5 4.3v-16a1 1 0 0 1 1-1z" />
+    </Svg>
+  );
+}
+
 /** Quill pen. */
 export function IconQuill(props: IconProps) {
   return (

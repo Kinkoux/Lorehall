@@ -3,6 +3,7 @@
 export const session = {
   en: {
     liveRound: "Live · Round {round}",
+    live: "Live",
     ended: "Ended",
     recap: {
       title: "Recap",
@@ -14,6 +15,8 @@ export const session = {
     initiative: {
       title: "Initiative",
       nextTurn: "Next turn →",
+      startCombat: "Start combat",
+      endCombat: "End combat",
       empty: "No one in the initiative order yet.",
       yourRoll: "Your roll",
       joinAs: "Character",
@@ -80,6 +83,8 @@ export const session = {
     logEvents: {
       sessionBegins: "The session begins.",
       sessionEnds: "The session ends.",
+      combatStarts: "Combat begins!",
+      combatEnds: "Combat ends after {rounds} round(s).",
       roundBegins: "Round {n} begins",
       joinsInitiative: "{name} joins the initiative with {roll} ({source}).",
       srcManual: "rolled at the table",
@@ -98,6 +103,7 @@ export const session = {
   },
   tr: {
     liveRound: "Canlı · Tur {round}",
+    live: "Canlı",
     ended: "Bitti",
     recap: {
       title: "Özet",
@@ -109,6 +115,8 @@ export const session = {
     initiative: {
       title: "İnisiyatif",
       nextTurn: "Sıradaki →",
+      startCombat: "Çatışmayı başlat",
+      endCombat: "Çatışmayı bitir",
       empty: "İnisiyatif sırasında henüz kimse yok.",
       yourRoll: "Senin zarın",
       joinAs: "Karakter",
@@ -175,6 +183,8 @@ export const session = {
     logEvents: {
       sessionBegins: "Oturum başlıyor.",
       sessionEnds: "Oturum sona erdi.",
+      combatStarts: "Çatışma başlıyor!",
+      combatEnds: "Çatışma {rounds} tur sonra bitti.",
       roundBegins: "{n}. tur başlıyor",
       joinsInitiative: "{name} inisiyatife {roll} ile katıldı ({source}).",
       srcManual: "masada atıldı",

@@ -148,10 +148,20 @@ CREATE TABLE IF NOT EXISTS character_abilities (
   uses_left INTEGER,
   created_at BIGINT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS story_beats (
+CREATE TABLE IF NOT EXISTS story_chapters (
   id TEXT PRIMARY KEY,
   campaign_id TEXT NOT NULL REFERENCES campaigns(id),
   title TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chapters_campaign ON story_chapters(campaign_id);
+CREATE TABLE IF NOT EXISTS story_beats (
+  id TEXT PRIMARY KEY,
+  campaign_id TEXT NOT NULL REFERENCES campaigns(id),
+  chapter_id TEXT REFERENCES story_chapters(id),
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'scene',
   narrative TEXT,
   roll_note TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
@@ -235,6 +245,13 @@ ALTER TABLE characters DROP CONSTRAINT IF EXISTS characters_campaign_id_user_id_
 ALTER TABLE campaign_maps ADD COLUMN IF NOT EXISTS grid_size INTEGER;
 ALTER TABLE campaign_maps ADD COLUMN IF NOT EXISTS grid_offset_x INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE campaign_maps ADD COLUMN IF NOT EXISTS grid_offset_y INTEGER NOT NULL DEFAULT 0;
+-- story book (2026-08-18): beats group into chapters (NULL = unfiled) and a
+-- beat is either an ordinary scene or a plot point.
+ALTER TABLE story_beats ADD COLUMN IF NOT EXISTS chapter_id TEXT REFERENCES story_chapters(id);
+ALTER TABLE story_beats ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'scene';
+-- explicit combat phase (2026-08-18): a live session is not automatically a
+-- fight; rounds only advance between start and end of combat.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS combat_active INTEGER NOT NULL DEFAULT 0;
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

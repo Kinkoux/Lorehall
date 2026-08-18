@@ -102,6 +102,9 @@ export const gameSessions = pgTable("sessions", {
     .default("live"),
   round: integer("round").notNull().default(1),
   turnIndex: integer("turn_index").notNull().default(0),
+  // A session is "live" long before anyone rolls initiative — combat is an
+  // explicit phase the DM opens and closes; rounds only tick while it is on.
+  combatActive: integer("combat_active").notNull().default(0),
   recap: text("recap"),
   startedAt: ms("started_at").notNull(),
   endedAt: ms("ended_at"),
@@ -195,14 +198,32 @@ export const characterAbilities = pgTable("character_abilities", {
   createdAt: ms("created_at").notNull(),
 });
 
-export const storyBeats = pgTable("story_beats", {
+/** Chapters of the DM's story book; beats file into one (or stay unfiled). */
+export const storyChapters = pgTable("story_chapters", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
     .notNull()
     .references(() => campaigns.id),
   title: text("title").notNull(),
+  position: integer("position").notNull(),
+  createdAt: ms("created_at").notNull(),
+});
+
+export const storyBeats = pgTable("story_beats", {
+  id: text("id").primaryKey(),
+  campaignId: text("campaign_id")
+    .notNull()
+    .references(() => campaigns.id),
+  // NULL = unfiled: the beat sits in the story book's default group.
+  chapterId: text("chapter_id").references(() => storyChapters.id),
+  title: text("title").notNull(),
   narrative: text("narrative"),
   rollNote: text("roll_note"),
+  // Plot points are the load-bearing turns of the story; scenes are everything
+  // else. Only the rendering differs — both are ordinary beats.
+  kind: text("kind", { enum: ["scene", "plot"] })
+    .notNull()
+    .default("scene"),
   status: text("status", { enum: ["pending", "current", "done"] })
     .notNull()
     .default("pending"),
@@ -294,6 +315,8 @@ export type CodexEntry = typeof codexEntries.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
 export type Combatant = typeof combatants.$inferSelect;
 export type SessionEvent = typeof sessionEvents.$inferSelect;
+export type StoryChapter = typeof storyChapters.$inferSelect;
+export type StoryBeat = typeof storyBeats.$inferSelect;
 export type Character = typeof characters.$inferSelect;
 export type CharacterItem = typeof characterItems.$inferSelect;
 export type CharacterAbility = typeof characterAbilities.$inferSelect;
