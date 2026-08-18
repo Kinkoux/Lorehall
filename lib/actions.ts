@@ -18,7 +18,8 @@ import {
   type CodexType,
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
-import { canEditEntry, getWorldMembership, hasDmPowers } from "@/lib/perms";
+import { canEditEntry, getCampaignAccess, hasDmPowers } from "@/lib/perms";
+import { campaignLog } from "@/lib/campaign-log";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getT } from "@/lib/locale";
 
@@ -154,18 +155,22 @@ export async function createWorld(formData: FormData) {
   if (!name) return;
   const id = nanoid(12);
   const now = Date.now();
-  await db.insert(worlds).values({
-    id,
-    name: cap(name, 150),
-    description: cap(str(formData, "description"), 5_000) || null,
-    ownerId: user.id,
-    createdAt: now,
-  });
-  await db.insert(worldMembers).values({
-    worldId: id,
-    userId: user.id,
-    role: "owner",
-    joinedAt: now,
+  // The world and its owner row are one fact: a world whose owner never
+  // landed would be unreachable from the dashboard.
+  await db.transaction(async (tx) => {
+    await tx.insert(worlds).values({
+      id,
+      name: cap(name, 150),
+      description: cap(str(formData, "description"), 5_000) || null,
+      ownerId: user.id,
+      createdAt: now,
+    });
+    await tx.insert(worldMembers).values({
+      worldId: id,
+      userId: user.id,
+      role: "owner",
+      joinedAt: now,
+    });
   });
   revalidatePath("/dashboard");
   redirect(`/w/${id}`);
@@ -218,25 +223,34 @@ export async function joinCampaign(_prev: FormState, formData: FormData): Promis
   if (!campaign) return { error: t("errors.join.notFound") };
 
   const now = Date.now();
-  const alreadyIn = await db.query.campaignMembers.findFirst({
-    where: and(eq(campaignMembers.campaignId, campaign.id), eq(campaignMembers.userId, user.id)),
+  // Joining a table also enrols you in its world — half of that would leave a
+  // player who can open the campaign but not the codex behind it.
+  await db.transaction(async (tx) => {
+    const alreadyIn = await tx.query.campaignMembers.findFirst({
+      where: and(eq(campaignMembers.campaignId, campaign.id), eq(campaignMembers.userId, user.id)),
+    });
+    if (!alreadyIn) {
+      await tx.insert(campaignMembers).values({
+        campaignId: campaign.id,
+        userId: user.id,
+        joinedAt: now,
+      });
+    }
+    const inWorld = await tx.query.worldMembers.findFirst({
+      where: and(
+        eq(worldMembers.worldId, campaign.worldId),
+        eq(worldMembers.userId, user.id)
+      ),
+    });
+    if (!inWorld) {
+      await tx.insert(worldMembers).values({
+        worldId: campaign.worldId,
+        userId: user.id,
+        role: "member",
+        joinedAt: now,
+      });
+    }
   });
-  if (!alreadyIn) {
-    await db.insert(campaignMembers).values({
-      campaignId: campaign.id,
-      userId: user.id,
-      joinedAt: now,
-    });
-  }
-  const inWorld = await getWorldMembership(campaign.worldId, user.id);
-  if (!inWorld) {
-    await db.insert(worldMembers).values({
-      worldId: campaign.worldId,
-      userId: user.id,
-      role: "member",
-      joinedAt: now,
-    });
-  }
   revalidatePath("/dashboard");
   redirect(`/c/${campaign.id}`);
 }
@@ -248,6 +262,79 @@ export async function setCharacterName(campaignId: string, formData: FormData) {
     .set({ characterName: cap(str(formData, "characterName"), 150) || null })
     .where(and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id)));
   revalidatePath(`/c/${campaignId}`);
+}
+
+// ---------- membership ----------
+
+/**
+ * The DM sends a player away from the table. Only the membership row goes:
+ * sheets, ledger entries and log lines stay where they are, because the
+ * campaign's history is the campaign's, not the player's. Losing the row is
+ * enough — every gate reads membership, so the door closes either way.
+ */
+export async function kickMember(campaignId: string, formData: FormData) {
+  const user = await requireUser();
+  const access = await getCampaignAccess(campaignId, user.id);
+  if (!access?.isDm) return;
+  const targetId = str(formData, "userId");
+  if (!targetId) return;
+  // The DM cannot show themselves — or a second DM — the door.
+  if (targetId === user.id || targetId === access.campaign.dmUserId) return;
+
+  const target = await db.query.users.findFirst({ where: eq(users.id, targetId) });
+  const removed = await db
+    .delete(campaignMembers)
+    .where(and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, targetId)))
+    .returning({ userId: campaignMembers.userId });
+  if (removed.length === 0) return;
+
+  await campaignLog(campaignId, user.id, "memberKicked", {
+    name: target?.displayName ?? target?.username ?? "",
+  });
+  revalidatePath(`/c/${campaignId}`);
+  revalidatePath("/dashboard");
+}
+
+/**
+ * A player leaves of their own accord. The DM cannot: the table would be left
+ * without one, so the request is simply dropped.
+ */
+export async function leaveCampaign(campaignId: string) {
+  const user = await requireUser();
+  const access = await getCampaignAccess(campaignId, user.id);
+  if (!access || access.isDm || !access.membership) return;
+
+  await db
+    .delete(campaignMembers)
+    .where(and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id)));
+  await campaignLog(campaignId, user.id, "memberLeft");
+  revalidatePath(`/c/${campaignId}`);
+  revalidatePath("/dashboard");
+  redirect("/dashboard");
+}
+
+/**
+ * Retire the invite code — the answer to a code that leaked. The old one stops
+ * working the moment this lands; anyone already at the table stays. The new
+ * code is never written to the feed, since the feed is a list the DM shows
+ * around.
+ */
+export async function rotateJoinCode(campaignId: string) {
+  const user = await requireUser();
+  const access = await getCampaignAccess(campaignId, user.id);
+  if (!access?.isDm) return;
+
+  // join_code is unique; with 32^6 codes a clash is a curiosity, but a
+  // handful of tries costs nothing and keeps the action from failing loudly.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const code = joinCodeAlphabet();
+    const clash = await db.query.campaigns.findFirst({ where: eq(campaigns.joinCode, code) });
+    if (clash) continue;
+    await db.update(campaigns).set({ joinCode: code }).where(eq(campaigns.id, campaignId));
+    await campaignLog(campaignId, user.id, "joinCodeRotated");
+    revalidatePath(`/c/${campaignId}`);
+    return;
+  }
 }
 
 // ---------- codex ----------

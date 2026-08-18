@@ -235,42 +235,44 @@ export async function deployEncounter(sessionId: string, formData: FormData) {
   const currentId = before[session.turnIndex]?.id ?? null;
 
   let total = 0;
-  for (const row of rows) {
-    for (let i = 1; i <= row.count; i++) {
-      const roll = randomInt(1, 21) + row.dexMod;
-      await db.insert(combatants).values({
-        id: nanoid(12),
-        sessionId,
-        name: row.count > 1 ? `${row.name} #${i}` : row.name,
-        initiative: roll,
-        maxHp: row.maxHp,
-        hp: row.maxHp,
-        createdAt: Date.now() + total, // preserve insertion order for ties
-      });
-      total++;
+  await db.transaction(async (tx) => {
+    for (const row of rows) {
+      for (let i = 1; i <= row.count; i++) {
+        const roll = randomInt(1, 21) + row.dexMod;
+        await tx.insert(combatants).values({
+          id: nanoid(12),
+          sessionId,
+          name: row.count > 1 ? `${row.name} #${i}` : row.name,
+          initiative: roll,
+          maxHp: row.maxHp,
+          hp: row.maxHp,
+          createdAt: Date.now() + total, // preserve insertion order for ties
+        });
+        total++;
+      }
     }
-  }
-  if (currentId) {
-    const after = await db
-      .select()
-      .from(combatants)
-      .where(eq(combatants.sessionId, sessionId))
-      .orderBy(desc(combatants.initiative), asc(combatants.createdAt));
-    const newIndex = after.findIndex((c) => c.id === currentId);
-    if (newIndex !== -1 && newIndex !== session.turnIndex) {
-      await db
-        .update(gameSessions)
-        .set({ turnIndex: newIndex })
-        .where(eq(gameSessions.id, sessionId));
+    if (currentId) {
+      const after = await tx
+        .select()
+        .from(combatants)
+        .where(eq(combatants.sessionId, sessionId))
+        .orderBy(desc(combatants.initiative), asc(combatants.createdAt));
+      const newIndex = after.findIndex((c) => c.id === currentId);
+      if (newIndex !== -1 && newIndex !== session.turnIndex) {
+        await tx
+          .update(gameSessions)
+          .set({ turnIndex: newIndex })
+          .where(eq(gameSessions.id, sessionId));
+      }
     }
-  }
-  await db.insert(sessionEvents).values({
-    id: nanoid(12),
-    sessionId,
-    userId: user.id,
-    kind: "system",
-    message: logMessage("encounterDeployed", { name: encounter.name, n: total }),
-    createdAt: Date.now(),
+    await tx.insert(sessionEvents).values({
+      id: nanoid(12),
+      sessionId,
+      userId: user.id,
+      kind: "system",
+      message: logMessage("encounterDeployed", { name: encounter.name, n: total }),
+      createdAt: Date.now(),
+    });
   });
   revalidatePath(`/s/${sessionId}`);
 }

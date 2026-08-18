@@ -17,6 +17,9 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/webp": "webp",
 };
 
+/** Postgres unique_violation — a double-click losing the race, not a bug. */
+const isUniqueViolation = (e: unknown) => (e as { code?: string }).code === "23505";
+
 function str(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
@@ -63,15 +66,25 @@ export async function uploadMap(
   const fileName = `${nanoid(16)}.${ext}`;
 
   await putMapFile(fileName, new Uint8Array(await file.arrayBuffer()), file.type);
-  await db.insert(campaignMaps).values({
-    id: nanoid(12),
-    campaignId,
-    title: title.slice(0, 120),
-    fileName,
-    mimeType: file.type,
-    visibility,
-    createdAt: Date.now(),
-  });
+  try {
+    await db.insert(campaignMaps).values({
+      id: nanoid(12),
+      campaignId,
+      title: title.slice(0, 120),
+      fileName,
+      mimeType: file.type,
+      visibility,
+      createdAt: Date.now(),
+    });
+  } catch (e) {
+    // Storage cannot join the transaction, so clean up by hand: with no row
+    // pointing at it, the uploaded object is unreachable dead weight. A failed
+    // cleanup is noted and dropped — the original error is the one to report.
+    await deleteMapFile(fileName).catch((err) =>
+      console.error("uploadMap: orphan cleanup failed", err)
+    );
+    throw e;
+  }
   await revalidateMapPages(campaignId);
   return {};
 }
@@ -83,16 +96,26 @@ export async function setActiveMap(mapId: string, active: boolean) {
   if (!map) return;
   const access = await getCampaignAccess(map.campaignId, user.id);
   if (!access?.isDm) return;
-  if (active) {
-    await db
-      .update(campaignMaps)
-      .set({ isActive: 0 })
-      .where(eq(campaignMaps.campaignId, map.campaignId));
+  try {
+    // Clearing the old pick and setting the new one are one write: between the
+    // two statements the campaign would briefly have no map on the table, and
+    // campaign_maps_one_active would reject a second one landing there.
+    await db.transaction(async (tx) => {
+      if (active) {
+        await tx
+          .update(campaignMaps)
+          .set({ isActive: 0 })
+          .where(eq(campaignMaps.campaignId, map.campaignId));
+      }
+      await tx
+        .update(campaignMaps)
+        .set({ isActive: active ? 1 : 0 })
+        .where(eq(campaignMaps.id, mapId));
+    });
+  } catch (e) {
+    // Another DM put a map on the table in the same instant; theirs stands.
+    if (!isUniqueViolation(e)) throw e;
   }
-  await db
-    .update(campaignMaps)
-    .set({ isActive: active ? 1 : 0 })
-    .where(eq(campaignMaps.id, mapId));
   await revalidateMapPages(map.campaignId);
 }
 
@@ -102,12 +125,25 @@ export async function chooseActiveMap(campaignId: string, formData: FormData) {
   const access = await getCampaignAccess(campaignId, user.id);
   if (!access?.isDm) return;
   const mapId = str(formData, "mapId");
-  await db.update(campaignMaps).set({ isActive: 0 }).where(eq(campaignMaps.campaignId, campaignId));
-  if (mapId) {
-    const map = await db.query.campaignMaps.findFirst({ where: eq(campaignMaps.id, mapId) });
-    if (map?.campaignId === campaignId) {
-      await db.update(campaignMaps).set({ isActive: 1 }).where(eq(campaignMaps.id, mapId));
-    }
+  // A mapId from the form is forgeable, so the swap is only made once the map
+  // is known to belong here — and then both writes go in together.
+  const map = mapId
+    ? await db.query.campaignMaps.findFirst({ where: eq(campaignMaps.id, mapId) })
+    : null;
+  const target = map?.campaignId === campaignId ? map : null;
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(campaignMaps)
+        .set({ isActive: 0 })
+        .where(eq(campaignMaps.campaignId, campaignId));
+      if (target) {
+        await tx.update(campaignMaps).set({ isActive: 1 }).where(eq(campaignMaps.id, target.id));
+      }
+    });
+  } catch (e) {
+    // Another DM chose a map at the same instant; theirs is the one on the table.
+    if (!isUniqueViolation(e)) throw e;
   }
   await revalidateMapPages(campaignId);
 }
@@ -159,7 +195,11 @@ export async function deleteMap(mapId: string) {
   if (!map) return;
   const access = await getCampaignAccess(map.campaignId, user.id);
   if (!access?.isDm) return;
+  // Row first, then the object: the reverse order can leave a row pointing at
+  // a file that is already gone. A leftover object is the cheaper failure.
   await db.delete(campaignMaps).where(eq(campaignMaps.id, mapId));
-  await deleteMapFile(map.fileName);
+  await deleteMapFile(map.fileName).catch((e) =>
+    console.error("deleteMap: file delete failed", e)
+  );
   await revalidateMapPages(map.campaignId);
 }

@@ -35,6 +35,11 @@ const KIND_BY_EVENT = {
   goldChanged: "gold",
   lootAdded: "loot",
   lootQty: "loot",
+  // Roster changes ride the "character" lane: it is the one the party filter
+  // chip already shows, and the schema's kind set is fixed.
+  memberKicked: "character",
+  memberLeft: "character",
+  joinCodeRotated: "character",
 } as const;
 
 export type CampaignEventKey = keyof typeof KIND_BY_EVENT;

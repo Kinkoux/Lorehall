@@ -3,7 +3,7 @@
 import { randomInt } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, lt, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   db,
@@ -37,13 +37,17 @@ const cap = (s: string, n: number) => s.slice(0, n);
 /** Postgres unique_violation — a double-click losing the race, not a bug. */
 const isUniqueViolation = (e: unknown) => (e as { code?: string }).code === "23505";
 
+/** `db` itself or a transaction handle — both write rows the same way. */
+type Writer = Pick<typeof db, "insert">;
+
 async function logEvent(
   sessionId: string,
   kind: "roll" | "join" | "system" | "note",
   message: string,
-  userId?: string
+  userId?: string,
+  exec: Writer = db
 ) {
-  await db.insert(sessionEvents).values({
+  await exec.insert(sessionEvents).values({
     id: nanoid(12),
     sessionId,
     userId: userId ?? null,
@@ -61,9 +65,11 @@ async function bumpTurnIndexFor(sessionId: string, combatantId: string, turnInde
   const order = await getTurnOrder(sessionId);
   const insertedAt = order.findIndex((c) => c.id === combatantId);
   if (order.length > 1 && insertedAt !== -1 && insertedAt <= turnIndex) {
+    // The shift is relative: two players joining at once each move the pointer
+    // once, instead of the second write overwriting the first one's result.
     await db
       .update(gameSessions)
-      .set({ turnIndex: turnIndex + 1 })
+      .set({ turnIndex: sql`${gameSessions.turnIndex} + 1` })
       .where(eq(gameSessions.id, sessionId));
   }
 }
@@ -74,7 +80,7 @@ async function requireLiveSession(sessionId: string, userId: string) {
   });
   if (!session) return null;
   const access = await getCampaignAccess(session.campaignId, userId);
-  if (!access?.canView) return null;
+  if (!access?.canParticipate) return null;
   return { session, access };
 }
 
@@ -97,13 +103,18 @@ export async function startSession(campaignId: string, formData: FormData) {
     .where(eq(gameSessions.campaignId, campaignId));
   const { t } = await getT();
   try {
-    await db.insert(gameSessions).values({
-      id,
-      campaignId,
-      title:
-        cap(str(formData, "title"), 150) ||
-        t("campaign.start.placeholder", { n: count.length + 1 }),
-      startedAt: Date.now(),
+    // Row and opening line land together: a session never exists without the
+    // log entry that announces it, and a rejected insert leaves neither.
+    await db.transaction(async (tx) => {
+      await tx.insert(gameSessions).values({
+        id,
+        campaignId,
+        title:
+          cap(str(formData, "title"), 150) ||
+          t("campaign.start.placeholder", { n: count.length + 1 }),
+        startedAt: Date.now(),
+      });
+      await logEvent(id, "system", logMessage("sessionBegins"), undefined, tx);
     });
   } catch (e) {
     // A second click raced the first: uniq_live_session rejected this row, so
@@ -115,7 +126,6 @@ export async function startSession(campaignId: string, formData: FormData) {
     if (live) redirect(`/s/${live.id}`);
     return;
   }
-  await logEvent(id, "system", logMessage("sessionBegins"));
   redirect(`/s/${id}`);
 }
 
@@ -124,15 +134,17 @@ export async function endSession(sessionId: string, formData: FormData) {
   const ctx = await requireLiveSession(sessionId, user.id);
   if (!ctx?.access.isDm) return;
 
-  await db
-    .update(gameSessions)
-    .set({
-      status: "ended",
-      endedAt: Date.now(),
-      recap: cap(str(formData, "recap"), 20_000) || null,
-    })
-    .where(eq(gameSessions.id, sessionId));
-  await logEvent(sessionId, "system", logMessage("sessionEnds"));
+  await db.transaction(async (tx) => {
+    await tx
+      .update(gameSessions)
+      .set({
+        status: "ended",
+        endedAt: Date.now(),
+        recap: cap(str(formData, "recap"), 20_000) || null,
+      })
+      .where(eq(gameSessions.id, sessionId));
+    await logEvent(sessionId, "system", logMessage("sessionEnds"), undefined, tx);
+  });
   revalidatePath(`/c/${ctx.session.campaignId}`);
   redirect(`/c/${ctx.session.campaignId}`);
 }
@@ -282,15 +294,18 @@ export async function removeCombatant(sessionId: string, combatantId: string) {
   const removedIndex = order.findIndex((c) => c.id === combatantId);
   if (removedIndex === -1) return;
 
-  await db.delete(combatants).where(eq(combatants.id, combatantId));
-
   // Keep the turn pointer on the same creature (or clamp when the list shrinks).
   let turnIndex = ctx.session.turnIndex;
   if (removedIndex < turnIndex) turnIndex -= 1;
   const newCount = order.length - 1;
   if (newCount > 0 && turnIndex >= newCount) turnIndex = 0;
   if (newCount === 0) turnIndex = 0;
-  await db.update(gameSessions).set({ turnIndex }).where(eq(gameSessions.id, sessionId));
+  // The row leaves and the pointer moves together — halfway through, the
+  // pointer would name a creature that is no longer in the order.
+  await db.transaction(async (tx) => {
+    await tx.delete(combatants).where(eq(combatants.id, combatantId));
+    await tx.update(gameSessions).set({ turnIndex }).where(eq(gameSessions.id, sessionId));
+  });
   revalidatePath(`/s/${sessionId}`);
 }
 
@@ -309,24 +324,31 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
   const amount = int(formData, "amount");
   if (amount === null || amount < 0) return;
   const op = str(formData, "op");
-  const hpCap = combatant.maxHp ?? Number.MAX_SAFE_INTEGER;
+  // The arithmetic runs inside the UPDATE, so two hits landing at the same
+  // moment both count instead of the second overwriting the first. The clamps
+  // are the same ones the JS used: floor at zero, ceiling at max HP (no
+  // ceiling when the creature has none).
+  const scope = and(eq(combatants.id, combatantId), eq(combatants.sessionId, sessionId));
 
   if (op === "temp") {
     // Temp HP doesn't stack — the new pool replaces the old one.
-    await db.update(combatants).set({ tempHp: amount }).where(eq(combatants.id, combatantId));
+    await db.update(combatants).set({ tempHp: amount }).where(scope);
     if (amount > 0) {
       await logEvent(sessionId, "system", logMessage("gainsTemp", { name: combatant.name, n: amount }));
     }
   } else if (op === "heal") {
-    const hp = Math.max(0, Math.min(hpCap, combatant.hp + amount));
-    const revived = combatant.hp === 0 && hp > 0;
-    await db
+    const healed = sql`GREATEST(0, LEAST(COALESCE(${combatants.maxHp}, ${combatants.hp} + ${amount}), ${combatants.hp} + ${amount}))`;
+    const [row] = await db
       .update(combatants)
       .set({
-        hp,
-        ...(revived ? { deathSuccesses: 0, deathFailures: 0 } : {}),
+        hp: healed,
+        // Coming back from zero clears the death save pips.
+        deathSuccesses: sql`CASE WHEN ${combatants.hp} = 0 AND ${healed} > 0 THEN 0 ELSE ${combatants.deathSuccesses} END`,
+        deathFailures: sql`CASE WHEN ${combatants.hp} = 0 AND ${healed} > 0 THEN 0 ELSE ${combatants.deathFailures} END`,
       })
-      .where(eq(combatants.id, combatantId));
+      .where(scope)
+      .returning({ hp: combatants.hp });
+    const hp = row?.hp ?? combatant.hp;
     if (hp !== combatant.hp) {
       await logEvent(
         sessionId,
@@ -335,14 +357,16 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
       );
     }
   } else {
-    // Damage chews through temp HP first.
-    const tempLeft = Math.max(0, combatant.tempHp - amount);
-    const spill = Math.max(0, amount - combatant.tempHp);
-    const hp = Math.max(0, combatant.hp - spill);
-    await db
+    // Damage chews through temp HP first, then spills into HP.
+    const [row] = await db
       .update(combatants)
-      .set({ hp, tempHp: tempLeft })
-      .where(eq(combatants.id, combatantId));
+      .set({
+        hp: sql`GREATEST(0, ${combatants.hp} - GREATEST(0, ${amount} - ${combatants.tempHp}))`,
+        tempHp: sql`GREATEST(0, ${combatants.tempHp} - ${amount})`,
+      })
+      .where(scope)
+      .returning({ hp: combatants.hp });
+    const hp = row?.hp ?? combatant.hp;
     if (amount > 0) {
       await logEvent(
         sessionId,
@@ -373,21 +397,29 @@ export async function recordDeathSave(
   if (!combatant) return;
   if (!ctx.access.isDm && combatant.userId !== user.id) return;
 
+  // The pip count is bumped in place and the third one is only reached once:
+  // the "< 3" guard is the ceiling the JS Math.min used to apply, and it also
+  // makes the row that crossed the line the only one that announces it.
+  const scope = and(eq(combatants.id, combatantId), eq(combatants.sessionId, sessionId));
+
   if (kind === "reset") {
-    await db
-      .update(combatants)
-      .set({ deathSuccesses: 0, deathFailures: 0 })
-      .where(eq(combatants.id, combatantId));
+    await db.update(combatants).set({ deathSuccesses: 0, deathFailures: 0 }).where(scope);
   } else if (kind === "success") {
-    const deathSuccesses = Math.min(3, combatant.deathSuccesses + 1);
-    await db.update(combatants).set({ deathSuccesses }).where(eq(combatants.id, combatantId));
-    if (deathSuccesses === 3 && combatant.deathSuccesses < 3) {
+    const [row] = await db
+      .update(combatants)
+      .set({ deathSuccesses: sql`${combatants.deathSuccesses} + 1` })
+      .where(and(scope, lt(combatants.deathSuccesses, 3)))
+      .returning({ deathSuccesses: combatants.deathSuccesses });
+    if (row?.deathSuccesses === 3) {
       await logEvent(sessionId, "system", logMessage("isStable", { name: combatant.name }));
     }
   } else {
-    const deathFailures = Math.min(3, combatant.deathFailures + 1);
-    await db.update(combatants).set({ deathFailures }).where(eq(combatants.id, combatantId));
-    if (deathFailures === 3 && combatant.deathFailures < 3) {
+    const [row] = await db
+      .update(combatants)
+      .set({ deathFailures: sql`${combatants.deathFailures} + 1` })
+      .where(and(scope, lt(combatants.deathFailures, 3)))
+      .returning({ deathFailures: combatants.deathFailures });
+    if (row?.deathFailures === 3) {
       await logEvent(sessionId, "system", logMessage("hasDied", { name: combatant.name }));
     }
   }

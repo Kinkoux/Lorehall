@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db, storyBeats, storyChapters } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -15,6 +15,9 @@ function str(formData: FormData, key: string) {
 
 /** Server-side length ceiling — the client's maxlength is a suggestion. */
 const cap = (s: string, n: number) => s.slice(0, n);
+
+/** Postgres unique_violation — a double-click losing the race, not a bug. */
+const isUniqueViolation = (e: unknown) => (e as { code?: string }).code === "23505";
 
 async function requireDm(campaignId: string, userId: string) {
   const access = await getCampaignAccess(campaignId, userId);
@@ -75,11 +78,15 @@ export async function deleteChapter(chapterId: string) {
   if (!chapter) return;
   if (!(await requireDm(chapter.campaignId, user.id))) return;
 
-  await db
-    .update(storyBeats)
-    .set({ chapterId: null })
-    .where(eq(storyBeats.chapterId, chapterId));
-  await db.delete(storyChapters).where(eq(storyChapters.id, chapterId));
+  // Unfiling the beats and dropping the chapter are one write: a failure
+  // between them would leave beats pointing at a chapter that no longer exists.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(storyBeats)
+      .set({ chapterId: null })
+      .where(eq(storyBeats.chapterId, chapterId));
+    await tx.delete(storyChapters).where(eq(storyChapters.id, chapterId));
+  });
   revalidatePath(`/c/${chapter.campaignId}`);
 }
 
@@ -125,15 +132,30 @@ export async function setBeatStatus(beatId: string, status: "pending" | "current
   if (!beat) return;
   if (!(await requireDm(beat.campaignId, user.id))) return;
 
-  if (status === "current") {
-    const beats = await getBeats(beat.campaignId);
-    for (const other of beats) {
-      if (other.id !== beatId && other.status === "current") {
-        await db.update(storyBeats).set({ status: "done" }).where(eq(storyBeats.id, other.id));
+  try {
+    // Retiring the old current beat and promoting the new one go in together,
+    // so the campaign is never briefly showing two — which is also what
+    // story_beats_one_current enforces from the database side.
+    await db.transaction(async (tx) => {
+      if (status === "current") {
+        await tx
+          .update(storyBeats)
+          .set({ status: "done" })
+          .where(
+            and(
+              eq(storyBeats.campaignId, beat.campaignId),
+              eq(storyBeats.status, "current"),
+              ne(storyBeats.id, beatId)
+            )
+          );
       }
-    }
+      await tx.update(storyBeats).set({ status }).where(eq(storyBeats.id, beatId));
+    });
+  } catch (e) {
+    // Another DM moved the bookmark in the same instant; theirs is the one
+    // the table is on.
+    if (!isUniqueViolation(e)) throw e;
   }
-  await db.update(storyBeats).set({ status }).where(eq(storyBeats.id, beatId));
   revalidatePath(`/c/${beat.campaignId}`);
 }
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { redirect } from "next/navigation";
 import {
@@ -42,7 +42,7 @@ const clampOpt = (n: number | null, min: number, max: number) =>
 async function canEditSheet(campaignId: string, sheetUserId: string, actorId: string) {
   if (sheetUserId === actorId) {
     const access = await getCampaignAccess(campaignId, actorId);
-    return access?.canView ?? false;
+    return access?.canParticipate ?? false;
   }
   const access = await getCampaignAccess(campaignId, actorId);
   return access?.isDm ?? false;
@@ -59,29 +59,32 @@ export async function createCharacter(formData: FormData) {
   const name = str(formData, "name");
   if (!campaignId || !name) return;
   const access = await getCampaignAccess(campaignId, user.id);
-  if (!access?.canView) return;
+  if (!access?.canParticipate) return;
 
   const existing = await db
     .select({ id: characters.id })
     .from(characters)
     .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, user.id)));
   const id = nanoid(12);
-  await db.insert(characters).values({
-    id,
-    campaignId,
-    userId: user.id,
-    name: cap(name, 150),
-    approval: existing.length === 0 ? "approved" : "pending",
-    updatedAt: Date.now(),
+  // The sheet and the party list's shorthand name are one change.
+  await db.transaction(async (tx) => {
+    await tx.insert(characters).values({
+      id,
+      campaignId,
+      userId: user.id,
+      name: cap(name, 150),
+      approval: existing.length === 0 ? "approved" : "pending",
+      updatedAt: Date.now(),
+    });
+    if (existing.length === 0) {
+      await tx
+        .update(campaignMembers)
+        .set({ characterName: cap(name, 150) })
+        .where(
+          and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id))
+        );
+    }
   });
-  if (existing.length === 0) {
-    await db
-      .update(campaignMembers)
-      .set({ characterName: cap(name, 150) })
-      .where(
-        and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id))
-      );
-  }
   await campaignLog(campaignId, user.id, "characterCreated", { name: cap(name, 150) });
   redirect(`/c/${campaignId}/ch/${user.id}?ch=${id}`);
 }
@@ -111,9 +114,13 @@ export async function rejectCharacter(characterId: string) {
   if (!character || character.approval !== "pending") return;
   const access = await getCampaignAccess(character.campaignId, user.id);
   if (!access?.isDm) return;
-  await db.delete(characterItems).where(eq(characterItems.characterId, characterId));
-  await db.delete(characterAbilities).where(eq(characterAbilities.characterId, characterId));
-  await db.delete(characters).where(eq(characters.id, characterId));
+  // All three deletes or none: a half-removed sheet leaves items and
+  // abilities referencing a character row that is gone.
+  await db.transaction(async (tx) => {
+    await tx.delete(characterItems).where(eq(characterItems.characterId, characterId));
+    await tx.delete(characterAbilities).where(eq(characterAbilities.characterId, characterId));
+    await tx.delete(characters).where(eq(characters.id, characterId));
+  });
   await campaignLog(character.campaignId, user.id, "characterRejected", { name: character.name });
   revalidatePath(`/c/${character.campaignId}`);
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
@@ -196,29 +203,36 @@ export async function upsertCharacter(
   // request is refused rather than quietly creating a fresh sheet.
   if (characterId && !existing) return;
 
-  if (existing) {
-    await db.update(characters).set(values).where(eq(characters.id, existing.id));
-  } else {
-    // First sheet in the campaign goes live; any extra waits for the DM.
+  // First sheet in the campaign goes live; any extra waits for the DM.
+  let approval: "approved" | "pending" = "approved";
+  if (!existing) {
     const mine = await db
       .select({ id: characters.id })
       .from(characters)
       .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, sheetUserId)));
-    await db.insert(characters).values({
-      id: nanoid(12),
-      campaignId,
-      userId: sheetUserId,
-      ...values,
-      approval: mine.length === 0 ? "approved" : "pending",
-    });
+    approval = mine.length === 0 ? "approved" : "pending";
   }
-  // Keep the party list's shorthand name in sync with the sheet.
-  await db
-    .update(campaignMembers)
-    .set({ characterName: values.name })
-    .where(
-      and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, sheetUserId))
-    );
+
+  // The sheet and the party list's shorthand name move together.
+  await db.transaction(async (tx) => {
+    if (existing) {
+      await tx.update(characters).set(values).where(eq(characters.id, existing.id));
+    } else {
+      await tx.insert(characters).values({
+        id: nanoid(12),
+        campaignId,
+        userId: sheetUserId,
+        ...values,
+        approval,
+      });
+    }
+    await tx
+      .update(campaignMembers)
+      .set({ characterName: values.name })
+      .where(
+        and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, sheetUserId))
+      );
+  });
   // A save on someone else's sheet is a DM write — the feed says so out loud.
   const byDm = sheetUserId !== user.id;
   await campaignLog(campaignId, user.id, byDm ? "sheetSavedByDm" : "sheetSaved", {
@@ -278,11 +292,24 @@ export async function uploadPortrait(
 
   const fileName = `${nanoid(16)}.${ext}`;
   await putPortraitFile(fileName, new Uint8Array(await file.arrayBuffer()), file.type);
-  await db
-    .update(characters)
-    .set({ imageFile: fileName, imageMime: file.type })
-    .where(eq(characters.id, characterId));
-  if (character.imageFile) await deletePortraitFile(character.imageFile);
+  try {
+    await db
+      .update(characters)
+      .set({ imageFile: fileName, imageMime: file.type })
+      .where(eq(characters.id, characterId));
+  } catch (e) {
+    // Storage cannot join the transaction: with no row naming it, the freshly
+    // uploaded object is unreachable, so drop it and report the real error.
+    await deletePortraitFile(fileName).catch((err) =>
+      console.error("uploadPortrait: orphan cleanup failed", err)
+    );
+    throw e;
+  }
+  if (character.imageFile) {
+    await deletePortraitFile(character.imageFile).catch((e) =>
+      console.error("uploadPortrait: old file delete failed", e)
+    );
+  }
   await campaignLog(character.campaignId, user.id, "portraitChanged", {
     character: character.name,
   });
@@ -298,7 +325,10 @@ export async function removePortrait(characterId: string) {
     .update(characters)
     .set({ imageFile: null, imageMime: null })
     .where(eq(characters.id, characterId));
-  await deletePortraitFile(character.imageFile);
+  // Row first: a leftover object is cheaper than a sheet naming a missing file.
+  await deletePortraitFile(character.imageFile).catch((e) =>
+    console.error("removePortrait: file delete failed", e)
+  );
   await campaignLog(character.campaignId, user.id, "portraitRemoved", {
     character: character.name,
   });
@@ -337,20 +367,30 @@ export async function adjustItemQty(itemId: string, delta: number) {
   if (!item) return;
   const character = await getEditableCharacter(item.characterId, user.id);
   if (!character) return;
-  const qty = item.qty + delta;
-  if (qty <= 0) {
-    await db.delete(characterItems).where(eq(characterItems.id, itemId));
-  } else {
-    await db.update(characterItems).set({ qty: Math.min(qty, 9999) }).where(eq(characterItems.id, itemId));
-  }
-  // The last one off the pile is a removal, not a quantity tweak.
+
+  // The pile is counted in the database, so two hands reaching for it at once
+  // both count. The new total decides whether the row survives, and the
+  // decrement and the delete are one write.
+  const qty = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(characterItems)
+      .set({ qty: sql`LEAST(9999, ${characterItems.qty} + ${delta})` })
+      .where(eq(characterItems.id, itemId))
+      .returning({ qty: characterItems.qty });
+    if (!row) return null;
+    // The last one off the pile is a removal, not a quantity tweak.
+    if (row.qty <= 0) await tx.delete(characterItems).where(eq(characterItems.id, itemId));
+    return row.qty;
+  });
+  if (qty === null) return;
+
   await campaignLog(
     character.campaignId,
     user.id,
     qty <= 0 ? "itemRemoved" : "itemQty",
     qty <= 0
       ? { name: item.name, character: character.name }
-      : { name: item.name, d: fmt(delta), n: Math.min(qty, 9999), character: character.name }
+      : { name: item.name, d: fmt(delta), n: qty, character: character.name }
   );
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
@@ -407,10 +447,15 @@ export async function useAbility(abilityId: string) {
   if (!ability || ability.usesLeft === null) return;
   const character = await getEditableCharacter(ability.characterId, user.id);
   if (!character) return;
+  // Counted down in place: two casts in the same instant spend two slots.
+  // The IS NOT NULL guard keeps an unlimited ability from being given a
+  // count by a spend that raced the read above.
   await db
     .update(characterAbilities)
-    .set({ usesLeft: Math.max(0, ability.usesLeft - 1) })
-    .where(eq(characterAbilities.id, abilityId));
+    .set({ usesLeft: sql`GREATEST(0, ${characterAbilities.usesLeft} - 1)` })
+    .where(
+      and(eq(characterAbilities.id, abilityId), isNotNull(characterAbilities.usesLeft))
+    );
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
 
@@ -419,21 +464,21 @@ export async function longRest(characterId: string) {
   const user = await requireUser();
   const character = await getEditableCharacter(characterId, user.id);
   if (!character) return;
-  const abilities = await db
-    .select()
-    .from(characterAbilities)
-    .where(eq(characterAbilities.characterId, characterId));
-  for (const ability of abilities) {
-    if (ability.usesMax !== null) {
-      await db
-        .update(characterAbilities)
-        .set({ usesLeft: ability.usesMax })
-        .where(eq(characterAbilities.id, ability.id));
-    }
-  }
+  // One statement refills every limited-use ability on the sheet; the rows it
+  // touched are the ones the feed counts.
+  const refilled = await db
+    .update(characterAbilities)
+    .set({ usesLeft: sql`${characterAbilities.usesMax}` })
+    .where(
+      and(
+        eq(characterAbilities.characterId, characterId),
+        isNotNull(characterAbilities.usesMax)
+      )
+    )
+    .returning({ id: characterAbilities.id });
   await campaignLog(character.campaignId, user.id, "longRest", {
     character: character.name,
-    n: abilities.filter((a) => a.usesMax !== null).length,
+    n: refilled.length,
   });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }

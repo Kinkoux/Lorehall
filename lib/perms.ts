@@ -30,9 +30,17 @@ export async function hasDmPowers(worldId: string, userId: string) {
 }
 
 /**
- * Access bundle for campaign-scoped pages/actions. `canView` covers campaign
- * members, the campaign's DM, and the world owner. One joined query — this
- * helper runs on every campaign/session page and at the top of most actions.
+ * Access bundle for campaign-scoped pages/actions. Two distinct gates:
+ *
+ * - `canView` — campaign members, the campaign's DM, and the world owner. The
+ *   owner keeps a read-only window into every table running in their world.
+ * - `canParticipate` — only people actually at this table: a real
+ *   campaignMembers row, or the DM who runs it. Player-side writes (treasury,
+ *   loot, sheets, initiative) gate on this, so a world owner who never joined
+ *   cannot spend a party's gold in a campaign they only watch.
+ *
+ * One joined query — this helper runs on every campaign/session page and at
+ * the top of most actions.
  */
 export async function getCampaignAccess(campaignId: string, userId: string) {
   const rows = await db
@@ -54,6 +62,7 @@ export async function getCampaignAccess(campaignId: string, userId: string) {
     membership: row.membership ?? null,
     isDm,
     canView: Boolean(row.membership) || isDm || row.world.ownerId === userId,
+    canParticipate: Boolean(row.membership) || isDm,
   };
 }
 

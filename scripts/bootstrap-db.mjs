@@ -291,6 +291,28 @@ ALTER TABLE combatants ADD COLUMN IF NOT EXISTS character_id TEXT REFERENCES cha
 -- handed out for the account. Existing rows start at 1, which is also what a
 -- cookie minted before this column shipped is read as.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1;
+-- one-at-a-time guarantees (2026-08-19): a campaign has at most one map on the
+-- table and at most one current story beat. The application already writes both
+-- halves in a transaction; these indexes make the database the arbiter, and the
+-- racing writer loses with SQLSTATE 23505, which the action swallows.
+--
+-- Older databases may already hold duplicates from before the transactions, so
+-- the tidy-up runs first and keeps the newest row of each group: without it the
+-- CREATE INDEX below would fail and leave the rest of the bootstrap undone.
+UPDATE campaign_maps m SET is_active = 0
+WHERE m.is_active = 1 AND EXISTS (
+  SELECT 1 FROM campaign_maps o
+  WHERE o.campaign_id = m.campaign_id AND o.is_active = 1
+    AND (o.created_at, o.id) > (m.created_at, m.id)
+);
+UPDATE story_beats b SET status = 'done'
+WHERE b.status = 'current' AND EXISTS (
+  SELECT 1 FROM story_beats o
+  WHERE o.campaign_id = b.campaign_id AND o.status = 'current'
+    AND (o.created_at, o.id) > (b.created_at, b.id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS campaign_maps_one_active ON campaign_maps (campaign_id) WHERE is_active = 1;
+CREATE UNIQUE INDEX IF NOT EXISTS story_beats_one_current ON story_beats (campaign_id) WHERE status = 'current';
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

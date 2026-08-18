@@ -18,6 +18,7 @@ import {
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
+import { kickMember, leaveCampaign, rotateJoinCode } from "@/lib/actions";
 import { startSession } from "@/lib/session-actions";
 import {
   addBeat,
@@ -208,6 +209,37 @@ export default async function CampaignPage({
       (c) =>
         c.userId === userId && (c.approval === "approved" || isDm || userId === user.id)
     );
+  /**
+   * The knob at the end of a party row. The DM may show a player out; anyone
+   * may see themselves out. The DM's own row carries neither — a table cannot
+   * lose the person running it.
+   */
+  const memberKnob = (memberId: string, name: string) => {
+    if (memberId === campaign.dmUserId) return null;
+    if (memberId === user.id) {
+      return (
+        <form action={leaveCampaign.bind(null, campaignId)} className="shrink-0">
+          <SmallButton
+            label={t("campaign.party.leave")}
+            danger
+            ariaLabel={t("campaign.party.leaveTitle")}
+          />
+        </form>
+      );
+    }
+    if (!isDm) return null;
+    return (
+      <form action={kickMember.bind(null, campaignId)} className="shrink-0">
+        <input type="hidden" name="userId" value={memberId} />
+        <SmallButton
+          label={t("campaign.party.remove")}
+          danger
+          ariaLabel={t("campaign.party.removeTitle", { name })}
+        />
+      </form>
+    );
+  };
+
   const liveSession = sessions.find((s) => s.status === "live");
   const pastSessions = sessions.filter((s) => s.status === "ended");
   const activeQuests = quests.filter((q) => q.status === "active");
@@ -304,18 +336,20 @@ export default async function CampaignPage({
               <ul className="space-y-3">
                 {members.map(({ member, user: memberUser }) => {
                   const memberCharacters = charactersOf(memberUser.id);
+                  const memberName = memberUser.displayName ?? memberUser.username;
+                  const knob = memberKnob(memberUser.id, memberName);
                   const memberLabel = (
                     <p className="text-xs text-parchment-500">
-                      {memberUser.displayName ?? memberUser.username}
+                      {memberName}
                       {memberUser.id === campaign.dmUserId && ` · ${t("campaign.party.dm")}`}
                     </p>
                   );
                   if (memberCharacters.length === 0) {
                     return (
-                      <li key={memberUser.id}>
+                      <li key={memberUser.id} className="flex items-center gap-3">
                         <Link
                           href={`/c/${campaignId}/ch/${memberUser.id}`}
-                          className="group flex items-center justify-between gap-3"
+                          className="group flex min-w-0 flex-1 items-center justify-between gap-3"
                         >
                           <div className="flex items-center gap-3">
                             <Portrait src={null} alt="" size={40} />
@@ -330,6 +364,7 @@ export default async function CampaignPage({
                             →
                           </span>
                         </Link>
+                        {knob}
                       </li>
                     );
                   }
@@ -389,6 +424,7 @@ export default async function CampaignPage({
                                   </span>
                                 )
                               )}
+                              {ci === 0 && knob}
                             </span>
                           </div>
                         );
@@ -513,6 +549,16 @@ export default async function CampaignPage({
                 {campaign.joinCode}
               </p>
               <p className="mt-2 text-xs text-parchment-500">{t("campaign.invite.hint")}</p>
+              {isDm && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-700 pt-3">
+                  <form action={rotateJoinCode.bind(null, campaignId)}>
+                    <SmallButton label={t("campaign.invite.rotate")} />
+                  </form>
+                  <p className="min-w-0 flex-1 text-xs text-parchment-500">
+                    {t("campaign.invite.rotateHint")}
+                  </p>
+                </div>
+              )}
             </Card>
           </section>
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db, quests, partyLedger, partyItems } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
@@ -67,7 +67,7 @@ export async function deleteQuest(questId: string) {
 export async function addLedgerEntry(campaignId: string, formData: FormData) {
   const user = await requireUser();
   const access = await getCampaignAccess(campaignId, user.id);
-  if (!access?.canView) return;
+  if (!access?.canParticipate) return;
   const amount = int(formData, "amount");
   const reason = str(formData, "reason");
   if (amount === null || amount === 0 || !reason) return;
@@ -88,7 +88,7 @@ export async function addLedgerEntry(campaignId: string, formData: FormData) {
 export async function addPartyItem(campaignId: string, formData: FormData) {
   const user = await requireUser();
   const access = await getCampaignAccess(campaignId, user.id);
-  if (!access?.canView) return;
+  if (!access?.canParticipate) return;
   const name = str(formData, "name");
   if (!name) return;
   const lootName = cap(name, 200);
@@ -110,17 +110,25 @@ export async function adjustPartyItemQty(itemId: string, delta: number) {
   const item = await db.query.partyItems.findFirst({ where: eq(partyItems.id, itemId) });
   if (!item) return;
   const access = await getCampaignAccess(item.campaignId, user.id);
-  if (!access?.canView) return;
-  const qty = item.qty + delta;
-  if (qty <= 0) {
-    await db.delete(partyItems).where(eq(partyItems.id, itemId));
-  } else {
-    await db.update(partyItems).set({ qty: Math.min(qty, 9999) }).where(eq(partyItems.id, itemId));
-  }
+  if (!access?.canParticipate) return;
+  // Counted in the database: two players splitting the loot at the same
+  // moment both count, and the row leaves in the same write that empties it.
+  const qty = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(partyItems)
+      .set({ qty: sql`LEAST(9999, ${partyItems.qty} + ${delta})` })
+      .where(eq(partyItems.id, itemId))
+      .returning({ qty: partyItems.qty });
+    if (!row) return null;
+    if (row.qty <= 0) await tx.delete(partyItems).where(eq(partyItems.id, itemId));
+    return row.qty;
+  });
+  if (qty === null) return;
+
   await campaignLog(item.campaignId, user.id, "lootQty", {
     name: item.name,
     d: fmt(delta),
-    n: qty <= 0 ? 0 : Math.min(qty, 9999),
+    n: qty <= 0 ? 0 : qty,
   });
   revalidatePath(`/c/${item.campaignId}`);
 }
