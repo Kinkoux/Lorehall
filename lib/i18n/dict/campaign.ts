@@ -103,6 +103,15 @@ export const campaign = {
         reset: "Fit to screen",
         fullscreen: "Fullscreen",
       },
+      grid: {
+        heading: "Square grid",
+        enable: "Draw a grid over this map",
+        hint: "Measure one square of your map image in pixels — that is the cell size. Then nudge the offsets until the drawn lines sit on the map's own squares.",
+        sizeLabel: "Cell size (px)",
+        offsetXLabel: "Offset X (px)",
+        offsetYLabel: "Offset Y (px)",
+        save: "Save grid",
+      },
     },
     beats: {
       title: "Story beats — only you see this",
@@ -222,6 +231,15 @@ export const campaign = {
         zoomOut: "Uzaklaş",
         reset: "Ekrana sığdır",
         fullscreen: "Tam ekran",
+      },
+      grid: {
+        heading: "Kare ızgara",
+        enable: "Bu haritanın üzerine ızgara çiz",
+        hint: "Harita görselindeki bir karenin kenarını piksel olarak ölç — kare boyu budur. Sonra çizilen çizgiler haritanın kendi kareleriyle çakışana kadar kaydırma değerlerini oynat.",
+        sizeLabel: "Kare boyu (px)",
+        offsetXLabel: "Kaydırma X (px)",
+        offsetYLabel: "Kaydırma Y (px)",
+        save: "Izgarayı kaydet",
       },
     },
     beats: {

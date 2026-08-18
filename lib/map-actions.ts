@@ -22,9 +22,18 @@ function str(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Clamped integer from a form field; blank or unparsable falls back. */
+function int(formData: FormData, key: string, min: number, max: number, fallback: number) {
+  const raw = str(formData, key);
+  const n = Number(raw);
+  if (!raw || !Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
 /** The live table screen shows the active map, so map changes touch it too. */
-async function revalidateMapPages(campaignId: string) {
+async function revalidateMapPages(campaignId: string, mapId?: string) {
   revalidatePath(`/c/${campaignId}`);
+  if (mapId) revalidatePath(`/c/${campaignId}/m/${mapId}`);
   const liveSessions = await db
     .select()
     .from(gameSessions)
@@ -111,6 +120,37 @@ export async function setMapVisibility(mapId: string, visibility: "everyone" | "
   if (!access?.isDm) return;
   await db.update(campaignMaps).set({ visibility }).where(eq(campaignMaps.id, mapId));
   await revalidateMapPages(map.campaignId);
+}
+
+/**
+ * VTT square grid for one map. Sizes are pixels of the ORIGINAL image, so the
+ * overlay lines up at any zoom; clearing the checkbox drops the grid entirely.
+ */
+export async function setMapGrid(mapId: string, formData: FormData) {
+  const user = await requireUser();
+  const map = await db.query.campaignMaps.findFirst({ where: eq(campaignMaps.id, mapId) });
+  if (!map) return;
+  const access = await getCampaignAccess(map.campaignId, user.id);
+  if (!access?.isDm) return;
+
+  const enabled = str(formData, "enabled") !== "";
+  if (!enabled) {
+    await db
+      .update(campaignMaps)
+      .set({ gridSize: null, gridOffsetX: 0, gridOffsetY: 0 })
+      .where(eq(campaignMaps.id, mapId));
+  } else {
+    const size = int(formData, "size", 10, 1000, map.gridSize ?? 70);
+    await db
+      .update(campaignMaps)
+      .set({
+        gridSize: size,
+        gridOffsetX: int(formData, "offsetX", 0, size, 0),
+        gridOffsetY: int(formData, "offsetY", 0, size, 0),
+      })
+      .where(eq(campaignMaps.id, mapId));
+  }
+  await revalidateMapPages(map.campaignId, mapId);
 }
 
 export async function deleteMap(mapId: string) {

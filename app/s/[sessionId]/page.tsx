@@ -142,6 +142,15 @@ export default async function SessionPage({
               src={`/files/maps/${shownMap.id}`}
               alt={shownMap.title}
               className="h-[420px] w-full sm:h-[520px]"
+              grid={
+                shownMap.gridSize
+                  ? {
+                      size: shownMap.gridSize,
+                      offsetX: shownMap.gridOffsetX ?? 0,
+                      offsetY: shownMap.gridOffsetY ?? 0,
+                    }
+                  : null
+              }
               labels={{
                 zoomIn: t("campaign.maps.viewer.zoomIn"),
                 zoomOut: t("campaign.maps.viewer.zoomOut"),

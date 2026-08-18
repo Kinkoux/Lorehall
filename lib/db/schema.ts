@@ -279,6 +279,11 @@ export const campaignMaps = pgTable("campaign_maps", {
     .notNull()
     .default("everyone"),
   isActive: integer("is_active").notNull().default(0),
+  // VTT square grid, measured in pixels of the ORIGINAL image. NULL size
+  // means "no grid"; the offsets shift the first line off the top-left.
+  gridSize: integer("grid_size"),
+  gridOffsetX: integer("grid_offset_x").notNull().default(0),
+  gridOffsetY: integer("grid_offset_y").notNull().default(0),
   createdAt: ms("created_at").notNull(),
 });
 

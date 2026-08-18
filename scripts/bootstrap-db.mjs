@@ -218,6 +218,9 @@ CREATE TABLE IF NOT EXISTS campaign_maps (
   mime_type TEXT NOT NULL,
   visibility TEXT NOT NULL DEFAULT 'everyone',
   is_active INTEGER NOT NULL DEFAULT 0,
+  grid_size INTEGER,
+  grid_offset_x INTEGER NOT NULL DEFAULT 0,
+  grid_offset_y INTEGER NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_maps_campaign ON campaign_maps(campaign_id);
@@ -227,6 +230,11 @@ CREATE INDEX IF NOT EXISTS idx_maps_campaign ON campaign_maps(campaign_id);
 -- and adds DM approval for extra characters.
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS approval TEXT NOT NULL DEFAULT 'approved';
 ALTER TABLE characters DROP CONSTRAINT IF EXISTS characters_campaign_id_user_id_key;
+-- map grid overlay (2026-08-18): cell size in pixels of the original image,
+-- NULL = grid off; offsets align the lines with the map's own squares.
+ALTER TABLE campaign_maps ADD COLUMN IF NOT EXISTS grid_size INTEGER;
+ALTER TABLE campaign_maps ADD COLUMN IF NOT EXISTS grid_offset_x INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE campaign_maps ADD COLUMN IF NOT EXISTS grid_offset_y INTEGER NOT NULL DEFAULT 0;
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

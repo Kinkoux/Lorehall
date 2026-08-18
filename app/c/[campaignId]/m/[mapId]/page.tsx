@@ -4,9 +4,10 @@ import { db, campaignMaps } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { getT } from "@/lib/locale";
+import { setMapGrid } from "@/lib/map-actions";
 import { SiteHeader } from "@/components/SiteHeader";
 import { MapViewer } from "@/components/MapViewer";
-import { BackLink, DmBadge } from "@/components/ui";
+import { BackLink, Button, Card, DmBadge, Input, Label } from "@/components/ui";
 
 export default async function MapPage({
   params,
@@ -46,6 +47,15 @@ export default async function MapPage({
           src={`/files/maps/${map.id}`}
           alt={map.title}
           className="h-[75vh] w-full"
+          grid={
+            map.gridSize
+              ? {
+                  size: map.gridSize,
+                  offsetX: map.gridOffsetX ?? 0,
+                  offsetY: map.gridOffsetY ?? 0,
+                }
+              : null
+          }
           labels={{
             zoomIn: t("campaign.maps.viewer.zoomIn"),
             zoomOut: t("campaign.maps.viewer.zoomOut"),
@@ -53,6 +63,62 @@ export default async function MapPage({
             fullscreen: t("campaign.maps.viewer.fullscreen"),
           }}
         />
+
+        {access.isDm && (
+          <Card className="mt-6">
+            <h2 className="mb-1 font-display text-base text-gold-300">
+              {t("campaign.maps.grid.heading")}
+            </h2>
+            <p className="mb-4 text-xs text-parchment-500">{t("campaign.maps.grid.hint")}</p>
+            <form action={setMapGrid.bind(null, map.id)} className="space-y-4">
+              <label className="flex items-center gap-2 text-sm text-parchment-300">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  defaultChecked={Boolean(map.gridSize)}
+                  className="accent-[#8a6516]"
+                />
+                {t("campaign.maps.grid.enable")}
+              </label>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block">
+                  <Label>{t("campaign.maps.grid.sizeLabel")}</Label>
+                  <Input
+                    type="number"
+                    name="size"
+                    min={10}
+                    max={1000}
+                    step={1}
+                    defaultValue={map.gridSize ?? 70}
+                  />
+                </label>
+                <label className="block">
+                  <Label>{t("campaign.maps.grid.offsetXLabel")}</Label>
+                  <Input
+                    type="number"
+                    name="offsetX"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    defaultValue={map.gridOffsetX ?? 0}
+                  />
+                </label>
+                <label className="block">
+                  <Label>{t("campaign.maps.grid.offsetYLabel")}</Label>
+                  <Input
+                    type="number"
+                    name="offsetY"
+                    min={0}
+                    max={1000}
+                    step={1}
+                    defaultValue={map.gridOffsetY ?? 0}
+                  />
+                </label>
+              </div>
+              <Button type="submit">{t("campaign.maps.grid.save")}</Button>
+            </form>
+          </Card>
+        )}
       </main>
     </>
   );
