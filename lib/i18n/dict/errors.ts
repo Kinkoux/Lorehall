@@ -43,6 +43,14 @@ export const errors = {
       tooLarge: "Image is larger than 4 MB.",
       badType: "Use a PNG, JPG, or WebP image.",
     },
+    worldItems: {
+      dmOnly: "Only the DM can forge items for this world.",
+      notAllowed: "You cannot edit this item.",
+      nameRequired: "A name is required.",
+      duplicateName: "This world already has an item by that name.",
+      tooLarge: "Image is larger than 4 MB.",
+      badType: "Use a PNG, JPG, or WebP image.",
+    },
     session: {
       dmOnlyAdd: "Only the DM can add combatants.",
       nameRequired: "Name is required.",
@@ -85,6 +93,14 @@ export const errors = {
     portrait: {
       notAllowed: "Bu karakter sayfasını düzenleyemezsin.",
       noFile: "Bir görsel dosyası seç.",
+      tooLarge: "Görsel 4 MB'den büyük.",
+      badType: "PNG, JPG veya WebP kullan.",
+    },
+    worldItems: {
+      dmOnly: "Bu dünyaya eşya dövmek yalnız DM'in elinde.",
+      notAllowed: "Bu eşyayı düzenleyemezsin.",
+      nameRequired: "Ad zorunlu.",
+      duplicateName: "Bu dünyada aynı adlı bir eşya zaten var.",
       tooLarge: "Görsel 4 MB'den büyük.",
       badType: "PNG, JPG veya WebP kullan.",
     },

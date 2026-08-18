@@ -74,6 +74,29 @@ CREATE TABLE IF NOT EXISTS codex_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_codex_world ON codex_entries(world_id);
 CREATE INDEX IF NOT EXISTS idx_campaigns_world ON campaigns(world_id);
+-- world item library (2026-08-19): the DM's homebrew gear for one world.
+-- stat_bonuses is a JSON object of flat integers ({"ac":1,"str":2}) that
+-- equipment (phase 3) will fold into a statblock; slot records what the piece
+-- could fill, NULL meaning "carried, not worn". Declared here, before
+-- character_items, so that table can reference it inline.
+CREATE TABLE IF NOT EXISTS world_items (
+  id TEXT PRIMARY KEY,
+  world_id TEXT NOT NULL REFERENCES worlds(id),
+  name TEXT NOT NULL,
+  description TEXT,
+  category TEXT NOT NULL DEFAULT 'gear',
+  slot TEXT,
+  stat_bonuses TEXT,
+  image_file TEXT,
+  image_mime TEXT,
+  created_by TEXT NOT NULL REFERENCES users(id),
+  created_at BIGINT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_world_items_world ON world_items(world_id);
+-- One name per world, spelled the way a person would recognise it: "Sunblade"
+-- and "sunblade" are the same entry, and the second insert loses with
+-- SQLSTATE 23505 for the action to report.
+CREATE UNIQUE INDEX IF NOT EXISTS world_items_name_unique ON world_items (world_id, lower(name));
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   campaign_id TEXT NOT NULL REFERENCES campaigns(id),
@@ -140,6 +163,8 @@ CREATE TABLE IF NOT EXISTS character_items (
   name TEXT NOT NULL,
   qty INTEGER NOT NULL DEFAULT 1,
   notes TEXT,
+  world_item_id TEXT REFERENCES world_items(id),
+  srd_index TEXT,
   created_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS character_abilities (
@@ -333,6 +358,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS story_beats_one_current ON story_beats (campai
 -- to be added to a table that already holds them. email_verified_at is the ms
 -- epoch the owner followed the link; it returns to NULL whenever the address
 -- changes.
+-- item provenance (2026-08-19): an inventory line can name the world library
+-- entry or the SRD index it was stamped from. Both stay NULL for hand-typed
+-- lines, and world_item_id returns to NULL when the library entry is deleted —
+-- the sheet keeps the item, it just loses its source.
+ALTER TABLE character_items ADD COLUMN IF NOT EXISTS world_item_id TEXT REFERENCES world_items(id);
+ALTER TABLE character_items ADD COLUMN IF NOT EXISTS srd_index TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email CITEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email) WHERE email IS NOT NULL;

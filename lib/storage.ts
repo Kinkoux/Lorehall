@@ -9,8 +9,9 @@ import path from "node:path";
  * The bucket must exist and can stay private: all reads go through the
  * service key, and the /files routes enforce campaign permissions.
  *
- * Two areas share the bucket: maps keep their historical keys at the root,
- * portraits are namespaced under "portraits/".
+ * Three areas share the bucket: maps keep their historical keys at the root,
+ * portraits are namespaced under "portraits/" and world item art under
+ * "items/".
  */
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "maps";
 
@@ -18,6 +19,7 @@ const BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "maps";
 type Area = { prefix: string; dir: string };
 const MAPS: Area = { prefix: "", dir: "maps" };
 const PORTRAITS: Area = { prefix: "portraits/", dir: "portraits" };
+const ITEMS: Area = { prefix: "items/", dir: "items" };
 
 function supabase() {
   const url = process.env.SUPABASE_URL;
@@ -185,4 +187,16 @@ export function readPortraitFile(name: string): Promise<MapFile | null> {
 
 export function deletePortraitFile(name: string) {
   return deleteFile(PORTRAITS, name);
+}
+
+export function putItemFile(name: string, bytes: Uint8Array<ArrayBuffer>, contentType: string) {
+  return putFile(ITEMS, name, bytes, contentType);
+}
+
+export function readItemFile(name: string): Promise<MapFile | null> {
+  return readFile(ITEMS, name);
+}
+
+export function deleteItemFile(name: string) {
+  return deleteFile(ITEMS, name);
 }

@@ -1,12 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { and, desc, eq } from "drizzle-orm";
-import { db, worlds, campaigns, codexEntries, CODEX_TYPES, type CodexType } from "@/lib/db";
+import { and, asc, desc, eq } from "drizzle-orm";
+import {
+  db,
+  worlds,
+  campaigns,
+  codexEntries,
+  worldItems,
+  CODEX_TYPES,
+  type CodexType,
+} from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { getWorldMembership } from "@/lib/perms";
 import { createCampaign } from "@/lib/actions";
 import { SiteHeader } from "@/components/SiteHeader";
+import { ItemLibrarySection } from "@/components/world/ItemLibrarySection";
 import {
   BackLink,
   Button,
@@ -34,13 +43,15 @@ export default async function WorldPage({
 
   const world = await db.query.worlds.findFirst({ where: eq(worlds.id, worldId) });
   if (!world) notFound();
-  const [membership, worldCampaigns] = await Promise.all([
+  const [membership, worldCampaigns, libraryItems] = await Promise.all([
     getWorldMembership(worldId, user.id),
     db
       .select()
       .from(campaigns)
       .where(eq(campaigns.worldId, worldId))
       .orderBy(desc(campaigns.createdAt)),
+    // The library is readable by every member; only the controls are gated.
+    db.select().from(worldItems).where(eq(worldItems.worldId, worldId)).orderBy(asc(worldItems.name)),
   ]);
   if (!membership) notFound();
 
@@ -161,6 +172,14 @@ export default async function WorldPage({
             )}
           </section>
         </div>
+
+        <ItemLibrarySection
+          worldId={worldId}
+          items={libraryItems}
+          canManage={dmPowers}
+          locale={locale}
+          t={t}
+        />
       </main>
     </>
   );

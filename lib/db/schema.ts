@@ -135,6 +135,72 @@ export const codexEntries = pgTable("codex_entries", {
   updatedAt: ms("updated_at").notNull(),
 });
 
+/**
+ * The DM's own item library, one per world (docs/design-economy.md phase 2).
+ * Categories are the same six buckets the SRD compendium filters by, so a
+ * homebrew blade and an SRD blade wear the same mark.
+ */
+export const WORLD_ITEM_CATEGORIES = [
+  "weapon",
+  "armor",
+  "gear",
+  "tool",
+  "vehicle",
+  "magic",
+] as const;
+export type WorldItemCategory = (typeof WORLD_ITEM_CATEGORIES)[number];
+
+/**
+ * Where a thing is worn — the set design-economy.md phase 3 names. NULL is
+ * that document's "none": the item is carried, not equipped. Phase 3 adds the
+ * matching `slot`/`equipped` columns on character_items; this column only
+ * records what the item *could* fill.
+ */
+export const WORLD_ITEM_SLOTS = ["head", "armor", "hands", "ring", "boots", "weapon"] as const;
+export type WorldItemSlot = (typeof WORLD_ITEM_SLOTS)[number];
+
+/**
+ * Keys allowed in `statBonuses`. Flat integers only — phase 3 folds them into
+ * statBlock() and the design note is explicit that depth (conditions,
+ * attunement) is what kills these systems.
+ */
+export const WORLD_ITEM_STATS = [
+  "ac",
+  "str",
+  "dex",
+  "con",
+  "int",
+  "wis",
+  "cha",
+  "hp",
+] as const;
+export type WorldItemStat = (typeof WORLD_ITEM_STATS)[number];
+
+export const worldItems = pgTable("world_items", {
+  id: text("id").primaryKey(),
+  worldId: text("world_id")
+    .notNull()
+    .references(() => worlds.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  category: text("category", { enum: WORLD_ITEM_CATEGORIES }).notNull().default("gear"),
+  slot: text("slot", { enum: WORLD_ITEM_SLOTS }),
+  // JSON object of flat bonuses, e.g. {"ac":1,"str":2}; NULL = a plain item.
+  // Written only through the validated writer in lib/world-item-actions.ts and
+  // read back through lib/world-items.ts, which distrusts it either way.
+  statBonuses: text("stat_bonuses"),
+  // Uploaded illustration: storage key + MIME, like a character portrait.
+  imageFile: text("image_file"),
+  imageMime: text("image_mime"),
+  createdBy: text("created_by")
+    .notNull()
+    .references(() => users.id),
+  createdAt: ms("created_at").notNull(),
+});
+// Names are unique per world, case-insensitively — the index lives in
+// scripts/bootstrap-db.mjs (`world_items_name_unique`) because it is spelled
+// over lower(name), which this schema cannot declare.
+
 export const gameSessions = pgTable("sessions", {
   id: text("id").primaryKey(),
   campaignId: text("campaign_id")
@@ -232,6 +298,13 @@ export const characterItems = pgTable("character_items", {
   name: text("name").notNull(),
   qty: integer("qty").notNull().default(1),
   notes: text("notes"),
+  // Where the line came from. The name and notes are still copied onto the row
+  // (a sheet reads on its own), but the reference lets a later wave read the
+  // source's slot and bonuses instead of freezing them here. Both NULL for a
+  // hand-typed line; worldItemId goes back to NULL if the library entry is
+  // deleted.
+  worldItemId: text("world_item_id").references(() => worldItems.id),
+  srdIndex: text("srd_index"),
   createdAt: ms("created_at").notNull(),
 });
 
@@ -388,6 +461,7 @@ export const campaignEvents = pgTable(
 export type User = typeof users.$inferSelect;
 export type EmailToken = typeof emailTokens.$inferSelect;
 export type World = typeof worlds.$inferSelect;
+export type WorldItem = typeof worldItems.$inferSelect;
 export type Campaign = typeof campaigns.$inferSelect;
 export type CodexEntry = typeof codexEntries.$inferSelect;
 export type GameSession = typeof gameSessions.$inferSelect;
