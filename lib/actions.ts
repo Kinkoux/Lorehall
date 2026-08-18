@@ -117,7 +117,9 @@ export async function createCampaign(worldId: string, formData: FormData) {
     joinCode: joinCodeAlphabet(),
     createdAt: now,
   });
-  await db.insert(campaignMembers).values({ campaignId: id, userId: user.id, joinedAt: now });
+  // The DM runs the table but isn't a party member; getCampaignAccess
+  // grants them access via dmUserId. A DM who wants a player character
+  // can still join explicitly with the campaign code.
   redirect(`/c/${id}`);
 }
 
@@ -170,8 +172,11 @@ function parseCodexType(value: string): CodexType | null {
 export async function createCodexEntry(worldId: string, _prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser();
   const { t } = await getT();
-  const membership = await getWorldMembership(worldId, user.id);
-  if (!membership) return { error: t("errors.codex.notMember") };
+  // Chronicling the world is the DM's privilege (world owner or any
+  // campaign DM in it); players read the codex, they don't write it.
+  if (!(await hasDmPowers(worldId, user.id))) {
+    return { error: t("errors.codex.dmOnlyEntries") };
+  }
 
   const type = parseCodexType(str(formData, "type"));
   const title = str(formData, "title");
@@ -179,9 +184,6 @@ export async function createCodexEntry(worldId: string, _prev: FormState, formDa
   if (!title) return { error: t("errors.codex.titleRequired") };
 
   const visibility: "everyone" | "dm" = str(formData, "visibility") === "dm" ? "dm" : "everyone";
-  if (visibility === "dm" && !(await hasDmPowers(worldId, user.id))) {
-    return { error: t("errors.codex.dmOnlyCreate") };
-  }
 
   const id = nanoid(12);
   const now = Date.now();

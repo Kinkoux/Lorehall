@@ -8,7 +8,7 @@ export const landing = {
       heading: "What the hall keeps",
       codex: {
         title: "World codex",
-        body: "NPCs, places, factions, and lore — written together by the whole table, so nobody has to ask who Ser Alden was.",
+        body: "NPCs, places, factions, and lore — the DM's chronicle of the world, so nobody has to ask who Ser Alden was.",
       },
       sessions: {
         title: "Live sessions",
@@ -44,7 +44,7 @@ export const landing = {
       heading: "Salonda ne saklanır",
       codex: {
         title: "Dünya kodeksi",
-        body: "NPC'ler, mekânlar, gruplar ve tarih — bütün masa birlikte yazar; kimse \"Ser Alden kimdi?\" diye sormak zorunda kalmaz.",
+        body: "NPC'ler, mekânlar, gruplar ve tarih — DM'in dünya güncesi; kimse \"Ser Alden kimdi?\" diye sormak zorunda kalmaz.",
       },
       sessions: {
         title: "Canlı oturumlar",

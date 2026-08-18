@@ -77,12 +77,14 @@ export default async function WorldPage({
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <SectionTitle>{t("world.codex.title")}</SectionTitle>
-              <Link
-                href={`/w/${worldId}/codex/new`}
-                className="rounded-md bg-gold-500 px-3 py-1.5 text-sm font-bold text-ink-950 transition hover:bg-gold-400"
-              >
-                {t("world.codex.newEntry")}
-              </Link>
+              {dmPowers && (
+                <Link
+                  href={`/w/${worldId}/codex/new`}
+                  className="rounded-md bg-gold-500 px-3 py-1.5 text-sm font-bold text-ink-950 transition hover:bg-gold-400"
+                >
+                  {t("world.codex.newEntry")}
+                </Link>
+              )}
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -99,7 +101,11 @@ export default async function WorldPage({
 
             {entries.length === 0 && (
               <p className="text-sm text-parchment-500">
-                {activeType ? t("world.codex.emptyType") : t("world.codex.empty")}
+                {activeType
+                  ? t("world.codex.emptyType")
+                  : dmPowers
+                    ? t("world.codex.empty")
+                    : t("world.codex.emptyPlayer")}
               </p>
             )}
             {entries.map((entry) => (

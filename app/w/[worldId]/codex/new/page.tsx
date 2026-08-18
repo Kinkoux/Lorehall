@@ -26,7 +26,9 @@ export default async function NewCodexEntryPage({
   if (!world) notFound();
   if (!(await getWorldMembership(worldId, user.id))) notFound();
 
+  // Codex writing is DM-only; players get a 404, same as other DM pages.
   const dmPowers = await hasDmPowers(worldId, user.id);
+  if (!dmPowers) notFound();
 
   return (
     <>

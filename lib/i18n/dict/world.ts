@@ -14,6 +14,7 @@ export const world = {
         lore: "Lore",
       },
       empty: "The codex is empty. Start chronicling your world.",
+      emptyPlayer: "The codex is empty — the DM hasn't chronicled anything yet.",
       emptyType: "The codex is empty for this type. Start chronicling your world.",
     },
     campaigns: {
@@ -66,6 +67,7 @@ export const world = {
         lore: "Tarih",
       },
       empty: "Kodeks henüz boş. Dünyanı kayda geçirmeye başla.",
+      emptyPlayer: "Kodeks henüz boş — DM henüz bir şey kayda geçirmedi.",
       emptyType: "Kodekste bu türden kayıt henüz yok. Dünyanı kayda geçirmeye başla.",
     },
     campaigns: {

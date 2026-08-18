@@ -14,6 +14,7 @@ export const errors = {
     },
     codex: {
       notMember: "You are not a member of this world.",
+      dmOnlyEntries: "Only the DM can add codex entries.",
       badType: "Pick a valid entry type.",
       titleRequired: "A title is required.",
       dmOnlyCreate: "Only DMs can create DM-only entries.",
@@ -45,6 +46,7 @@ export const errors = {
     },
     codex: {
       notMember: "Bu dünyanın üyesi değilsin.",
+      dmOnlyEntries: "Kodekse kayıt eklemek yalnız DM'in elinde.",
       badType: "Geçerli bir kayıt türü seç.",
       titleRequired: "Başlık zorunlu.",
       dmOnlyCreate: "DM'e özel kayıtları yalnız DM'ler oluşturabilir.",
