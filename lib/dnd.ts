@@ -1,5 +1,6 @@
 import type { Character } from "@/lib/db";
 import { SKILLS } from "@/lib/srd";
+import type { StatBonuses } from "@/lib/world-items";
 
 export const ABILITIES = ["str", "dex", "con", "intel", "wis", "cha"] as const;
 export type AbilityKey = (typeof ABILITIES)[number];
@@ -11,6 +12,20 @@ export const ABILITY_LABELS: Record<AbilityKey, string> = {
   intel: "INT",
   wis: "WIS",
   cha: "CHA",
+};
+
+/**
+ * The sheet spells intelligence `intel` (SQL keyword) while an item's bonus
+ * JSON spells it `int`. One map, stated once, rather than a rename that would
+ * touch every column and every stored bonus.
+ */
+const BONUS_KEY: Record<AbilityKey, "str" | "dex" | "con" | "int" | "wis" | "cha"> = {
+  str: "str",
+  dex: "dex",
+  con: "con",
+  intel: "int",
+  wis: "wis",
+  cha: "cha",
 };
 
 const SKILL_ABILITY_KEY: Record<string, AbilityKey> = {
@@ -32,18 +47,33 @@ export function hasScores(character: Character) {
 const csv = (value: string | null) =>
   (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
-/** Computed stat block for a sheet with all six scores filled in. */
-export function statBlock(character: Character) {
+/**
+ * Computed stat block for a sheet with all six scores filled in.
+ *
+ * `bonuses` is what the character is *wearing* (docs/design-economy.md phase
+ * 3): flat integers folded in before anything downstream is derived, so a ring
+ * of +2 DEX moves the modifier, the saves, the skills and passive Perception
+ * together instead of quietly moving only the number on the tile. Nothing here
+ * is written back — the stored scores stay the character's own, and taking the
+ * ring off restores them by arithmetic rather than by an undo.
+ */
+export function statBlock(character: Character, bonuses: StatBonuses = {}) {
   const pb = profBonus(character.level);
   const profSkills = new Set(csv(character.profSkills));
   const profSaves = new Set(csv(character.profSaves));
 
-  const abilities = ABILITIES.map((key) => ({
-    key,
-    label: ABILITY_LABELS[key],
-    score: character[key] as number,
-    mod: mod(character[key] as number),
-  }));
+  const abilities = ABILITIES.map((key) => {
+    const base = character[key] as number;
+    const bonus = bonuses[BONUS_KEY[key]] ?? 0;
+    return {
+      key,
+      label: ABILITY_LABELS[key],
+      base,
+      bonus,
+      score: base + bonus,
+      mod: mod(base + bonus),
+    };
+  });
 
   const saves = abilities.map((a) => ({
     label: a.label,

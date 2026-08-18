@@ -10,9 +10,19 @@ import { IconHelm } from "@/components/Icons";
  * rules; gilt is reserved for primary actions and the brand.
  */
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className = "",
+  id,
+}: {
+  children: ReactNode;
+  className?: string;
+  /** Anchor target, for cards something elsewhere links straight to. */
+  id?: string;
+}) {
   return (
     <div
+      id={id}
       className={`rounded-sm border border-ink-600/80 bg-ink-900/85 p-5 outline outline-1 outline-ink-700/45 outline-offset-[-5px] shadow-sm shadow-[#5e4420]/10 ${className}`}
     >
       {children}

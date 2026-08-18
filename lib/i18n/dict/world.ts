@@ -60,8 +60,10 @@ export const world = {
       },
       slots: {
         head: "Head",
+        neck: "Neck",
         armor: "Body",
         hands: "Hands",
+        wrist: "Wrist",
         ring: "Ring",
         boots: "Boots",
         weapon: "Weapon",
@@ -152,8 +154,10 @@ export const world = {
       },
       slots: {
         head: "Baş",
+        neck: "Boyun",
         armor: "Gövde",
         hands: "Eller",
+        wrist: "Bilek",
         ring: "Yüzük",
         boots: "Çizme",
         weapon: "Silah",

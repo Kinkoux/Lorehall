@@ -165,6 +165,9 @@ CREATE TABLE IF NOT EXISTS character_items (
   notes TEXT,
   world_item_id TEXT REFERENCES world_items(id),
   srd_index TEXT,
+  slot TEXT,
+  equipped INTEGER NOT NULL DEFAULT 0,
+  stat_bonuses TEXT,
   created_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS character_abilities (
@@ -175,6 +178,7 @@ CREATE TABLE IF NOT EXISTS character_abilities (
   notes TEXT,
   uses_max INTEGER,
   uses_left INTEGER,
+  srd_index TEXT,
   created_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS story_chapters (
@@ -364,6 +368,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS story_beats_one_current ON story_beats (campai
 -- the sheet keeps the item, it just loses its source.
 ALTER TABLE character_items ADD COLUMN IF NOT EXISTS world_item_id TEXT REFERENCES world_items(id);
 ALTER TABLE character_items ADD COLUMN IF NOT EXISTS srd_index TEXT;
+-- equipment (2026-08-19, design-economy.md phase 3): where a copy is worn,
+-- whether it is worn right now, and a snapshot of the source's bonuses so
+-- retuning a library entry does not restat every copy already in play. slot is
+-- plain TEXT on purpose — the allowed values are WORLD_ITEM_SLOTS in
+-- lib/db/schema.ts, and widening that list must not need a migration.
+--
+-- One equipped item per slot, with the database as the arbiter rather than the
+-- UI: the racing equip loses with SQLSTATE 23505, which the action swallows.
+-- No tidy-up runs first because the columns are new — every existing row lands
+-- on equipped = 0 and is outside the index.
+ALTER TABLE character_items ADD COLUMN IF NOT EXISTS slot TEXT;
+ALTER TABLE character_items ADD COLUMN IF NOT EXISTS equipped INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE character_items ADD COLUMN IF NOT EXISTS stat_bonuses TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS character_items_one_per_slot ON character_items (character_id, slot) WHERE equipped = 1;
+-- spell provenance (2026-08-19): the SRD index a sheet line was stamped from,
+-- so the sheet links back to the compendium text. NULL for hand-typed lines.
+ALTER TABLE character_abilities ADD COLUMN IF NOT EXISTS srd_index TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email CITEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email) WHERE email IS NOT NULL;

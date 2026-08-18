@@ -25,6 +25,8 @@ const KIND_BY_EVENT = {
   itemQty: "item",
   srdItemAdded: "item",
   worldItemAdded: "item",
+  itemEquipped: "item",
+  itemUnequipped: "item",
   abilityAdded: "ability",
   abilityRemoved: "ability",
   longRest: "ability",

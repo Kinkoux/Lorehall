@@ -11,8 +11,10 @@ import {
   storyBeats,
   storyChapters,
   users,
+  worldItems,
   worldMembers,
   worlds,
+  type WorldItemSlot,
 } from "@/lib/db/schema";
 import { db } from "./db";
 
@@ -69,6 +71,22 @@ export async function seedWorld() {
   return { owner, dm, player, stranger, worldId, campaignId };
 }
 
+/**
+ * A second world for the same cast — `seedWorld` mints fixed user ids and can
+ * only run once per test. Nothing joins this one; it exists to own rows that
+ * the campaign under test has no business reaching.
+ */
+export async function seedExtraWorld(ownerId: string) {
+  const id = nextId("world");
+  await db.insert(worlds).values({
+    id,
+    name: `Elsewhere ${id}`,
+    ownerId,
+    createdAt: Date.now(),
+  });
+  return id;
+}
+
 export async function seedCampaign(worldId: string, dmUserId: string) {
   const id = nextId("campaign");
   await db.insert(campaigns).values({
@@ -117,13 +135,47 @@ export async function seedCharacter(campaignId: string, userId: string, maxHp = 
   return id;
 }
 
-export async function seedItem(characterId: string, qty: number, name = "Healing Potion") {
+export async function seedItem(
+  characterId: string,
+  qty: number,
+  name = "Healing Potion",
+  /** Equipment fields, for the tests that care where a line is worn. */
+  worn: { slot?: WorldItemSlot; equipped?: 0 | 1; statBonuses?: string; worldItemId?: string } = {}
+) {
   const id = nextId("item");
   await db.insert(characterItems).values({
     id,
     characterId,
     name,
     qty,
+    slot: worn.slot,
+    equipped: worn.equipped ?? 0,
+    statBonuses: worn.statBonuses,
+    worldItemId: worn.worldItemId,
+    createdAt: Date.now(),
+  });
+  return id;
+}
+
+export async function seedWorldItem(
+  worldId: string,
+  createdBy: string,
+  values: {
+    name?: string;
+    slot?: WorldItemSlot;
+    statBonuses?: string;
+    category?: "weapon" | "armor" | "gear" | "tool" | "vehicle" | "magic";
+  } = {}
+) {
+  const id = nextId("worlditem");
+  await db.insert(worldItems).values({
+    id,
+    worldId,
+    name: values.name ?? `Relic ${id}`,
+    category: values.category ?? "gear",
+    slot: values.slot,
+    statBonuses: values.statBonuses,
+    createdBy,
     createdAt: Date.now(),
   });
   return id;

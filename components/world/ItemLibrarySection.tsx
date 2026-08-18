@@ -76,7 +76,9 @@ function ItemCard({
 }) {
   const bonuses = statBonusEntries(item.statBonuses);
   return (
-    <Card className="!p-3">
+    // The anchor a character sheet's inventory line links back to, so "where
+    // did this come from?" lands on the card itself rather than the page top.
+    <Card id={`wi-${item.id}`} className="!p-3 scroll-mt-6 target:border-gold-500/70">
       <div className="flex gap-3">
         {item.imageFile ? (
           // eslint-disable-next-line @next/next/no-img-element

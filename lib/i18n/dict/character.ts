@@ -39,6 +39,8 @@ export const character = {
       itemNamePh: "Item name",
       notesOptionalPh: "Notes (optional)",
       addItem: "Add item",
+      openInCompendium: "Open in the compendium",
+      openInLibrary: "Open in the world's item library",
       spellsAbilities: "Spells & abilities",
       longRest: "Long rest",
       noAbilities: "Nothing here yet — spells, class features, homebrew powers all welcome.",
@@ -80,6 +82,24 @@ export const character = {
         createButton: "Create character",
       },
     },
+    // Sibling of `sheet` rather than nested inside it: the equipment panel is
+    // its own component, and the autocomplete is shared by two forms.
+    equipment: {
+      title: "Equipment",
+      empty: "Nothing worn.",
+      emptyHint:
+        "Nothing worn yet. Anything in the backpack with a slot can be put on from the inventory list.",
+      slotEmpty: "Empty",
+      equip: "Equip",
+      unequip: "Take off",
+      worn: "Worn",
+      slotLabel: "Slot",
+      bonusTitle: "From equipment",
+    },
+    autocomplete: {
+      srd: "Compendium",
+      world: "This world",
+    },
   },
   tr: {
     hub: {
@@ -120,6 +140,8 @@ export const character = {
       itemNamePh: "Eşya adı",
       notesOptionalPh: "Not (isteğe bağlı)",
       addItem: "Eşya ekle",
+      openInCompendium: "Kütüphanede aç",
+      openInLibrary: "Dünyanın eşya kütüphanesinde aç",
       spellsAbilities: "Büyüler ve yetenekler",
       longRest: "Uzun dinlenme",
       noAbilities: "Henüz bir şey yok — büyü, sınıf özelliği, homebrew güç; ne varsa buraya.",
@@ -160,6 +182,22 @@ export const character = {
         saveSheet: "Sayfayı kaydet",
         createButton: "Karakter oluştur",
       },
+    },
+    equipment: {
+      title: "Ekipman",
+      empty: "Üzerinde bir şey yok.",
+      emptyHint:
+        "Henüz hiçbir şey kuşanılmadı. Çantadaki yuvası olan her şey envanter listesinden kuşanılabilir.",
+      slotEmpty: "Boş",
+      equip: "Kuşan",
+      unequip: "Çıkar",
+      worn: "Kuşanılı",
+      slotLabel: "Yuva",
+      bonusTitle: "Ekipmandan",
+    },
+    autocomplete: {
+      srd: "Kütüphane",
+      world: "Bu dünya",
     },
   },
 } as const;

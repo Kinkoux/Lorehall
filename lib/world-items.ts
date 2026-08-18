@@ -1,4 +1,4 @@
-import { WORLD_ITEM_STATS, type WorldItemStat } from "@/lib/db/schema";
+import { WORLD_ITEM_SLOTS, WORLD_ITEM_STATS, type WorldItemSlot, type WorldItemStat } from "@/lib/db/schema";
 
 /**
  * Flat bonuses on a world item. Deliberately shallow (docs/design-economy.md
@@ -59,4 +59,47 @@ export function statBonusEntries(
     const value = bonuses[stat];
     return value === undefined ? [] : [[stat, value] as [WorldItemStat, number]];
   });
+}
+
+/**
+ * What a set of worn items adds up to. Each source is re-parsed through the
+ * distrusting reader above, so a hand-edited column cannot push a total past
+ * what the individual pieces are allowed to be — but the *sum* is deliberately
+ * left unclamped: five rings of +2 really are +10, and the one-per-slot rule
+ * is what keeps that from running away.
+ *
+ * Zeroes are dropped again at the end, so a +1 and a −1 cancel out of the
+ * display entirely rather than showing as "+0".
+ */
+export function sumStatBonuses(sources: Array<string | null | undefined>): StatBonuses {
+  const total: StatBonuses = {};
+  for (const source of sources) {
+    for (const [stat, value] of Object.entries(parseStatBonuses(source)) as Array<
+      [WorldItemStat, number]
+    >) {
+      total[stat] = (total[stat] ?? 0) + value;
+    }
+  }
+  for (const stat of WORLD_ITEM_STATS) {
+    if (total[stat] === 0) delete total[stat];
+  }
+  return total;
+}
+
+/** Same list, in WORLD_ITEM_STATS order, for a one-line "+2 AC · +1 STR". */
+export function bonusEntries(bonuses: StatBonuses): Array<[WorldItemStat, number]> {
+  return WORLD_ITEM_STATS.flatMap((stat) => {
+    const value = bonuses[stat];
+    return value === undefined ? [] : [[stat, value] as [WorldItemStat, number]];
+  });
+}
+
+/**
+ * A slot name that came off a form (or any other untrusted string). Anything
+ * outside the set — including the blank a "carried" selection sends — reads as
+ * "no slot", which is the state every writer treats as "not equippable".
+ */
+export function readSlotName(raw: string | null | undefined): WorldItemSlot | null {
+  if (!raw) return null;
+  return (WORLD_ITEM_SLOTS as readonly string[]).includes(raw) ? (raw as WorldItemSlot) : null;
 }

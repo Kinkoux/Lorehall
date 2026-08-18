@@ -10,6 +10,8 @@ import {
   characterItems,
   characterAbilities,
   campaignMembers,
+  worldItems,
+  type WorldItemSlot,
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
@@ -17,12 +19,23 @@ import { campaignLog } from "@/lib/campaign-log";
 import { fmt } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
+import { readSlotName } from "@/lib/world-items";
 import type { FormState } from "@/lib/actions";
 
 function str(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
 }
+
+/**
+ * Postgres unique_violation — here, `character_items_one_per_slot`: someone
+ * else's click filled the slot between this transaction's read and its write.
+ * drizzle wraps driver errors, so the SQLSTATE may sit on the error or its cause.
+ */
+const isUniqueViolation = (e: unknown) => {
+  const err = e as { code?: string; cause?: { code?: string } };
+  return err.code === "23505" || err.cause?.code === "23505";
+};
 
 function int(formData: FormData, key: string): number | null {
   const raw = str(formData, key);
@@ -337,6 +350,77 @@ export async function removePortrait(characterId: string) {
 
 // ---------- inventory ----------
 
+/**
+ * What an inventory line is, beyond its name: the source it was picked from
+ * (if any), where it can be worn, and what it grants. The autocomplete on the
+ * sheet sends a reference, never the numbers — the slot and the bonuses are
+ * re-derived here from the library row or the SRD entry the reference names,
+ * so a forged field buys nothing a player could not already type into the
+ * sheet form by hand.
+ */
+type ItemSource = {
+  worldItemId: string | null;
+  srdIndex: string | null;
+  slot: WorldItemSlot | null;
+  statBonuses: string | null;
+  /** Only used when the add form left the notes blank. */
+  summary: string | null;
+};
+
+async function resolveItemSource(
+  formData: FormData,
+  campaignId: string,
+  actorId: string
+): Promise<ItemSource> {
+  const blank: ItemSource = {
+    worldItemId: null,
+    srdIndex: null,
+    slot: readSlotName(str(formData, "slot")),
+    statBonuses: null,
+    summary: null,
+  };
+
+  // A library entry wins: it is the only source that carries real bonuses.
+  const worldItemId = str(formData, "worldItemId");
+  if (worldItemId) {
+    const [access, item] = await Promise.all([
+      getCampaignAccess(campaignId, actorId),
+      db.query.worldItems.findFirst({ where: eq(worldItems.id, worldItemId) }),
+    ]);
+    // The id is forgeable, and a library belongs to exactly one world: a table
+    // running elsewhere cannot draw from it however the ids were paired up.
+    if (access && item && item.worldId === access.world.id) {
+      return {
+        worldItemId: item.id,
+        srdIndex: null,
+        slot: item.slot,
+        statBonuses: item.statBonuses,
+        summary: item.description,
+      };
+    }
+    return blank;
+  }
+
+  const srdIndex = str(formData, "srdIndex");
+  if (srdIndex) {
+    // Lazy import keeps the SRD JSON out of the sheet's chunk. Nothing in the
+    // SRD carries a machine-readable bonus, so an SRD line brings a slot and a
+    // summary and nothing else.
+    const { getItem, itemSummary, srdItemSlot } = await import("@/lib/srd-data");
+    const item = getItem(srdIndex);
+    if (item) {
+      return {
+        worldItemId: null,
+        srdIndex: item.index,
+        slot: srdItemSlot(item),
+        statBonuses: null,
+        summary: itemSummary(item),
+      };
+    }
+  }
+  return blank;
+}
+
 export async function addItem(characterId: string, formData: FormData) {
   const user = await requireUser();
   const character = await getEditableCharacter(characterId, user.id);
@@ -345,17 +429,88 @@ export async function addItem(characterId: string, formData: FormData) {
   if (!name) return;
   const itemName = cap(name, 150);
   const qty = Math.min(Math.max(int(formData, "qty") ?? 1, 1), 9999);
+  const source = await resolveItemSource(formData, character.campaignId, user.id);
   await db.insert(characterItems).values({
     id: nanoid(12),
     characterId,
     name: itemName,
     qty,
-    notes: cap(str(formData, "notes"), 2_000) || null,
+    // A line the player annotated keeps their words; one they left blank
+    // borrows the source's own summary rather than showing nothing.
+    notes: cap(str(formData, "notes"), 2_000) || cap(source.summary ?? "", 2_000) || null,
+    worldItemId: source.worldItemId,
+    srdIndex: source.srdIndex,
+    slot: source.slot,
+    statBonuses: source.statBonuses,
     createdAt: Date.now(),
   });
   await campaignLog(character.campaignId, user.id, "itemAdded", {
     name: itemName,
     n: qty,
+    character: character.name,
+  });
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+}
+
+/**
+ * Put a piece on. The slot comes from the item itself when it has one, and
+ * from the form otherwise — a hand-typed "Grandfather's Signet" is only ever
+ * a ring because someone said so.
+ *
+ * Both halves are one write: whatever occupied the slot comes off in the same
+ * transaction the new piece goes on in, so the sheet is never briefly wearing
+ * two helms, and never briefly wearing none. `character_items_one_per_slot`
+ * backs that up for two clicks that arrive at once — the loser gets SQLSTATE
+ * 23505 and is dropped, because the slot did end up filled either way.
+ */
+export async function equipItem(itemId: string, formData: FormData) {
+  const user = await requireUser();
+  const item = await db.query.characterItems.findFirst({ where: eq(characterItems.id, itemId) });
+  if (!item) return;
+  const character = await getEditableCharacter(item.characterId, user.id);
+  if (!character) return;
+  const slot = item.slot ?? readSlotName(str(formData, "slot"));
+  if (!slot) return;
+  if (item.equipped === 1 && item.slot === slot) return;
+
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .update(characterItems)
+        .set({ equipped: 0 })
+        .where(
+          and(
+            eq(characterItems.characterId, item.characterId),
+            eq(characterItems.slot, slot),
+            eq(characterItems.equipped, 1)
+          )
+        );
+      await tx
+        .update(characterItems)
+        .set({ slot, equipped: 1 })
+        .where(eq(characterItems.id, itemId));
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return;
+    throw e;
+  }
+  await campaignLog(character.campaignId, user.id, "itemEquipped", {
+    name: item.name,
+    character: character.name,
+  });
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+}
+
+/** Take it off. The slot stays on the row — it is still a helm, just not worn. */
+export async function unequipItem(itemId: string) {
+  const user = await requireUser();
+  const item = await db.query.characterItems.findFirst({ where: eq(characterItems.id, itemId) });
+  if (!item || item.equipped === 0) return;
+  const character = await getEditableCharacter(item.characterId, user.id);
+  if (!character) return;
+  await db.update(characterItems).set({ equipped: 0 }).where(eq(characterItems.id, itemId));
+  await campaignLog(character.campaignId, user.id, "itemUnequipped", {
+    name: item.name,
     character: character.name,
   });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
@@ -418,17 +573,37 @@ export async function addAbility(characterId: string, formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   const kindRaw = str(formData, "kind");
-  const kind = kindRaw === "spell" || kindRaw === "trait" ? kindRaw : "ability";
+  let kind: "spell" | "ability" | "trait" =
+    kindRaw === "spell" || kindRaw === "trait" ? kindRaw : "ability";
   const usesMax = int(formData, "usesMax");
   const abilityName = cap(name, 150);
+
+  // A line picked from the compendium keeps the index, so the sheet can link
+  // back to the full text instead of reprinting it. There is no homebrew spell
+  // library to reference — the SRD is the only source a spell can name.
+  let srdIndex: string | null = null;
+  let summary: string | null = null;
+  const pickedIndex = str(formData, "srdIndex");
+  if (pickedIndex) {
+    const { getSpell, spellSummary } = await import("@/lib/srd-data");
+    const spell = getSpell(pickedIndex);
+    if (spell) {
+      srdIndex = spell.index;
+      summary = spellSummary(spell);
+      // Whatever the dropdown said, a spell from the spell list is a spell.
+      kind = "spell";
+    }
+  }
+
   await db.insert(characterAbilities).values({
     id: nanoid(12),
     characterId,
     name: abilityName,
     kind,
-    notes: cap(str(formData, "notes"), 2_000) || null,
+    notes: cap(str(formData, "notes"), 2_000) || cap(summary ?? "", 2_000) || null,
     usesMax,
     usesLeft: usesMax,
+    srdIndex,
     createdAt: Date.now(),
   });
   await campaignLog(character.campaignId, user.id, "abilityAdded", {

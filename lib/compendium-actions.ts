@@ -65,6 +65,8 @@ export async function addSpellToCharacter(spellIndex: string, characterId: strin
     name: spell.name,
     kind: "spell",
     notes: spellSummary(spell),
+    // The sheet links back to the compendium entry rather than reprinting it.
+    srdIndex: spell.index,
     createdAt: Date.now(),
   });
   await campaignLog(character.campaignId, user.id, "spellAdded", {
@@ -80,7 +82,7 @@ export async function addSpellToCharacter(spellIndex: string, characterId: strin
 export async function addItemToCharacter(itemIndex: string, formData: FormData) {
   const user = await requireUser();
   // Lazy import keeps the SRD JSON out of the campaign/session chunks.
-  const { getItem, itemSummary } = await import("@/lib/srd-data");
+  const { getItem, itemSummary, srdItemSlot } = await import("@/lib/srd-data");
   const item = getItem(itemIndex);
   if (!item) return;
   const characterId = str(formData, "characterId");
@@ -101,6 +103,12 @@ export async function addItemToCharacter(itemIndex: string, formData: FormData) 
     name: item.name,
     qty,
     notes: itemSummary(item),
+    // The index is the link back to this page from the inventory row.
+    srdIndex: item.index,
+    // Nothing in the SRD carries a machine-readable bonus, so no snapshot
+    // travels with it — only a slot, and only where the category is
+    // unambiguous about where the thing goes.
+    slot: srdItemSlot(item),
     createdAt: Date.now(),
   });
   await campaignLog(character.campaignId, user.id, "srdItemAdded", {

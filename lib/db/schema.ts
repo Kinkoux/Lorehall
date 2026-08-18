@@ -151,12 +151,27 @@ export const WORLD_ITEM_CATEGORIES = [
 export type WorldItemCategory = (typeof WORLD_ITEM_CATEGORIES)[number];
 
 /**
- * Where a thing is worn — the set design-economy.md phase 3 names. NULL is
- * that document's "none": the item is carried, not equipped. Phase 3 adds the
- * matching `slot`/`equipped` columns on character_items; this column only
- * records what the item *could* fill.
+ * Where a thing is worn. Design-economy.md phase 3 named six; `neck` and
+ * `wrist` were added when the sheet grew its equipment panel, because an
+ * amulet and a bracer are the two pieces every table reaches for first. NULL
+ * is the document's "none": the item is carried, not equipped.
+ *
+ * The same set is the vocabulary on both sides — `world_items.slot` records
+ * what a library piece *could* fill, `character_items.slot` records where a
+ * particular copy actually sits. Both columns are plain TEXT in the database
+ * (no CHECK constraint), so widening this list needs no migration; the
+ * validated writers are what keep the values honest.
  */
-export const WORLD_ITEM_SLOTS = ["head", "armor", "hands", "ring", "boots", "weapon"] as const;
+export const WORLD_ITEM_SLOTS = [
+  "head",
+  "neck",
+  "armor",
+  "hands",
+  "wrist",
+  "ring",
+  "boots",
+  "weapon",
+] as const;
 export type WorldItemSlot = (typeof WORLD_ITEM_SLOTS)[number];
 
 /**
@@ -299,12 +314,24 @@ export const characterItems = pgTable("character_items", {
   qty: integer("qty").notNull().default(1),
   notes: text("notes"),
   // Where the line came from. The name and notes are still copied onto the row
-  // (a sheet reads on its own), but the reference lets a later wave read the
-  // source's slot and bonuses instead of freezing them here. Both NULL for a
+  // (a sheet reads on its own), but the reference is what the inventory links
+  // back to, and what a lost snapshot falls back on. Both NULL for a
   // hand-typed line; worldItemId goes back to NULL if the library entry is
   // deleted.
   worldItemId: text("world_item_id").references(() => worldItems.id),
   srdIndex: text("srd_index"),
+  // Equipment (docs/design-economy.md phase 3). `slot` is where this copy can
+  // be worn — one of WORLD_ITEM_SLOTS, NULL for something merely carried —
+  // and `equipped` is whether it is worn right now. At most one equipped row
+  // per (character, slot); the database is the arbiter, through the partial
+  // unique index `character_items_one_per_slot` in scripts/bootstrap-db.mjs.
+  slot: text("slot", { enum: WORLD_ITEM_SLOTS }),
+  equipped: integer("equipped").notNull().default(0),
+  // Snapshot of the source's bonuses in the same JSON shape world_items uses,
+  // taken when the line was stocked, so retuning a library entry does not
+  // silently restat every copy already in play. NULL falls back to the
+  // referenced world item, and a line with neither is simply flavour.
+  statBonuses: text("stat_bonuses"),
   createdAt: ms("created_at").notNull(),
 });
 
@@ -320,6 +347,11 @@ export const characterAbilities = pgTable("character_abilities", {
   notes: text("notes"),
   usesMax: integer("uses_max"),
   usesLeft: integer("uses_left"),
+  // The SRD spell this line was stamped from, when it came from the
+  // compendium — the sheet links back to the full text instead of reprinting
+  // it. NULL for a hand-typed spell, a class feature or a homebrew power;
+  // there is no homebrew spell library to reference.
+  srdIndex: text("srd_index"),
   createdAt: ms("created_at").notNull(),
 });
 

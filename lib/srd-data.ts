@@ -1,3 +1,4 @@
+import type { WorldItemSlot } from "@/lib/db/schema";
 import spellsJson from "@/lib/data/spells.json";
 import monstersJson from "@/lib/data/monsters.json";
 import monsterImagesJson from "@/lib/data/monster-images.json";
@@ -214,6 +215,21 @@ const ITEM_CATEGORY_LABELS: Record<ItemCategory, string> = {
   vehicle: "Mount or vehicle",
   magic: "Magic item",
 };
+
+/**
+ * Which equipment slot an SRD entry obviously belongs in — and only where it
+ * is obvious. The SRD has no slot field, so this reads the two groupings that
+ * leave no room for argument (a weapon is held, body armor is worn) plus the
+ * two sub-buckets that are equally plain: a shield goes in a hand, a ring on a
+ * finger. A potion, a coil of rope, a wondrous item: no guess, NULL, and the
+ * player names the slot themselves when they equip it.
+ */
+export function srdItemSlot(item: SrdItem): WorldItemSlot | null {
+  if (item.category === "weapon") return "weapon";
+  if (item.category === "armor") return item.sub === "Shield" ? "hands" : "armor";
+  if (item.category === "magic" && item.sub === "Ring") return "ring";
+  return null;
+}
 
 /** One-line summary used when adding an SRD item to a character's inventory. */
 export function itemSummary(item: SrdItem) {

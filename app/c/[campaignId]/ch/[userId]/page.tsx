@@ -7,10 +7,15 @@ import {
   characterAbilities,
   campaignMembers,
   users,
+  worldItems,
+  WORLD_ITEM_SLOTS,
   type Character,
+  type CharacterAbility,
+  type CharacterItem,
 } from "@/lib/db";
 import { ABILITIES, ABILITY_LABELS, fmt, hasScores, statBlock } from "@/lib/dnd";
 import { SKILLS } from "@/lib/srd";
+import { sumStatBonuses, type StatBonuses } from "@/lib/world-items";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import {
@@ -20,6 +25,7 @@ import {
   approveCharacter,
   deleteAbility,
   deleteItem,
+  equipItem,
   longRest,
   rejectCharacter,
   setCharacterStatus,
@@ -31,6 +37,8 @@ import { getT } from "@/lib/locale";
 import type { T } from "@/lib/i18n";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PortraitUploadForm } from "@/components/PortraitUploadForm";
+import { AutocompleteInput } from "@/components/character/AutocompleteInput";
+import { EquipmentPanel, type EquippedPiece } from "@/components/character/EquipmentPanel";
 import { IconMoon, IconSkull } from "@/components/Icons";
 import {
   BackLink,
@@ -50,6 +58,16 @@ const KIND_STYLES: Record<string, string> = {
   spell: "bg-sky-100 text-sky-900 border-sky-700/50",
   ability: "bg-amber-100 text-amber-900 border-amber-700/50",
   trait: "bg-purple-100 text-purple-900 border-purple-700/50",
+};
+
+/**
+ * An inventory row as this page reads it: the stored line plus the two things
+ * the join answered — what it grants (its own snapshot, or its source's) and
+ * which world the library entry lives in, for the link back.
+ */
+type InventoryLineShape = CharacterItem & {
+  bonuses: string | null;
+  sourceWorldId: string | null;
 };
 
 export default async function CharacterPage({
@@ -95,10 +113,13 @@ export default async function CharacterPage({
     visibleCharacters.find((c) => c.approval === "approved") ??
     visibleCharacters[0];
 
-  const items = character
+  // The library entry rides along so a line can still show its bonuses (and
+  // link home) when it was stocked before the snapshot columns existed.
+  const itemRows = character
     ? await db
-        .select()
+        .select({ item: characterItems, source: worldItems })
         .from(characterItems)
+        .leftJoin(worldItems, eq(characterItems.worldItemId, worldItems.id))
         .where(eq(characterItems.characterId, character.id))
         .orderBy(asc(characterItems.createdAt))
     : [];
@@ -109,6 +130,23 @@ export default async function CharacterPage({
         .where(eq(characterAbilities.characterId, character.id))
         .orderBy(asc(characterAbilities.createdAt))
     : [];
+
+  const items = itemRows.map(({ item, source }) => ({
+    ...item,
+    // The row's own snapshot is the truth; the library entry only answers for
+    // lines stocked before there was one to take.
+    bonuses: item.statBonuses ?? source?.statBonuses ?? null,
+    sourceWorldId: source?.worldId ?? null,
+  }));
+  const equipped: EquippedPiece[] = items.flatMap((item) =>
+    item.equipped === 1 && item.slot
+      ? [{ id: item.id, name: item.name, slot: item.slot, statBonuses: item.bonuses }]
+      : []
+  );
+  // Derived for display only — the stored scores stay the character's own.
+  const wornBonuses = sumStatBonuses(equipped.map((piece) => piece.statBonuses));
+  const acBonus = wornBonuses.ac ?? 0;
+  const hpBonus = wornBonuses.hp ?? 0;
 
   const ownerName = owner.displayName ?? owner.username;
 
@@ -206,15 +244,30 @@ export default async function CharacterPage({
                   </p>
                 </div>
               </div>
+              {/*
+                Both numbers read as the value that matters at the table — what
+                the character actually has right now — with the equipment's
+                share spelled out beside it so nobody wonders where it came from.
+              */}
               <div className="flex gap-2 font-mono text-sm font-bold">
                 {character.maxHp !== null && (
                   <span className="rounded-md border border-blood-500/50 bg-blood-500/10 px-3 py-1.5 text-blood-400">
-                    {character.maxHp} HP
+                    {character.maxHp + hpBonus} HP
+                    {hpBonus !== 0 && (
+                      <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
+                        ({fmt(hpBonus)})
+                      </span>
+                    )}
                   </span>
                 )}
                 {character.armorClass !== null && (
                   <span className="rounded-md border border-ink-600 px-3 py-1.5 text-parchment-300">
-                    AC {character.armorClass}
+                    AC {character.armorClass + acBonus}
+                    {acBonus !== 0 && (
+                      <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
+                        ({fmt(acBonus)})
+                      </span>
+                    )}
                   </span>
                 )}
               </div>
@@ -270,13 +323,18 @@ export default async function CharacterPage({
             )}
 
             {hasScores(character) ? (
-              <StatBlockCard character={character} t={t} />
+              <StatBlockCard character={character} bonuses={wornBonuses} t={t} />
             ) : (
               editable && (
                 <p className="mb-6 rounded-md border border-ink-700 bg-ink-900/60 px-3 py-2 text-xs text-parchment-500">
                   {t("character.sheet.fillScoresHint")}
                 </p>
               )
+            )}
+
+            {/* An all-empty doll is only worth drawing for someone who can fill it. */}
+            {(editable || equipped.length > 0) && (
+              <EquipmentPanel equipped={equipped} editable={editable} t={t} />
             )}
 
             <div className="grid gap-6 md:grid-cols-2">
@@ -288,36 +346,55 @@ export default async function CharacterPage({
                   )}
                   <ul className="divide-y divide-ink-700">
                     {items.map((item) => (
-                      <li key={item.id} className="flex items-center gap-2 py-2.5 first:pt-0 last:pb-0">
-                        <div className="flex-1">
-                          <p className="font-semibold text-parchment-100">
-                            {item.name}
-                            {item.qty > 1 && (
-                              <span className="ml-1.5 text-sm text-parchment-500">×{item.qty}</span>
+                      <li key={item.id} className="py-2.5 first:pt-0 last:pb-0">
+                        <div className="flex items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold text-parchment-100">
+                              <ItemName item={item} t={t} />
+                              {item.qty > 1 && (
+                                <span className="ml-1.5 text-sm text-parchment-500">
+                                  ×{item.qty}
+                                </span>
+                              )}
+                              {item.equipped === 1 && (
+                                <span className="ml-1.5 rounded-sm border border-gold-500/60 bg-gold-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300">
+                                  {t("character.equipment.worn")}
+                                </span>
+                              )}
+                            </p>
+                            {item.notes && (
+                              <p className="text-xs text-parchment-500">{item.notes}</p>
                             )}
-                          </p>
-                          {item.notes && <p className="text-xs text-parchment-500">{item.notes}</p>}
-                        </div>
-                        {editable && (
-                          <div className="flex items-center gap-1">
-                            <form action={adjustItemQty.bind(null, item.id, -1)}>
-                              <IconButton label="−" />
-                            </form>
-                            <form action={adjustItemQty.bind(null, item.id, 1)}>
-                              <IconButton label="+" />
-                            </form>
-                            <form action={deleteItem.bind(null, item.id)}>
-                              <IconButton label="✕" danger />
-                            </form>
                           </div>
-                        )}
+                          {editable && (
+                            <div className="flex items-center gap-1">
+                              <form action={adjustItemQty.bind(null, item.id, -1)}>
+                                <IconButton label="−" />
+                              </form>
+                              <form action={adjustItemQty.bind(null, item.id, 1)}>
+                                <IconButton label="+" />
+                              </form>
+                              <form action={deleteItem.bind(null, item.id)}>
+                                <IconButton label="✕" danger />
+                              </form>
+                            </div>
+                          )}
+                        </div>
+                        {editable && item.equipped === 0 && <EquipControl item={item} t={t} />}
                       </li>
                     ))}
                   </ul>
                   {editable && (
                     <form action={addItem.bind(null, character.id)} className="mt-4 space-y-2 border-t border-ink-700 pt-4">
                       <div className="flex gap-2">
-                        <Input name="name" required placeholder={t("character.sheet.itemNamePh")} />
+                        <AutocompleteInput
+                          characterId={character.id}
+                          kind="item"
+                          name="name"
+                          required
+                          locale={locale}
+                          placeholder={t("character.sheet.itemNamePh")}
+                        />
                         <Input name="qty" type="number" min={1} max={9999} defaultValue={1} className="!w-20" />
                       </div>
                       <Input name="notes" placeholder={t("character.sheet.notesOptionalPh")} />
@@ -353,7 +430,9 @@ export default async function CharacterPage({
                           >
                             {t(`character.sheet.kind.${ability.kind}`)}
                           </span>
-                          <p className="flex-1 font-semibold text-parchment-100">{ability.name}</p>
+                          <p className="min-w-0 flex-1 font-semibold text-parchment-100">
+                            <AbilityName ability={ability} t={t} />
+                          </p>
                           {ability.usesMax !== null && (
                             <span className="font-mono text-sm font-bold text-gold-300">
                               {ability.usesLeft}/{ability.usesMax}
@@ -387,7 +466,14 @@ export default async function CharacterPage({
                   {editable && (
                     <form action={addAbility.bind(null, character.id)} className="mt-4 space-y-2 border-t border-ink-700 pt-4">
                       <div className="flex gap-2">
-                        <Input name="name" required placeholder={t("character.sheet.abilityNamePh")} />
+                        <AutocompleteInput
+                          characterId={character.id}
+                          kind="spell"
+                          name="name"
+                          required
+                          locale={locale}
+                          placeholder={t("character.sheet.abilityNamePh")}
+                        />
                         <Select name="kind" className="!w-28">
                           <option value="spell">{t("character.sheet.kind.spell")}</option>
                           <option value="ability">{t("character.sheet.kind.ability")}</option>
@@ -420,21 +506,127 @@ export default async function CharacterPage({
   );
 }
 
-function StatBlockCard({ character, t }: { character: Character; t: T }) {
-  const stats = statBlock(character);
+/**
+ * The inventory line's name, which is a link whenever the row remembers where
+ * it came from: an SRD index opens the compendium entry, a library reference
+ * jumps to the card in the world's own forge. A hand-typed line is just a
+ * name, and stays plain text rather than pretending to lead somewhere.
+ */
+function ItemName({ item, t }: { item: InventoryLineShape; t: T }) {
+  const linkClass = "text-parchment-100 underline decoration-ink-600 underline-offset-2 transition hover:text-gold-300 hover:decoration-gold-500";
+  if (item.srdIndex) {
+    return (
+      <Link
+        href={`/compendium/items/${item.srdIndex}`}
+        title={t("character.sheet.openInCompendium")}
+        className={linkClass}
+      >
+        {item.name}
+      </Link>
+    );
+  }
+  if (item.worldItemId && item.sourceWorldId) {
+    return (
+      <Link
+        href={`/w/${item.sourceWorldId}#wi-${item.worldItemId}`}
+        title={t("character.sheet.openInLibrary")}
+        className={linkClass}
+      >
+        {item.name}
+      </Link>
+    );
+  }
+  return <>{item.name}</>;
+}
+
+/** Same rule for a spell line — the SRD is the only source one can name. */
+function AbilityName({ ability, t }: { ability: CharacterAbility; t: T }) {
+  if (!ability.srdIndex) return <>{ability.name}</>;
+  return (
+    <Link
+      href={`/compendium/spells/${ability.srdIndex}`}
+      title={t("character.sheet.openInCompendium")}
+      className="text-parchment-100 underline decoration-ink-600 underline-offset-2 transition hover:text-gold-300 hover:decoration-gold-500"
+    >
+      {ability.name}
+    </Link>
+  );
+}
+
+/**
+ * How a backpacked item gets worn. A piece that already knows its slot is one
+ * button; one that does not — a hand-typed heirloom, a wondrous item the SRD
+ * never placed — asks where it goes, and asks it folded away so twenty
+ * potions do not each carry a dropdown.
+ */
+function EquipControl({ item, t }: { item: InventoryLineShape; t: T }) {
+  if (item.slot) {
+    return (
+      <form action={equipItem.bind(null, item.id)} className="mt-1.5">
+        <GhostButton type="submit" className="!px-2 !py-1 text-xs">
+          {t("character.equipment.equip")} · {t(`world.items.slots.${item.slot}`)}
+        </GhostButton>
+      </form>
+    );
+  }
+  return (
+    <details className="mt-1.5">
+      <summary className="inline-block cursor-pointer text-xs font-bold text-parchment-500 transition hover:text-gold-300">
+        {t("character.equipment.equip")}
+      </summary>
+      <form action={equipItem.bind(null, item.id)} className="mt-1.5 flex items-center gap-2">
+        <Select
+          name="slot"
+          aria-label={t("character.equipment.slotLabel")}
+          className="!w-32 !py-1 text-xs"
+        >
+          {WORLD_ITEM_SLOTS.map((slot) => (
+            <option key={slot} value={slot}>
+              {t(`world.items.slots.${slot}`)}
+            </option>
+          ))}
+        </Select>
+        <GhostButton type="submit" className="!px-2 !py-1 text-xs">
+          {t("character.equipment.equip")}
+        </GhostButton>
+      </form>
+    </details>
+  );
+}
+
+function StatBlockCard({
+  character,
+  bonuses,
+  t,
+}: {
+  character: Character;
+  bonuses: StatBonuses;
+  t: T;
+}) {
+  const stats = statBlock(character, bonuses);
   return (
     <Card className="mb-6">
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
         {stats.abilities.map((ability) => (
           <div
             key={ability.key}
-            className="rounded-md border border-ink-700 bg-ink-950/60 px-2 py-2 text-center"
+            className={`rounded-md border bg-ink-950/60 px-2 py-2 text-center ${
+              ability.bonus !== 0 ? "border-gold-500/50" : "border-ink-700"
+            }`}
           >
             <p className="text-[10px] font-bold uppercase tracking-wide text-parchment-500">
               {ability.label}
             </p>
+            {/* The modifier is the number in play, so it is the one folded. */}
             <p className="font-display text-xl font-bold text-parchment-100">{fmt(ability.mod)}</p>
-            <p className="text-[11px] text-parchment-500">{ability.score}</p>
+            <p className="text-[11px] text-parchment-500">
+              {ability.score}
+              {ability.bonus !== 0 && (
+                <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
+                  {fmt(ability.bonus)}
+                </span>
+              )}
+            </p>
           </div>
         ))}
       </div>

@@ -316,6 +316,115 @@ export function SchoolSigil({ school, ...props }: IconProps & { school: string }
   return <Sigil {...props} />;
 }
 
+// ---------- equipment slot marks ----------
+
+/**
+ * One mark per slot in WORLD_ITEM_SLOTS, drawn to read at 22px in the sheet's
+ * equipment grid: the *piece* rather than the body part, so an empty slot
+ * still says what belongs there.
+ */
+
+/** Circlet — a band with a set stone. */
+export function IconSlotHead(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 13a8 8 0 0 1 16 0" />
+      <path d="M4 13c2.5 1.6 5.2 2.4 8 2.4s5.5-.8 8-2.4" />
+      <path d="M12 6.5l2 2.5-2 2.5-2-2.5 2-2.5z" />
+    </Svg>
+  );
+}
+
+/** Amulet — a cord and a pendant. */
+export function IconSlotNeck(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 4c0 5.5 3.1 9 7 9s7-3.5 7-9" />
+      <path d="M12 13l2.6 3.2-2.6 3.3-2.6-3.3L12 13z" />
+    </Svg>
+  );
+}
+
+/** Cuirass — a breastplate with shoulder line. */
+export function IconSlotArmor(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M8 3.5L12 6l4-2.5 3.5 2v6c0 5-3.2 8.4-7.5 10-4.3-1.6-7.5-5-7.5-10v-6l3.5-2z" />
+      <path d="M12 6v14M6 10.5h12" />
+    </Svg>
+  );
+}
+
+/** Gauntlet — cuff and fingers. */
+export function IconSlotHands(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 20v-6.5a2 2 0 0 1 4 0V5.5a1.6 1.6 0 0 1 3.2 0V13" />
+      <path d="M14.2 9.8a1.5 1.5 0 0 1 3 0V15a5 5 0 0 1-5 5H7" />
+      <path d="M7 16.5h4" />
+    </Svg>
+  );
+}
+
+/** Bracer — a forearm band with two straps. */
+export function IconSlotWrist(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7.5 4.5h9l-1.2 15H8.7L7.5 4.5z" />
+      <path d="M7.9 9.5h8.2M8.3 14.5h7.4" />
+    </Svg>
+  );
+}
+
+/** Ring — a band seen face-on, with its stone. */
+export function IconSlotRing(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="14" r="6" />
+      <circle cx="12" cy="14" r="3" />
+      <path d="M9.6 8.5L11 4h2l1.4 4.5" />
+    </Svg>
+  );
+}
+
+/** Boot — shaft, ankle and sole. */
+export function IconSlotBoots(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 3.5h5v9l6 3.2a2.5 2.5 0 0 1 1.3 2.2v2.6H7V3.5z" />
+      <path d="M7 8.5h5M4.5 20.5h15" />
+    </Svg>
+  );
+}
+
+/** Sword — blade, guard and pommel. */
+export function IconSlotWeapon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14.5 2.5l4 4-9 9-4-4 9-9z" />
+      <path d="M5.5 11.5l-2 2 4.5 4.5 2-2" />
+      <path d="M4.8 16.2L2.5 21.5l5.3-2.3" />
+    </Svg>
+  );
+}
+
+const SLOT_ICONS: Record<string, (props: IconProps) => React.ReactElement> = {
+  head: IconSlotHead,
+  neck: IconSlotNeck,
+  armor: IconSlotArmor,
+  hands: IconSlotHands,
+  wrist: IconSlotWrist,
+  ring: IconSlotRing,
+  boots: IconSlotBoots,
+  weapon: IconSlotWeapon,
+};
+
+/** Slot mark for an equipment square (`head`, `neck`, `armor`, …). */
+export function SlotIcon({ slot, ...props }: IconProps & { slot: string }) {
+  const Mark = SLOT_ICONS[slot] ?? IconChest;
+  return <Mark {...props} />;
+}
+
 // ---------- item category marks ----------
 
 const ITEM_ICONS: Record<string, (props: IconProps) => React.ReactElement> = {

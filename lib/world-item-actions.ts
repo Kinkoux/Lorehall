@@ -9,7 +9,6 @@ import {
   characterItems,
   worldItems,
   WORLD_ITEM_CATEGORIES,
-  WORLD_ITEM_SLOTS,
   WORLD_ITEM_STATS,
   type WorldItemCategory,
   type WorldItemSlot,
@@ -19,7 +18,12 @@ import { getCampaignAccess, hasDmPowers } from "@/lib/perms";
 import { campaignLog } from "@/lib/campaign-log";
 import { getT } from "@/lib/locale";
 import { deleteItemFile, putItemFile } from "@/lib/storage";
-import { STAT_BONUS_MAX, STAT_BONUS_MIN, type StatBonuses } from "@/lib/world-items";
+import {
+  readSlotName,
+  STAT_BONUS_MAX,
+  STAT_BONUS_MIN,
+  type StatBonuses,
+} from "@/lib/world-items";
 import type { T } from "@/lib/i18n";
 import type { FormState } from "@/lib/actions";
 
@@ -62,8 +66,7 @@ function readCategory(formData: FormData): WorldItemCategory {
 
 /** Blank (and anything unrecognised) means "carried, not worn". */
 function readSlot(formData: FormData): WorldItemSlot | null {
-  const raw = str(formData, "slot");
-  return (WORLD_ITEM_SLOTS as readonly string[]).includes(raw) ? (raw as WorldItemSlot) : null;
+  return readSlotName(str(formData, "slot"));
 }
 
 /**
@@ -231,9 +234,13 @@ export async function deleteWorldItem(itemId: string) {
 
 /**
  * Stamp a library entry into a character's inventory — the world-item twin of
- * the compendium's "add to my sheet". Name and description are copied onto the
- * row so the sheet reads on its own; the reference is what phase 3 will follow
- * back for slot and bonuses.
+ * the compendium's "add to my sheet". Name, description, slot and bonuses are
+ * all copied onto the row so the sheet reads (and equips) on its own; the
+ * reference is kept alongside them, for the link back to the library and as
+ * the fallback for rows stocked before the snapshot columns existed.
+ *
+ * The snapshot is the point: re-forging "Emberfang Dagger" into a +3 blade
+ * next month does not silently restat the copy already on someone's belt.
  */
 export async function addWorldItemToCharacter(itemId: string, formData: FormData) {
   const user = await requireUser();
@@ -264,6 +271,10 @@ export async function addWorldItemToCharacter(itemId: string, formData: FormData
     qty,
     notes: item.description,
     worldItemId: item.id,
+    slot: item.slot,
+    statBonuses: item.statBonuses,
+    // Stocked into the pack, not onto the body — worn is always a deliberate act.
+    equipped: 0,
     createdAt: Date.now(),
   });
   await campaignLog(character.campaignId, user.id, "worldItemAdded", {
