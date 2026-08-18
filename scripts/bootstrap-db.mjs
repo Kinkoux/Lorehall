@@ -252,6 +252,14 @@ ALTER TABLE story_beats ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'sce
 -- explicit combat phase (2026-08-18): a live session is not automatically a
 -- fight; rounds only advance between start and end of combat.
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS combat_active INTEGER NOT NULL DEFAULT 0;
+-- duplicate-click protection (2026-08-18): the DB is the arbiter, not the UI.
+-- A player holds at most one combatant row per session, and a campaign has at
+-- most one live session; the racing insert loses with SQLSTATE 23505 and the
+-- action swallows it. NOTE: if either index fails to create, existing rows
+-- already violate it — close the older duplicate live sessions (or delete the
+-- duplicate combatant rows) before re-running.
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_combatant_player ON combatants(session_id, user_id) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uniq_live_session ON sessions(campaign_id) WHERE status = 'live';
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

@@ -30,6 +30,8 @@ export async function GET(
   const headers: Record<string, string> = {
     "Content-Type": map.mimeType,
     "Cache-Control": "private, max-age=31536000, immutable",
+    // Never let a browser re-interpret an upload as HTML/script.
+    "X-Content-Type-Options": "nosniff",
   };
   if (file.contentLength) headers["Content-Length"] = file.contentLength;
   return new Response(file.body as BodyInit, { headers });

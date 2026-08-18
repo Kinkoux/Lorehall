@@ -26,6 +26,13 @@ function int(formData: FormData, key: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Server-side length ceiling — the client's maxlength is a suggestion. */
+const cap = (s: string, n: number) => s.slice(0, n);
+
+/** Clamp an optional number into range; a blank field stays blank. */
+const clampOpt = (n: number | null, min: number, max: number) =>
+  n === null ? null : Math.min(Math.max(n, min), max);
+
 /** Owner of the sheet or the campaign's DM may edit it. */
 async function canEditSheet(campaignId: string, sheetUserId: string, actorId: string) {
   if (sheetUserId === actorId) {
@@ -58,14 +65,14 @@ export async function createCharacter(formData: FormData) {
     id,
     campaignId,
     userId: user.id,
-    name,
+    name: cap(name, 150),
     approval: existing.length === 0 ? "approved" : "pending",
     updatedAt: Date.now(),
   });
   if (existing.length === 0) {
     await db
       .update(campaignMembers)
-      .set({ characterName: name })
+      .set({ characterName: cap(name, 150) })
       .where(
         and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id))
       );
@@ -141,12 +148,12 @@ export async function upsertCharacter(
       .filter((v): v is string => typeof v === "string")
       .join(",") || null;
   const values = {
-    name,
-    klass: str(formData, "klass") || null,
-    race: str(formData, "race") || null,
+    name: cap(name, 150),
+    klass: cap(str(formData, "klass"), 80) || null,
+    race: cap(str(formData, "race"), 80) || null,
     level: Math.min(Math.max(int(formData, "level") ?? 1, 1), 30),
-    maxHp: int(formData, "maxHp"),
-    armorClass: int(formData, "armorClass"),
+    maxHp: clampOpt(int(formData, "maxHp"), 0, 9999),
+    armorClass: clampOpt(int(formData, "armorClass"), 0, 40),
     str: score("str"),
     dex: score("dex"),
     con: score("con"),
@@ -155,7 +162,7 @@ export async function upsertCharacter(
     cha: score("cha"),
     profSkills: checkboxList("profSkills"),
     profSaves: checkboxList("profSaves"),
-    notes: str(formData, "notes") || null,
+    notes: cap(str(formData, "notes"), 20_000) || null,
     updatedAt: Date.now(),
   };
 
@@ -172,20 +179,31 @@ export async function upsertCharacter(
     : await db.query.characters.findFirst({
         where: and(eq(characters.campaignId, campaignId), eq(characters.userId, sheetUserId)),
       });
+  // characterId comes from the form and is forgeable: when it names a sheet
+  // outside this campaign/user the scoped lookup finds nothing, and the
+  // request is refused rather than quietly creating a fresh sheet.
+  if (characterId && !existing) return;
+
   if (existing) {
     await db.update(characters).set(values).where(eq(characters.id, existing.id));
   } else {
+    // First sheet in the campaign goes live; any extra waits for the DM.
+    const mine = await db
+      .select({ id: characters.id })
+      .from(characters)
+      .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, sheetUserId)));
     await db.insert(characters).values({
       id: nanoid(12),
       campaignId,
       userId: sheetUserId,
       ...values,
+      approval: mine.length === 0 ? "approved" : "pending",
     });
   }
   // Keep the party list's shorthand name in sync with the sheet.
   await db
     .update(campaignMembers)
-    .set({ characterName: name })
+    .set({ characterName: values.name })
     .where(
       and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, sheetUserId))
     );
@@ -213,9 +231,9 @@ export async function addItem(characterId: string, formData: FormData) {
   await db.insert(characterItems).values({
     id: nanoid(12),
     characterId,
-    name,
+    name: cap(name, 150),
     qty: Math.min(Math.max(int(formData, "qty") ?? 1, 1), 9999),
-    notes: str(formData, "notes") || null,
+    notes: cap(str(formData, "notes"), 2_000) || null,
     createdAt: Date.now(),
   });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
@@ -260,9 +278,9 @@ export async function addAbility(characterId: string, formData: FormData) {
   await db.insert(characterAbilities).values({
     id: nanoid(12),
     characterId,
-    name,
+    name: cap(name, 150),
     kind,
-    notes: str(formData, "notes") || null,
+    notes: cap(str(formData, "notes"), 2_000) || null,
     usesMax,
     usesLeft: usesMax,
     createdAt: Date.now(),

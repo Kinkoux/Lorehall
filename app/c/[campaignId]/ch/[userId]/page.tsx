@@ -5,6 +5,7 @@ import {
   characters,
   characterItems,
   characterAbilities,
+  campaignMembers,
   users,
   type Character,
 } from "@/lib/db";
@@ -64,6 +65,17 @@ export default async function CharacterPage({
   if (!access?.canView) notFound();
   const owner = await db.query.users.findFirst({ where: eq(users.id, userId) });
   if (!owner) notFound();
+  // The sheet route is campaign-scoped: any user id would otherwise render a
+  // page naming a stranger who has nothing to do with this table.
+  if (userId !== access.campaign.dmUserId) {
+    const atThisTable = await db.query.campaignMembers.findFirst({
+      where: and(
+        eq(campaignMembers.campaignId, campaignId),
+        eq(campaignMembers.userId, userId)
+      ),
+    });
+    if (!atThisTable) notFound();
+  }
 
   const editable = viewer.id === userId || access.isDm;
   const allCharacters = await db

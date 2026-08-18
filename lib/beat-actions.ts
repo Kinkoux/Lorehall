@@ -12,6 +12,9 @@ function str(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Server-side length ceiling — the client's maxlength is a suggestion. */
+const cap = (s: string, n: number) => s.slice(0, n);
+
 async function requireDm(campaignId: string, userId: string) {
   const access = await getCampaignAccess(campaignId, userId);
   return access?.isDm ? access : null;
@@ -55,7 +58,7 @@ export async function addChapter(campaignId: string, formData: FormData) {
   await db.insert(storyChapters).values({
     id: nanoid(12),
     campaignId,
-    title,
+    title: cap(title, 150),
     position,
     createdAt: Date.now(),
   });
@@ -71,7 +74,10 @@ export async function renameChapter(chapterId: string, formData: FormData) {
   if (!(await requireDm(chapter.campaignId, user.id))) return;
   const title = str(formData, "title");
   if (!title) return;
-  await db.update(storyChapters).set({ title }).where(eq(storyChapters.id, chapterId));
+  await db
+    .update(storyChapters)
+    .set({ title: cap(title, 150) })
+    .where(eq(storyChapters.id, chapterId));
   revalidatePath(`/c/${chapter.campaignId}`);
 }
 
@@ -106,9 +112,9 @@ export async function addBeat(campaignId: string, formData: FormData) {
     id: nanoid(12),
     campaignId,
     chapterId: await resolveChapterId(campaignId, str(formData, "chapterId")),
-    title,
-    narrative: str(formData, "narrative") || null,
-    rollNote: str(formData, "rollNote") || null,
+    title: cap(title, 150),
+    narrative: cap(str(formData, "narrative"), 20_000) || null,
+    rollNote: cap(str(formData, "rollNote"), 300) || null,
     kind: str(formData, "kind") === "plot" ? "plot" : "scene",
     position,
     createdAt: Date.now(),

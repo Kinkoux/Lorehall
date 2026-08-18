@@ -29,6 +29,9 @@ function str(formData: FormData, key: string) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/** Server-side length ceiling — the client's maxlength is a suggestion. */
+const cap = (s: string, n: number) => s.slice(0, n);
+
 // ---------- auth ----------
 
 export async function register(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -50,7 +53,7 @@ export async function register(_prev: FormState, formData: FormData): Promise<Fo
   await db.insert(users).values({
     id,
     username,
-    displayName: displayName || username,
+    displayName: cap(displayName, 80) || username,
     passwordHash: bcrypt.hashSync(password, 10),
     createdAt: Date.now(),
   });
@@ -84,8 +87,8 @@ export async function createWorld(formData: FormData) {
   const now = Date.now();
   await db.insert(worlds).values({
     id,
-    name,
-    description: str(formData, "description") || null,
+    name: cap(name, 150),
+    description: cap(str(formData, "description"), 5_000) || null,
     ownerId: user.id,
     createdAt: now,
   });
@@ -95,6 +98,7 @@ export async function createWorld(formData: FormData) {
     role: "owner",
     joinedAt: now,
   });
+  revalidatePath("/dashboard");
   redirect(`/w/${id}`);
 }
 
@@ -102,8 +106,14 @@ export async function createWorld(formData: FormData) {
 
 export async function createCampaign(worldId: string, formData: FormData) {
   const user = await requireUser();
-  const membership = await getWorldMembership(worldId, user.id);
-  if (!membership) return;
+  // Only the world's owner may open a table in it. A 6-char join code lets
+  // anyone into a world as a member; if members could create campaigns they
+  // would become DM of one, and a campaign DM holds world-wide DM powers
+  // (hasDmPowers) — dm-only codex included. Multi-DM worlds will be an
+  // explicit grant from the owner, never a side effect of joining.
+  const world = await db.query.worlds.findFirst({ where: eq(worlds.id, worldId) });
+  if (!world) return;
+  if (world.ownerId !== user.id) return;
   const name = str(formData, "name");
   if (!name) return;
   const id = nanoid(12);
@@ -111,8 +121,8 @@ export async function createCampaign(worldId: string, formData: FormData) {
   await db.insert(campaigns).values({
     id,
     worldId,
-    name,
-    description: str(formData, "description") || null,
+    name: cap(name, 150),
+    description: cap(str(formData, "description"), 5_000) || null,
     dmUserId: user.id,
     joinCode: joinCodeAlphabet(),
     createdAt: now,
@@ -151,6 +161,7 @@ export async function joinCampaign(_prev: FormState, formData: FormData): Promis
       joinedAt: now,
     });
   }
+  revalidatePath("/dashboard");
   redirect(`/c/${campaign.id}`);
 }
 
@@ -158,7 +169,7 @@ export async function setCharacterName(campaignId: string, formData: FormData) {
   const user = await requireUser();
   await db
     .update(campaignMembers)
-    .set({ characterName: str(formData, "characterName") || null })
+    .set({ characterName: cap(str(formData, "characterName"), 150) || null })
     .where(and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id)));
   revalidatePath(`/c/${campaignId}`);
 }
@@ -191,8 +202,8 @@ export async function createCodexEntry(worldId: string, _prev: FormState, formDa
     id,
     worldId,
     type,
-    title,
-    body: str(formData, "body"),
+    title: cap(title, 150),
+    body: cap(str(formData, "body"), 50_000),
     visibility,
     createdBy: user.id,
     createdAt: now,
@@ -219,9 +230,16 @@ export async function updateCodexEntry(entryId: string, _prev: FormState, formDa
 
   await db
     .update(codexEntries)
-    .set({ type, title, body: str(formData, "body"), visibility, updatedAt: Date.now() })
+    .set({
+      type,
+      title: cap(title, 150),
+      body: cap(str(formData, "body"), 50_000),
+      visibility,
+      updatedAt: Date.now(),
+    })
     .where(eq(codexEntries.id, entryId));
   revalidatePath(`/w/${entry.worldId}/codex/${entryId}`);
+  revalidatePath(`/w/${entry.worldId}`);
   redirect(`/w/${entry.worldId}/codex/${entryId}`);
 }
 
@@ -231,5 +249,6 @@ export async function deleteCodexEntry(entryId: string) {
   if (!entry) return;
   if (!(await canEditEntry(entry, user.id))) return;
   await db.delete(codexEntries).where(eq(codexEntries.id, entryId));
+  revalidatePath(`/w/${entry.worldId}`);
   redirect(`/w/${entry.worldId}`);
 }

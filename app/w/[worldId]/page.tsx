@@ -140,21 +140,25 @@ export default async function WorldPage({
               </Link>
             ))}
 
-            <Card>
-              <h3 className="mb-1 font-display text-base text-gold-300">{t("world.campaigns.startTitle")}</h3>
-              <p className="mb-3 text-xs text-parchment-500">{t("world.campaigns.startHint")}</p>
-              <form action={createCampaign.bind(null, worldId)} className="space-y-3">
-                <label className="block">
-                  <Label>{t("world.campaigns.nameLabel")}</Label>
-                  <Input name="name" required placeholder={t("world.campaigns.namePlaceholder")} />
-                </label>
-                <label className="block">
-                  <Label>{t("world.campaigns.descLabel")}</Label>
-                  <Textarea name="description" rows={2} placeholder={t("world.campaigns.descPlaceholder")} />
-                </label>
-                <Button type="submit">{t("world.campaigns.create")}</Button>
-              </form>
-            </Card>
+            {/* Only the world's owner opens new tables here — mirrors the
+                owner check in createCampaign. */}
+            {world.ownerId === user.id && (
+              <Card>
+                <h3 className="mb-1 font-display text-base text-gold-300">{t("world.campaigns.startTitle")}</h3>
+                <p className="mb-3 text-xs text-parchment-500">{t("world.campaigns.startHint")}</p>
+                <form action={createCampaign.bind(null, worldId)} className="space-y-3">
+                  <label className="block">
+                    <Label>{t("world.campaigns.nameLabel")}</Label>
+                    <Input name="name" required placeholder={t("world.campaigns.namePlaceholder")} />
+                  </label>
+                  <label className="block">
+                    <Label>{t("world.campaigns.descLabel")}</Label>
+                    <Textarea name="description" rows={2} placeholder={t("world.campaigns.descPlaceholder")} />
+                  </label>
+                  <Button type="submit">{t("world.campaigns.create")}</Button>
+                </form>
+              </Card>
+            )}
           </section>
         </div>
       </main>

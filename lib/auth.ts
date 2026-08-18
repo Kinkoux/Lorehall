@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { SignJWT, jwtVerify } from "jose";
@@ -8,13 +9,20 @@ import { db, users, type User } from "@/lib/db";
 const COOKIE_NAME = "dnd_session";
 const SESSION_DAYS = 30;
 
+/**
+ * Fallback for local dev with no AUTH_SECRET. Random per process, so a
+ * published or leaked constant can never mint a valid session; the cost is
+ * that dev logins don't survive a server restart.
+ */
+const devSecret = new Uint8Array(randomBytes(32));
+
 function secretKey() {
   const secret = process.env.AUTH_SECRET;
   if (!secret) {
     if (process.env.NODE_ENV === "production") {
       throw new Error("AUTH_SECRET is not set");
     }
-    return new TextEncoder().encode("dev-only-insecure-secret");
+    return devSecret;
   }
   return new TextEncoder().encode(secret);
 }

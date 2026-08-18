@@ -486,7 +486,7 @@ export default async function SessionPage({
               )}
               <ul className="max-h-96 space-y-1 overflow-y-auto pr-1">
                 {events.map(({ event, user: actor }, index) => {
-                  const rendered = renderEventMessage(event.message, t);
+                  const rendered = renderEventMessage(event.message, t, event.kind);
 
                   if (rendered.key === "roundBegins") {
                     return (

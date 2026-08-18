@@ -31,6 +31,12 @@ function int(formData: FormData, key: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Server-side length ceiling — the client's maxlength is a suggestion. */
+const cap = (s: string, n: number) => s.slice(0, n);
+
+/** Postgres unique_violation — a double-click losing the race, not a bug. */
+const isUniqueViolation = (e: unknown) => (e as { code?: string }).code === "23505";
+
 async function logEvent(
   sessionId: string,
   kind: "roll" | "join" | "system" | "note",
@@ -99,12 +105,25 @@ export async function startSession(campaignId: string, formData: FormData) {
     .from(gameSessions)
     .where(eq(gameSessions.campaignId, campaignId));
   const { t } = await getT();
-  await db.insert(gameSessions).values({
-    id,
-    campaignId,
-    title: str(formData, "title") || t("campaign.start.placeholder", { n: count.length + 1 }),
-    startedAt: Date.now(),
-  });
+  try {
+    await db.insert(gameSessions).values({
+      id,
+      campaignId,
+      title:
+        cap(str(formData, "title"), 150) ||
+        t("campaign.start.placeholder", { n: count.length + 1 }),
+      startedAt: Date.now(),
+    });
+  } catch (e) {
+    // A second click raced the first: uniq_live_session rejected this row, so
+    // the session the winner opened is the one to walk into.
+    if (!isUniqueViolation(e)) throw e;
+    const live = await db.query.gameSessions.findFirst({
+      where: and(eq(gameSessions.campaignId, campaignId), eq(gameSessions.status, "live")),
+    });
+    if (live) redirect(`/s/${live.id}`);
+    return;
+  }
   await logEvent(id, "system", logMessage("sessionBegins"));
   redirect(`/s/${id}`);
 }
@@ -119,10 +138,11 @@ export async function endSession(sessionId: string, formData: FormData) {
     .set({
       status: "ended",
       endedAt: Date.now(),
-      recap: str(formData, "recap") || null,
+      recap: cap(str(formData, "recap"), 20_000) || null,
     })
     .where(eq(gameSessions.id, sessionId));
   await logEvent(sessionId, "system", logMessage("sessionEnds"));
+  revalidatePath(`/c/${ctx.session.campaignId}`);
   redirect(`/c/${ctx.session.campaignId}`);
 }
 
@@ -136,9 +156,10 @@ export async function saveRecap(sessionId: string, formData: FormData) {
   if (!access?.isDm) return;
   await db
     .update(gameSessions)
-    .set({ recap: str(formData, "recap") || null })
+    .set({ recap: cap(str(formData, "recap"), 20_000) || null })
     .where(eq(gameSessions.id, sessionId));
   revalidatePath(`/s/${sessionId}`);
+  revalidatePath(`/c/${session.campaignId}`);
 }
 
 // ---------- initiative ----------
@@ -154,13 +175,14 @@ export async function addCombatant(sessionId: string, _prev: FormState, formData
   if (!name) return { error: t("errors.session.nameRequired") };
   if (initiative === null) return { error: t("errors.session.initiativeRequired") };
 
-  const maxHp = int(formData, "maxHp");
+  const rawMaxHp = int(formData, "maxHp");
+  const maxHp = rawMaxHp === null ? null : Math.min(Math.max(rawMaxHp, 0), 9999);
   const id = nanoid(12);
   await db.insert(combatants).values({
     id,
     sessionId,
-    name,
-    initiative,
+    name: cap(name, 150),
+    initiative: Math.min(Math.max(initiative, -10), 50),
     maxHp,
     hp: maxHp,
     createdAt: Date.now(),
@@ -206,22 +228,30 @@ export async function joinInitiative(sessionId: string, formData: FormData) {
   const manual = int(formData, "initiative");
   const roll =
     manual !== null ? Math.max(-10, Math.min(50, manual)) : randomInt(1, 21) + dexMod;
-  const name =
+  const name = cap(
     character?.name ||
-    ctx.access.membership?.characterName ||
-    user.displayName ||
-    user.username;
+      ctx.access.membership?.characterName ||
+      user.displayName ||
+      user.username,
+    150
+  );
   const id = nanoid(12);
-  await db.insert(combatants).values({
-    id,
-    sessionId,
-    name,
-    initiative: roll,
-    maxHp: character?.maxHp ?? null,
-    hp: character?.maxHp ?? null,
-    userId: user.id,
-    createdAt: Date.now(),
-  });
+  try {
+    await db.insert(combatants).values({
+      id,
+      sessionId,
+      name,
+      initiative: roll,
+      maxHp: character?.maxHp ?? null,
+      hp: character?.maxHp ?? null,
+      userId: user.id,
+      createdAt: Date.now(),
+    });
+  } catch (e) {
+    // Double-click: uniq_combatant_player already holds this player's row.
+    if (!isUniqueViolation(e)) throw e;
+    return;
+  }
   await bumpTurnIndexFor(sessionId, id, ctx.session.turnIndex);
   const src = manual !== null ? "srcManual" : dexMod !== 0 ? "srcAppDex" : "srcApp";
   await logEvent(
@@ -246,14 +276,14 @@ export async function addTableNote(sessionId: string, formData: FormData) {
   const text = str(formData, "note");
   if (!text) return;
   // Author renders from the joined users row; store only the note itself.
-  await logEvent(sessionId, "note", text, user.id);
+  await logEvent(sessionId, "note", cap(text, 500), user.id);
   revalidatePath(`/s/${sessionId}`);
 }
 
 export async function removeCombatant(sessionId: string, combatantId: string) {
   const user = await requireUser();
   const ctx = await requireLiveSession(sessionId, user.id);
-  if (!ctx?.access.isDm) return;
+  if (!ctx?.access.isDm || ctx.session.status !== "live") return;
 
   const order = await getTurnOrder(sessionId);
   const removedIndex = order.findIndex((c) => c.id === combatantId);
@@ -274,15 +304,19 @@ export async function removeCombatant(sessionId: string, combatantId: string) {
 export async function adjustHp(sessionId: string, combatantId: string, formData: FormData) {
   const user = await requireUser();
   const ctx = await requireLiveSession(sessionId, user.id);
-  if (!ctx?.access.isDm) return;
+  if (!ctx?.access.isDm || ctx.session.status !== "live") return;
 
-  const combatant = await db.query.combatants.findFirst({ where: eq(combatants.id, combatantId) });
+  // Scoped to this session: a combatantId from another table is not the DM's
+  // to touch just because they run this one.
+  const combatant = await db.query.combatants.findFirst({
+    where: and(eq(combatants.id, combatantId), eq(combatants.sessionId, sessionId)),
+  });
   if (!combatant || combatant.hp === null) return;
 
   const amount = int(formData, "amount");
   if (amount === null || amount < 0) return;
   const op = str(formData, "op");
-  const cap = combatant.maxHp ?? Number.MAX_SAFE_INTEGER;
+  const hpCap = combatant.maxHp ?? Number.MAX_SAFE_INTEGER;
 
   if (op === "temp") {
     // Temp HP doesn't stack — the new pool replaces the old one.
@@ -291,7 +325,7 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
       await logEvent(sessionId, "system", logMessage("gainsTemp", { name: combatant.name, n: amount }));
     }
   } else if (op === "heal") {
-    const hp = Math.max(0, Math.min(cap, combatant.hp + amount));
+    const hp = Math.max(0, Math.min(hpCap, combatant.hp + amount));
     const revived = combatant.hp === 0 && hp > 0;
     await db
       .update(combatants)
@@ -340,7 +374,9 @@ export async function recordDeathSave(
   const ctx = await requireLiveSession(sessionId, user.id);
   if (!ctx || ctx.session.status !== "live") return;
 
-  const combatant = await db.query.combatants.findFirst({ where: eq(combatants.id, combatantId) });
+  const combatant = await db.query.combatants.findFirst({
+    where: and(eq(combatants.id, combatantId), eq(combatants.sessionId, sessionId)),
+  });
   if (!combatant) return;
   if (!ctx.access.isDm && combatant.userId !== user.id) return;
 
@@ -368,11 +404,11 @@ export async function recordDeathSave(
 export async function setConditions(sessionId: string, combatantId: string, formData: FormData) {
   const user = await requireUser();
   const ctx = await requireLiveSession(sessionId, user.id);
-  if (!ctx?.access.isDm) return;
+  if (!ctx?.access.isDm || ctx.session.status !== "live") return;
   await db
     .update(combatants)
-    .set({ conditions: str(formData, "conditions") || null })
-    .where(eq(combatants.id, combatantId));
+    .set({ conditions: cap(str(formData, "conditions"), 200) || null })
+    .where(and(eq(combatants.id, combatantId), eq(combatants.sessionId, sessionId)));
   revalidatePath(`/s/${sessionId}`);
 }
 

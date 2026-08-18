@@ -19,6 +19,9 @@ function int(formData: FormData, key: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Server-side length ceiling — the client's maxlength is a suggestion. */
+const cap = (s: string, n: number) => s.slice(0, n);
+
 // ---------- quest log (DM manages, everyone reads) ----------
 
 export async function addQuest(campaignId: string, formData: FormData) {
@@ -30,8 +33,8 @@ export async function addQuest(campaignId: string, formData: FormData) {
   await db.insert(quests).values({
     id: nanoid(12),
     campaignId,
-    title,
-    description: str(formData, "description") || null,
+    title: cap(title, 150),
+    description: cap(str(formData, "description"), 5_000) || null,
     createdAt: Date.now(),
   });
   revalidatePath(`/c/${campaignId}`);
@@ -70,7 +73,7 @@ export async function addLedgerEntry(campaignId: string, formData: FormData) {
     id: nanoid(12),
     campaignId,
     amount: Math.max(-1_000_000, Math.min(1_000_000, amount)),
-    reason,
+    reason: cap(reason, 200),
     userId: user.id,
     createdAt: Date.now(),
   });
@@ -86,9 +89,9 @@ export async function addPartyItem(campaignId: string, formData: FormData) {
   await db.insert(partyItems).values({
     id: nanoid(12),
     campaignId,
-    name,
+    name: cap(name, 200),
     qty: Math.min(Math.max(int(formData, "qty") ?? 1, 1), 9999),
-    notes: str(formData, "notes") || null,
+    notes: cap(str(formData, "notes"), 200) || null,
     createdAt: Date.now(),
   });
   revalidatePath(`/c/${campaignId}`);

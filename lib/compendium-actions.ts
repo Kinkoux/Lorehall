@@ -32,6 +32,9 @@ function int(formData: FormData, key: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Server-side length ceiling — the client's maxlength is a suggestion. */
+const cap = (s: string, n: number) => s.slice(0, n);
+
 // ---------- spells → character sheet ----------
 
 export async function addSpellToCharacter(spellIndex: string, characterId: string) {
@@ -44,6 +47,8 @@ export async function addSpellToCharacter(spellIndex: string, characterId: strin
     where: eq(characters.id, characterId),
   });
   if (!character || character.userId !== user.id) return;
+  // A sheet still awaiting the DM's nod isn't a place to stock spells.
+  if (character.approval !== "approved") return;
 
   const existing = await db.query.characterAbilities.findFirst({
     where: and(
@@ -77,7 +82,7 @@ export async function addItemToCharacter(itemIndex: string, formData: FormData) 
   const character = await db.query.characters.findFirst({
     where: eq(characters.id, characterId),
   });
-  if (!character) return;
+  if (!character || character.approval !== "approved") return;
   // Mine, or one in a campaign I run.
   if (character.userId !== user.id) {
     const access = await getCampaignAccess(character.campaignId, user.id);
@@ -115,7 +120,7 @@ export async function createEncounter(campaignId: string, formData: FormData) {
   await db.insert(encounters).values({
     id: nanoid(12),
     campaignId,
-    name,
+    name: cap(name, 150),
     createdAt: Date.now(),
   });
   revalidatePath(`/c/${campaignId}`);
@@ -163,7 +168,7 @@ export async function addCustomMonsterToEncounter(encounterId: string, formData:
   await db.insert(encounterMonsters).values({
     id: nanoid(12),
     encounterId,
-    name,
+    name: cap(name, 150),
     count: Math.min(Math.max(int(formData, "count") ?? 1, 1), 20),
     maxHp: int(formData, "maxHp"),
     dexMod: Math.min(Math.max(int(formData, "dexMod") ?? 0, -5), 10),

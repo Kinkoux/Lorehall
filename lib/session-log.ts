@@ -19,8 +19,11 @@ export type RenderedEvent = {
   rollTotal?: number;
 };
 
-export function renderEventMessage(message: string, t: T): RenderedEvent {
-  if (message.startsWith("{")) {
+export function renderEventMessage(message: string, t: T, kind?: string): RenderedEvent {
+  // Player-typed notes are always literal text. Without this a note reading
+  // `{"k":"hasDied","p":{"name":"..."}}` would render as a system event and
+  // forge the table log.
+  if (kind !== "note" && message.startsWith("{")) {
     try {
       const parsed = JSON.parse(message) as {
         k?: string;
