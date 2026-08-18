@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
-import { db, campaignMaps, gameSessions, sessionEvents, users, type Combatant } from "@/lib/db";
+import { db, campaignMaps, characters, gameSessions, sessionEvents, users, type Combatant } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import {
@@ -58,7 +58,7 @@ export default async function SessionPage({
 
   const live = session.status === "live";
   // The AutoRefresh poll re-runs this render every 3s — keep it one batch.
-  const [order, beats, encounters, mapsList, activeMap, events] = await Promise.all([
+  const [order, beats, encounters, mapsList, activeMap, events, myCharacters] = await Promise.all([
     getTurnOrder(sessionId),
     access.isDm ? getBeats(session.campaignId) : Promise.resolve([]),
     access.isDm
@@ -88,7 +88,18 @@ export default async function SessionPage({
       .where(eq(sessionEvents.sessionId, sessionId))
       .orderBy(desc(sessionEvents.createdAt))
       .limit(40),
+    db
+      .select()
+      .from(characters)
+      .where(
+        and(
+          eq(characters.campaignId, session.campaignId),
+          eq(characters.userId, user.id),
+          eq(characters.approval, "approved")
+        )
+      ),
   ]);
+  const aliveCharacters = myCharacters.filter((c) => c.status === "alive");
   const iAmIn = order.some((c) => c.userId === user.id);
   const shownMap =
     activeMap && (activeMap.visibility === "everyone" || access.isDm) ? activeMap : null;
@@ -243,7 +254,19 @@ export default async function SessionPage({
 
             {live && !iAmIn && (
               <Card>
-                <form action={joinInitiative.bind(null, sessionId)} className="flex items-end gap-2">
+                <form action={joinInitiative.bind(null, sessionId)} className="flex flex-wrap items-end gap-2">
+                  {aliveCharacters.length > 1 && (
+                    <label className="block min-w-36 flex-1">
+                      <Label>{t("session.initiative.joinAs")}</Label>
+                      <Select name="characterId" defaultValue={aliveCharacters[0].id}>
+                        {aliveCharacters.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                  )}
                   <label className="block w-28">
                     <Label>{t("session.initiative.yourRoll")}</Label>
                     <Input
@@ -254,7 +277,7 @@ export default async function SessionPage({
                       placeholder="d20"
                     />
                   </label>
-                  <Button type="submit" className="flex-1">
+                  <Button type="submit" className="min-w-32 flex-1">
                     {t("session.initiative.join")}
                   </Button>
                 </form>

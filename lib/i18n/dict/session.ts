@@ -16,6 +16,7 @@ export const session = {
       nextTurn: "Next turn →",
       empty: "No one in the initiative order yet.",
       yourRoll: "Your roll",
+      joinAs: "Character",
       join: "Join the initiative",
       joinHint:
         "Rolled a real d20 at the table? Type the result. Leave it empty and the app rolls for you.",
@@ -110,6 +111,7 @@ export const session = {
       nextTurn: "Sıradaki →",
       empty: "İnisiyatif sırasında henüz kimse yok.",
       yourRoll: "Senin zarın",
+      joinAs: "Karakter",
       join: "İnisiyatife katıl",
       joinHint:
         "Masada gerçek d20 mi attın? Sonucu yaz. Boş bırakırsan zarı uygulama atar.",

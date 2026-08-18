@@ -38,7 +38,8 @@ async function canEditSheet(campaignId: string, sheetUserId: string, actorId: st
 
 /**
  * Quick-create from /characters: pick a campaign, name the hero, land on the
- * full sheet to fill in the rest.
+ * full sheet to fill in the rest. The first character in a campaign is live
+ * immediately; additional ones from the same user wait for the DM's approval.
  */
 export async function createCharacter(formData: FormData) {
   const user = await requireUser();
@@ -48,17 +49,20 @@ export async function createCharacter(formData: FormData) {
   const access = await getCampaignAccess(campaignId, user.id);
   if (!access?.canView) return;
 
-  const existing = await db.query.characters.findFirst({
-    where: and(eq(characters.campaignId, campaignId), eq(characters.userId, user.id)),
+  const existing = await db
+    .select({ id: characters.id })
+    .from(characters)
+    .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, user.id)));
+  const id = nanoid(12);
+  await db.insert(characters).values({
+    id,
+    campaignId,
+    userId: user.id,
+    name,
+    approval: existing.length === 0 ? "approved" : "pending",
+    updatedAt: Date.now(),
   });
-  if (!existing) {
-    await db.insert(characters).values({
-      id: nanoid(12),
-      campaignId,
-      userId: user.id,
-      name,
-      updatedAt: Date.now(),
-    });
+  if (existing.length === 0) {
     await db
       .update(campaignMembers)
       .set({ characterName: name })
@@ -66,7 +70,39 @@ export async function createCharacter(formData: FormData) {
         and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id))
       );
   }
-  redirect(`/c/${campaignId}/ch/${user.id}`);
+  redirect(`/c/${campaignId}/ch/${user.id}?ch=${id}`);
+}
+
+/** DM lets an extra character into the campaign. */
+export async function approveCharacter(characterId: string) {
+  const user = await requireUser();
+  const character = await db.query.characters.findFirst({
+    where: eq(characters.id, characterId),
+  });
+  if (!character || character.approval !== "pending") return;
+  const access = await getCampaignAccess(character.campaignId, user.id);
+  if (!access?.isDm) return;
+  await db.update(characters).set({ approval: "approved" }).where(eq(characters.id, characterId));
+  revalidatePath(`/c/${character.campaignId}`);
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidatePath("/characters");
+}
+
+/** DM turns an extra character away — the sheet is removed entirely. */
+export async function rejectCharacter(characterId: string) {
+  const user = await requireUser();
+  const character = await db.query.characters.findFirst({
+    where: eq(characters.id, characterId),
+  });
+  if (!character || character.approval !== "pending") return;
+  const access = await getCampaignAccess(character.campaignId, user.id);
+  if (!access?.isDm) return;
+  await db.delete(characterItems).where(eq(characterItems.characterId, characterId));
+  await db.delete(characterAbilities).where(eq(characterAbilities.characterId, characterId));
+  await db.delete(characters).where(eq(characters.id, characterId));
+  revalidatePath(`/c/${character.campaignId}`);
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidatePath("/characters");
 }
 
 /** Only the campaign's DM decides who is dead — the mark shows everywhere. */
@@ -94,6 +130,7 @@ export async function upsertCharacter(
 
   const name = str(formData, "name");
   if (!name) return;
+  const characterId = str(formData, "characterId");
   const score = (key: string) => {
     const n = int(formData, key);
     return n === null ? null : Math.min(Math.max(n, 1), 30);
@@ -122,9 +159,19 @@ export async function upsertCharacter(
     updatedAt: Date.now(),
   };
 
-  const existing = await db.query.characters.findFirst({
-    where: and(eq(characters.campaignId, campaignId), eq(characters.userId, sheetUserId)),
-  });
+  // With multiple characters per user, the edit form names its target; the
+  // create flow (no characterId) only exists while the user has no sheet.
+  const existing = characterId
+    ? await db.query.characters.findFirst({
+        where: and(
+          eq(characters.id, characterId),
+          eq(characters.campaignId, campaignId),
+          eq(characters.userId, sheetUserId)
+        ),
+      })
+    : await db.query.characters.findFirst({
+        where: and(eq(characters.campaignId, campaignId), eq(characters.userId, sheetUserId)),
+      });
   if (existing) {
     await db.update(characters).set(values).where(eq(characters.id, existing.id));
   } else {

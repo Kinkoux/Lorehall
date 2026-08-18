@@ -16,13 +16,16 @@ import {
   addAbility,
   addItem,
   adjustItemQty,
+  approveCharacter,
   deleteAbility,
   deleteItem,
   longRest,
+  rejectCharacter,
   setCharacterStatus,
   upsertCharacter,
   useAbility,
 } from "@/lib/character-actions";
+import Link from "next/link";
 import { getT } from "@/lib/locale";
 import type { T } from "@/lib/i18n";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -47,12 +50,15 @@ const KIND_STYLES: Record<string, string> = {
 
 export default async function CharacterPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ campaignId: string; userId: string }>;
+  searchParams: Promise<{ ch?: string }>;
 }) {
   const viewer = await requireUser();
   const { t } = await getT();
   const { campaignId, userId } = await params;
+  const { ch } = await searchParams;
 
   const access = await getCampaignAccess(campaignId, viewer.id);
   if (!access?.canView) notFound();
@@ -60,9 +66,19 @@ export default async function CharacterPage({
   if (!owner) notFound();
 
   const editable = viewer.id === userId || access.isDm;
-  const character = await db.query.characters.findFirst({
-    where: and(eq(characters.campaignId, campaignId), eq(characters.userId, userId)),
-  });
+  const allCharacters = await db
+    .select()
+    .from(characters)
+    .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, userId)))
+    .orderBy(asc(characters.updatedAt));
+  // Pending sheets are private to their owner and the DM.
+  const visibleCharacters = allCharacters.filter(
+    (c) => c.approval === "approved" || editable
+  );
+  const character =
+    (ch ? visibleCharacters.find((c) => c.id === ch) : undefined) ??
+    visibleCharacters.find((c) => c.approval === "approved") ??
+    visibleCharacters[0];
 
   const items = character
     ? await db
@@ -104,6 +120,53 @@ export default async function CharacterPage({
           </div>
         ) : (
           <>
+            {visibleCharacters.length > 1 && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {visibleCharacters.map((c) => (
+                  <Link
+                    key={c.id}
+                    href={`/c/${campaignId}/ch/${userId}?ch=${c.id}`}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                      c.id === character.id
+                        ? "border-gold-500 bg-gold-500/15 text-gold-300"
+                        : "border-ink-600 text-parchment-500 hover:border-gold-500 hover:text-gold-300"
+                    }`}
+                  >
+                    {c.name}
+                    {c.approval === "pending" && ` · ${t("character.sheet.pendingTab")}`}
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            {character.approval === "pending" && (
+              <div className="mt-4 flex flex-wrap items-center gap-3 rounded-sm border border-gold-500/60 bg-gold-500/10 px-4 py-3">
+                <p className="flex-1 text-sm font-bold text-gold-300">
+                  {t("character.sheet.pendingBanner")}
+                </p>
+                {access.isDm && (
+                  <span className="flex gap-2">
+                    <form action={approveCharacter.bind(null, character.id)}>
+                      <button
+                        type="submit"
+                        className="rounded-sm border border-emerald-700/60 px-3 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
+                      >
+                        {t("character.sheet.approve")}
+                      </button>
+                    </form>
+                    <form action={rejectCharacter.bind(null, character.id)}>
+                      <button
+                        type="submit"
+                        className="rounded-sm border border-blood-500 px-3 py-1.5 text-xs font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
+                      >
+                        {t("character.sheet.reject")}
+                      </button>
+                    </form>
+                  </span>
+                )}
+              </div>
+            )}
+
             <div className="mt-2 mb-2 flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
@@ -413,6 +476,7 @@ function SheetForm({
   );
   return (
     <form action={upsertCharacter.bind(null, campaignId, userId)} className="space-y-4">
+      {character && <input type="hidden" name="characterId" value={character.id} />}
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="block">
           <Label>{t("character.sheet.form.nameLabel")}</Label>

@@ -126,9 +126,9 @@ CREATE TABLE IF NOT EXISTS characters (
   prof_skills TEXT,
   prof_saves TEXT,
   status TEXT NOT NULL DEFAULT 'alive',
+  approval TEXT NOT NULL DEFAULT 'approved',
   notes TEXT,
-  updated_at BIGINT NOT NULL,
-  UNIQUE (campaign_id, user_id)
+  updated_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS character_items (
   id TEXT PRIMARY KEY,
@@ -221,6 +221,12 @@ CREATE TABLE IF NOT EXISTS campaign_maps (
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_maps_campaign ON campaign_maps(campaign_id);
+
+-- Guarded migrations for databases created before these changes:
+-- multi-character support (2026-08-18) drops the one-per-user constraint
+-- and adds DM approval for extra characters.
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS approval TEXT NOT NULL DEFAULT 'approved';
+ALTER TABLE characters DROP CONSTRAINT IF EXISTS characters_campaign_id_user_id_key;
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

@@ -19,6 +19,9 @@ export const campaign = {
       passivePerception: "Passive Perception",
       pp: "PP {n}",
       dead: "Dead",
+      pending: "Awaiting approval",
+      approve: "Approve",
+      reject: "Reject",
       hint: "Open your name to manage your character sheet, inventory, and spells.",
     },
     quests: {
@@ -136,6 +139,9 @@ export const campaign = {
       passivePerception: "Pasif Algı",
       pp: "PP {n}",
       dead: "Ölü",
+      pending: "Onay bekliyor",
+      approve: "Onayla",
+      reject: "Reddet",
       hint: "Adına tıklayıp karakter sayfanı, envanterini ve büyülerini yönet.",
     },
     quests: {

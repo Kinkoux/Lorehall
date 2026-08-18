@@ -184,12 +184,22 @@ export async function joinInitiative(sessionId: string, formData: FormData) {
   });
   if (already) return;
 
-  const character = await db.query.characters.findFirst({
-    where: and(
-      eq(characters.campaignId, ctx.session.campaignId),
-      eq(characters.userId, user.id)
-    ),
-  });
+  // Approved characters only; with several, the join form names one.
+  const myCharacters = await db
+    .select()
+    .from(characters)
+    .where(
+      and(
+        eq(characters.campaignId, ctx.session.campaignId),
+        eq(characters.userId, user.id),
+        eq(characters.approval, "approved")
+      )
+    );
+  const chosenId = str(formData, "characterId");
+  const character = chosenId
+    ? myCharacters.find((c) => c.id === chosenId)
+    : myCharacters[0];
+  if (chosenId && !character) return;
   if (character?.status === "dead") return; // the dead roll no initiative
   const dexMod =
     character?.dex != null ? Math.floor((character.dex - 10) / 2) : 0;

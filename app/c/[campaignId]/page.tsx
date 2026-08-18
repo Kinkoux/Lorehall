@@ -33,6 +33,7 @@ import {
   removeEncounterMonster,
 } from "@/lib/compendium-actions";
 import { deleteMap, setActiveMap, setMapVisibility } from "@/lib/map-actions";
+import { approveCharacter, rejectCharacter } from "@/lib/character-actions";
 import { hasScores, statBlock } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -109,8 +110,13 @@ export default async function CampaignPage({
         .orderBy(asc(campaignMaps.createdAt)),
     ]);
 
-  const characterOf = (userId: string) =>
-    campaignCharacters.find((c) => c.userId === userId);
+  // Approved characters show to everyone; pending ones only to the DM
+  // (who approves) and their owner.
+  const charactersOf = (userId: string) =>
+    campaignCharacters.filter(
+      (c) =>
+        c.userId === userId && (c.approval === "approved" || isDm || userId === user.id)
+    );
   const liveSession = sessions.find((s) => s.status === "live");
   const pastSessions = sessions.filter((s) => s.status === "ended");
   const activeQuests = quests.filter((q) => q.status === "active");
@@ -186,52 +192,88 @@ export default async function CampaignPage({
             <Card>
               <ul className="space-y-3">
                 {members.map(({ member, user: memberUser }) => {
-                  const character = characterOf(memberUser.id);
-                  const pp =
-                    character && hasScores(character)
-                      ? statBlock(character).passivePerception
-                      : null;
-                  return (
-                    <li key={memberUser.id}>
-                      <Link
-                        href={`/c/${campaignId}/ch/${memberUser.id}`}
-                        className="group flex items-center justify-between gap-3"
-                      >
-                        <div>
-                          <p className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
-                            {character?.name ?? member.characterName ?? t("campaign.party.unnamed")}
-                            {character && (
-                              <span className="ml-2 text-xs text-parchment-500">
-                                {t("campaign.party.lv", { n: character.level })}
-                              </span>
-                            )}
-                            {character?.status === "dead" && (
-                              <span className="ml-2 inline-flex items-center gap-1 rounded-sm border border-blood-500 bg-blood-500/15 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-blood-400">
-                                <IconSkull size={11} />
-                                {t("campaign.party.dead")}
-                              </span>
-                            )}
-                          </p>
-                          <p className="text-xs text-parchment-500">
-                            {memberUser.displayName ?? memberUser.username}
-                            {memberUser.id === campaign.dmUserId &&
-                              ` · ${t("campaign.party.dm")}`}
-                          </p>
-                        </div>
-                        <span className="flex items-center gap-2">
-                          {pp !== null && (
-                            <span
-                              title={t("campaign.party.passivePerception")}
-                              className="rounded border border-gold-500/60 bg-gold-500/10 px-1.5 py-0.5 text-xs font-bold text-gold-300"
-                            >
-                              {t("campaign.party.pp", { n: pp })}
-                            </span>
-                          )}
+                  const memberCharacters = charactersOf(memberUser.id);
+                  const memberLabel = (
+                    <p className="text-xs text-parchment-500">
+                      {memberUser.displayName ?? memberUser.username}
+                      {memberUser.id === campaign.dmUserId && ` · ${t("campaign.party.dm")}`}
+                    </p>
+                  );
+                  if (memberCharacters.length === 0) {
+                    return (
+                      <li key={memberUser.id}>
+                        <Link
+                          href={`/c/${campaignId}/ch/${memberUser.id}`}
+                          className="group flex items-center justify-between gap-3"
+                        >
+                          <div>
+                            <p className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                              {member.characterName ?? t("campaign.party.unnamed")}
+                            </p>
+                            {memberLabel}
+                          </div>
                           <span className="text-parchment-500 transition group-hover:text-gold-400">
                             →
                           </span>
-                        </span>
-                      </Link>
+                        </Link>
+                      </li>
+                    );
+                  }
+                  return (
+                    <li key={memberUser.id} className="space-y-1.5">
+                      {memberCharacters.map((character, ci) => {
+                        const pp = hasScores(character)
+                          ? statBlock(character).passivePerception
+                          : null;
+                        return (
+                          <div key={character.id} className="flex items-center justify-between gap-3">
+                            <Link
+                              href={`/c/${campaignId}/ch/${memberUser.id}?ch=${character.id}`}
+                              className="group min-w-0 flex-1"
+                            >
+                              <p className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                                {character.name}
+                                <span className="ml-2 text-xs text-parchment-500">
+                                  {t("campaign.party.lv", { n: character.level })}
+                                </span>
+                                {character.status === "dead" && (
+                                  <span className="ml-2 inline-flex items-center gap-1 rounded-sm border border-blood-500 bg-blood-500/15 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-blood-400">
+                                    <IconSkull size={11} />
+                                    {t("campaign.party.dead")}
+                                  </span>
+                                )}
+                                {character.approval === "pending" && (
+                                  <span className="ml-2 rounded-sm border border-gold-500 bg-gold-500/10 px-1.5 py-0.5 align-middle text-[10px] font-bold uppercase tracking-wide text-gold-300">
+                                    {t("campaign.party.pending")}
+                                  </span>
+                                )}
+                              </p>
+                              {ci === 0 && memberLabel}
+                            </Link>
+                            <span className="flex shrink-0 items-center gap-1.5">
+                              {character.approval === "pending" && isDm ? (
+                                <>
+                                  <form action={approveCharacter.bind(null, character.id)}>
+                                    <SmallButton label={t("campaign.party.approve")} tone="success" />
+                                  </form>
+                                  <form action={rejectCharacter.bind(null, character.id)}>
+                                    <SmallButton label={t("campaign.party.reject")} danger />
+                                  </form>
+                                </>
+                              ) : (
+                                pp !== null && (
+                                  <span
+                                    title={t("campaign.party.passivePerception")}
+                                    className="rounded border border-gold-500/60 bg-gold-500/10 px-1.5 py-0.5 text-xs font-bold text-gold-300"
+                                  >
+                                    {t("campaign.party.pp", { n: pp })}
+                                  </span>
+                                )
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </li>
                   );
                 })}

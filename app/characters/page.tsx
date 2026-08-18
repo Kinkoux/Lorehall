@@ -29,9 +29,6 @@ export default async function CharactersPage() {
     .from(campaignMembers)
     .innerJoin(campaigns, eq(campaignMembers.campaignId, campaigns.id))
     .where(eq(campaignMembers.userId, user.id));
-  const withoutCharacter = memberships.filter(
-    ({ campaign }) => !mine.some((m) => m.campaign.id === campaign.id)
-  );
 
   return (
     <>
@@ -56,7 +53,7 @@ export default async function CharactersPage() {
             return (
               <Link
                 key={character.id}
-                href={`/c/${campaign.id}/ch/${user.id}`}
+                href={`/c/${campaign.id}/ch/${user.id}?ch=${character.id}`}
                 className="block"
               >
                 <Card
@@ -68,6 +65,11 @@ export default async function CharactersPage() {
                     <h3 className="font-display text-lg font-bold text-parchment-100">
                       {character.name}
                     </h3>
+                    {character.approval === "pending" && (
+                      <span className="rounded-sm border border-gold-500 bg-gold-500/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-gold-300">
+                        {t("character.hub.pendingBadge")}
+                      </span>
+                    )}
                     {character.status === "dead" && (
                       <span className="flex items-center gap-1 rounded-sm border border-blood-500 bg-blood-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-blood-400">
                         <IconSkull size={12} />
@@ -109,8 +111,6 @@ export default async function CharactersPage() {
                 {t("character.hub.toDashboard")}
               </Link>
             </p>
-          ) : withoutCharacter.length === 0 ? (
-            <p className="text-sm text-parchment-500">{t("character.hub.allDone")}</p>
           ) : (
             <Card>
               <form action={createCharacter} className="flex flex-wrap items-end gap-3">
@@ -122,7 +122,7 @@ export default async function CharactersPage() {
                 <label className="block min-w-44 flex-1">
                   <Label>{t("character.hub.campaignLabel")}</Label>
                   <Select name="campaignId">
-                    {withoutCharacter.map(({ campaign }) => (
+                    {memberships.map(({ campaign }) => (
                       <option key={campaign.id} value={campaign.id}>
                         {campaign.name}
                       </option>
@@ -131,7 +131,9 @@ export default async function CharactersPage() {
                 </label>
                 <Button type="submit">{t("character.hub.createButton")}</Button>
               </form>
-              <p className="mt-2 text-xs text-parchment-500">{t("character.hub.createHint")}</p>
+              <p className="mt-2 text-xs text-parchment-500">
+                {t("character.hub.createHint")} {t("character.hub.approvalHint")}
+              </p>
             </Card>
           )}
         </section>

@@ -160,6 +160,11 @@ export const characters = pgTable("characters", {
   status: text("status", { enum: ["alive", "dead"] })
     .notNull()
     .default("alive"),
+  // First character per campaign is auto-approved; extra ones from the
+  // same user wait for the DM.
+  approval: text("approval", { enum: ["approved", "pending"] })
+    .notNull()
+    .default("approved"),
   notes: text("notes"),
   updatedAt: ms("updated_at").notNull(),
 });
