@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 import type { CodexType } from "@/lib/db";
 import { makeT, type Locale } from "@/lib/i18n";
+import { IconHelm } from "@/components/Icons";
 
 /**
  * Lorehall design language: a rubricated campaign ledger. Cards are "leaves"
@@ -85,6 +86,58 @@ export function Label({ children }: { children: ReactNode }) {
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
   return <p className="text-sm text-blood-400">{children}</p>;
+}
+
+/**
+ * Where a character's face lives. The file name rides along as ?v= so the
+ * immutable response is re-fetched after a re-upload; NULL means no portrait.
+ */
+export function portraitSrc(characterId: string, imageFile: string | null) {
+  return imageFile ? `/files/portraits/${characterId}?v=${imageFile}` : null;
+}
+
+/**
+ * Circular character portrait; falls back to a monoline helm when the sheet
+ * has no image. `eager` skips lazy loading for the one above the fold.
+ */
+export function Portrait({
+  src,
+  alt,
+  size,
+  eager = false,
+  className = "",
+}: {
+  src: string | null;
+  alt: string;
+  size: number;
+  eager?: boolean;
+  className?: string;
+}) {
+  const box = { width: size, height: size };
+  if (!src) {
+    return (
+      <span
+        aria-hidden
+        style={box}
+        className={`inline-flex shrink-0 items-center justify-center rounded-full border border-ink-600 bg-ink-950/70 text-parchment-500 ${className}`}
+      >
+        <IconHelm size={Math.round(size * 0.55)} />
+      </span>
+    );
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      width={size}
+      height={size}
+      style={box}
+      loading={eager ? undefined : "lazy"}
+      decoding="async"
+      className={`shrink-0 rounded-full border border-ink-600 object-cover ${className}`}
+    />
+  );
 }
 
 const TYPE_STYLES: Record<CodexType, string> = {

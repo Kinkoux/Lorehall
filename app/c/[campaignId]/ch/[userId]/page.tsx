@@ -30,6 +30,7 @@ import Link from "next/link";
 import { getT } from "@/lib/locale";
 import type { T } from "@/lib/i18n";
 import { SiteHeader } from "@/components/SiteHeader";
+import { PortraitUploadForm } from "@/components/PortraitUploadForm";
 import { IconMoon, IconSkull } from "@/components/Icons";
 import {
   BackLink,
@@ -38,6 +39,8 @@ import {
   GhostButton,
   Input,
   Label,
+  Portrait,
+  portraitSrc,
   SectionTitle,
   Select,
   Textarea,
@@ -57,7 +60,7 @@ export default async function CharacterPage({
   searchParams: Promise<{ ch?: string }>;
 }) {
   const viewer = await requireUser();
-  const { t } = await getT();
+  const { t, locale } = await getT();
   const { campaignId, userId } = await params;
   const { ch } = await searchParams;
 
@@ -180,20 +183,28 @@ export default async function CharacterPage({
             )}
 
             <div className="mt-2 mb-2 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
-                  {character.name}
-                </h1>
-                <p className="mt-1 text-sm text-parchment-500">
-                  {[
-                    t("character.sheet.levelN", { n: character.level }),
-                    character.race,
-                    character.klass,
-                    t("character.sheet.playedBy", { name: ownerName }),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
+              <div className="flex items-center gap-4">
+                <Portrait
+                  src={portraitSrc(character.id, character.imageFile)}
+                  alt={character.name}
+                  size={96}
+                  eager
+                />
+                <div>
+                  <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
+                    {character.name}
+                  </h1>
+                  <p className="mt-1 text-sm text-parchment-500">
+                    {[
+                      t("character.sheet.levelN", { n: character.level }),
+                      character.race,
+                      character.klass,
+                      t("character.sheet.playedBy", { name: ownerName }),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                </div>
               </div>
               <div className="flex gap-2 font-mono text-sm font-bold">
                 {character.maxHp !== null && (
@@ -208,6 +219,16 @@ export default async function CharacterPage({
                 )}
               </div>
             </div>
+
+            {editable && (
+              <div className="mb-4 max-w-md">
+                <PortraitUploadForm
+                  characterId={character.id}
+                  hasPortrait={character.imageFile !== null}
+                  locale={locale}
+                />
+              </div>
+            )}
 
             {character.status === "dead" ? (
               <div className="mb-6 flex flex-wrap items-center gap-3 rounded-sm border border-blood-500 bg-blood-500/10 px-4 py-3">

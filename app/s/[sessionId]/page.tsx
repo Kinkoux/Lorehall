@@ -41,7 +41,7 @@ import {
   IconSwords,
   IconX,
 } from "@/components/Icons";
-import { BackLink, Button, Card, DmBadge, GhostButton, Input, Label, SectionTitle, Select, Textarea } from "@/components/ui";
+import { BackLink, Button, Card, DmBadge, GhostButton, Input, Label, Portrait, portraitSrc, SectionTitle, Select, Textarea } from "@/components/ui";
 
 export default async function SessionPage({
   params,
@@ -62,7 +62,17 @@ export default async function SessionPage({
   const live = session.status === "live";
   const combatActive = live && session.combatActive === 1;
   // The AutoRefresh poll re-runs this render every 3s — keep it one batch.
-  const [order, beats, chapters, encounters, mapsList, activeMap, events, myCharacters] = await Promise.all([
+  const [
+    order,
+    beats,
+    chapters,
+    encounters,
+    mapsList,
+    activeMap,
+    events,
+    myCharacters,
+    partyPortraits,
+  ] = await Promise.all([
     getTurnOrder(sessionId),
     access.isDm ? getBeats(session.campaignId) : Promise.resolve([]),
     access.isDm ? getChapters(session.campaignId) : Promise.resolve([]),
@@ -103,8 +113,14 @@ export default async function SessionPage({
           eq(characters.approval, "approved")
         )
       ),
+    // Faces for the initiative list — one lookup for the whole campaign.
+    db
+      .select({ id: characters.id, imageFile: characters.imageFile })
+      .from(characters)
+      .where(eq(characters.campaignId, session.campaignId)),
   ]);
   const aliveCharacters = myCharacters.filter((c) => c.status === "alive");
+  const portraits = new Map(partyPortraits.map((c) => [c.id, c.imageFile]));
   const iAmIn = order.some((c) => c.userId === user.id);
   const shownMap =
     activeMap && (activeMap.visibility === "everyone" || access.isDm) ? activeMap : null;
@@ -292,6 +308,14 @@ export default async function SessionPage({
                 isMe={combatant.userId === user.id}
                 live={live}
                 sessionId={sessionId}
+                portrait={
+                  combatant.characterId
+                    ? portraitSrc(
+                        combatant.characterId,
+                        portraits.get(combatant.characterId) ?? null
+                      )
+                    : null
+                }
                 t={t}
               />
             ))}
@@ -589,6 +613,7 @@ function CombatantRow({
   isMe,
   live,
   sessionId,
+  portrait,
   t,
 }: {
   combatant: Combatant;
@@ -597,6 +622,8 @@ function CombatantRow({
   isMe: boolean;
   live: boolean;
   sessionId: string;
+  /** Portrait URL, or null for a player character without one. */
+  portrait: string | null;
   t: T;
 }) {
   const hpRatio =
@@ -618,6 +645,10 @@ function CombatantRow({
         <span className="w-8 text-center font-display text-lg font-bold text-gold-400">
           {combatant.initiative}
         </span>
+        {/* Monsters stay compact — only sheets get a face. */}
+        {combatant.characterId && (
+          <Portrait src={portrait} alt={combatant.name} size={32} />
+        )}
         <div className="flex-1">
           <p className="font-semibold text-parchment-100">
             {isTurn && <span className="mr-1 text-gold-400">▶</span>}

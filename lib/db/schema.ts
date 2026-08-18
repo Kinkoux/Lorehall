@@ -124,6 +124,10 @@ export const combatants = pgTable("combatants", {
   deathFailures: integer("death_failures").notNull().default(0),
   conditions: text("conditions"),
   userId: text("user_id").references(() => users.id),
+  // The sheet this row was rolled from, when a player joined initiative with
+  // one of their characters — lets the live screen show its portrait.
+  // NULL for monsters and DM-added creatures.
+  characterId: text("character_id").references(() => characters.id),
   createdAt: ms("created_at").notNull(),
 });
 
@@ -169,6 +173,10 @@ export const characters = pgTable("characters", {
     .notNull()
     .default("approved"),
   notes: text("notes"),
+  // Uploaded portrait: storage key (one-shot nanoid + extension) and its MIME
+  // type. NULL/NULL means "no portrait" — the UI draws a placeholder instead.
+  imageFile: text("image_file"),
+  imageMime: text("image_mime"),
   updatedAt: ms("updated_at").notNull(),
 });
 

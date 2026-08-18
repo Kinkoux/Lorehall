@@ -6,7 +6,16 @@ import { getT } from "@/lib/locale";
 import { hasScores, statBlock } from "@/lib/dnd";
 import { createCharacter } from "@/lib/character-actions";
 import { SiteHeader } from "@/components/SiteHeader";
-import { Button, Card, Input, Label, Select, SectionTitle } from "@/components/ui";
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  Portrait,
+  portraitSrc,
+  Select,
+  SectionTitle,
+} from "@/components/ui";
 import { IconParty, IconQuill, IconSkull } from "@/components/Icons";
 
 export async function generateMetadata() {
@@ -61,41 +70,51 @@ export default async function CharactersPage() {
                     character.status === "dead" ? "opacity-70" : ""
                   }`}
                 >
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                    <h3 className="font-display text-lg font-bold text-parchment-100">
-                      {character.name}
-                    </h3>
-                    {character.approval === "pending" && (
-                      <span className="rounded-sm border border-gold-500 bg-gold-500/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-gold-300">
-                        {t("character.hub.pendingBadge")}
-                      </span>
-                    )}
-                    {character.status === "dead" && (
-                      <span className="flex items-center gap-1 rounded-sm border border-blood-500 bg-blood-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-blood-400">
-                        <IconSkull size={12} />
-                        {t("character.hub.dead")}
-                      </span>
-                    )}
-                    <span className="text-sm text-parchment-500">
-                      {[
-                        `${t("character.hub.level")} ${character.level}`,
-                        character.race,
-                        character.klass,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                    <span className="ml-auto flex items-center gap-2 font-mono text-xs font-bold">
-                      {character.maxHp !== null && (
-                        <span className="text-blood-400">{character.maxHp} HP</span>
-                      )}
-                      {character.armorClass !== null && (
-                        <span className="text-parchment-300">AC {character.armorClass}</span>
-                      )}
-                      {pp !== null && <span className="text-gold-300">PP {pp}</span>}
-                    </span>
+                  <div className="flex items-start gap-3">
+                    <Portrait
+                      src={portraitSrc(character.id, character.imageFile)}
+                      alt={character.name}
+                      size={40}
+                      className="mt-0.5"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                        <h3 className="font-display text-lg font-bold text-parchment-100">
+                          {character.name}
+                        </h3>
+                        {character.approval === "pending" && (
+                          <span className="rounded-sm border border-gold-500 bg-gold-500/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-gold-300">
+                            {t("character.hub.pendingBadge")}
+                          </span>
+                        )}
+                        {character.status === "dead" && (
+                          <span className="flex items-center gap-1 rounded-sm border border-blood-500 bg-blood-500/15 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-blood-400">
+                            <IconSkull size={12} />
+                            {t("character.hub.dead")}
+                          </span>
+                        )}
+                        <span className="text-sm text-parchment-500">
+                          {[
+                            `${t("character.hub.level")} ${character.level}`,
+                            character.race,
+                            character.klass,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                        <span className="ml-auto flex items-center gap-2 font-mono text-xs font-bold">
+                          {character.maxHp !== null && (
+                            <span className="text-blood-400">{character.maxHp} HP</span>
+                          )}
+                          {character.armorClass !== null && (
+                            <span className="text-parchment-300">AC {character.armorClass}</span>
+                          )}
+                          {pp !== null && <span className="text-gold-300">PP {pp}</span>}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-parchment-500">{campaign.name}</p>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-parchment-500">{campaign.name}</p>
                 </Card>
               </Link>
             );

@@ -245,6 +245,8 @@ export async function joinInitiative(sessionId: string, formData: FormData) {
       maxHp: character?.maxHp ?? null,
       hp: character?.maxHp ?? null,
       userId: user.id,
+      // Remembering the sheet lets the initiative row show its portrait.
+      characterId: character?.id ?? null,
       createdAt: Date.now(),
     });
   } catch (e) {

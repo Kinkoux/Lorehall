@@ -97,6 +97,8 @@ CREATE TABLE IF NOT EXISTS combatants (
   death_failures INTEGER NOT NULL DEFAULT 0,
   conditions TEXT,
   user_id TEXT REFERENCES users(id),
+  -- character_id is added by the guarded ALTER at the bottom: characters is
+  -- created after this table, so the reference cannot be declared inline.
   created_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS session_events (
@@ -128,6 +130,8 @@ CREATE TABLE IF NOT EXISTS characters (
   status TEXT NOT NULL DEFAULT 'alive',
   approval TEXT NOT NULL DEFAULT 'approved',
   notes TEXT,
+  image_file TEXT,
+  image_mime TEXT,
   updated_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS character_items (
@@ -260,6 +264,11 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS combat_active INTEGER NOT NULL DEF
 -- duplicate combatant rows) before re-running.
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_combatant_player ON combatants(session_id, user_id) WHERE user_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_live_session ON sessions(campaign_id) WHERE status = 'live';
+-- character portraits (2026-08-18): the upload's storage key + MIME type, and
+-- the sheet an initiative row was rolled from so the live screen can show it.
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS image_file TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS image_mime TEXT;
+ALTER TABLE combatants ADD COLUMN IF NOT EXISTS character_id TEXT REFERENCES characters(id);
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

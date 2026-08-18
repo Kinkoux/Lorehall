@@ -134,6 +134,18 @@ export function IconParty(props: IconProps) {
   );
 }
 
+/** Barbute helm — stands in for a character with no portrait. */
+export function IconHelm(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 11.5a7.5 7.5 0 0 1 15 0v4.5a4 4 0 0 1-4 4h-7a4 4 0 0 1-4-4v-4.5z" />
+      <path d="M4.5 12.5h15" />
+      <path d="M12 12.5V20" />
+      <path d="M7.5 15.5h1.8M14.7 15.5h1.8" />
+    </Svg>
+  );
+}
+
 /** Skull (death, dead combatants). */
 export function IconSkull(props: IconProps) {
   return (

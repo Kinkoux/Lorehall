@@ -13,6 +13,9 @@ import {
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
+import { getT } from "@/lib/locale";
+import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
+import type { FormState } from "@/lib/actions";
 
 function str(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -218,6 +221,67 @@ async function getEditableCharacter(characterId: string, actorId: string) {
   if (!character) return null;
   if (!(await canEditSheet(character.campaignId, character.userId, actorId))) return null;
   return character;
+}
+
+// ---------- portrait ----------
+
+const PORTRAIT_MAX_BYTES = 4 * 1024 * 1024;
+const PORTRAIT_EXT_BY_MIME: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+};
+
+/** The portrait shows on the sheet, the party list, the hub and initiative. */
+function revalidatePortraitPages(campaignId: string, userId: string) {
+  revalidatePath(`/c/${campaignId}/ch/${userId}`);
+  revalidatePath(`/c/${campaignId}`);
+  revalidatePath("/characters");
+}
+
+/**
+ * Owner or DM uploads a face for the character. The stored name is a one-shot
+ * nanoid, so /files/portraits can serve it immutable; the previous file is
+ * dropped only once the new one is safely stored.
+ */
+export async function uploadPortrait(
+  characterId: string,
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
+  const user = await requireUser();
+  const { t } = await getT();
+  const character = await getEditableCharacter(characterId, user.id);
+  // A missing sheet and a forbidden one answer the same — the id is forgeable.
+  if (!character) return { error: t("errors.portrait.notAllowed") };
+
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: t("errors.portrait.noFile") };
+  if (file.size > PORTRAIT_MAX_BYTES) return { error: t("errors.portrait.tooLarge") };
+  const ext = PORTRAIT_EXT_BY_MIME[file.type];
+  if (!ext) return { error: t("errors.portrait.badType") };
+
+  const fileName = `${nanoid(16)}.${ext}`;
+  await putPortraitFile(fileName, new Uint8Array(await file.arrayBuffer()), file.type);
+  await db
+    .update(characters)
+    .set({ imageFile: fileName, imageMime: file.type })
+    .where(eq(characters.id, characterId));
+  if (character.imageFile) await deletePortraitFile(character.imageFile);
+  revalidatePortraitPages(character.campaignId, character.userId);
+  return {};
+}
+
+export async function removePortrait(characterId: string) {
+  const user = await requireUser();
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character?.imageFile) return;
+  await db
+    .update(characters)
+    .set({ imageFile: null, imageMime: null })
+    .where(eq(characters.id, characterId));
+  await deletePortraitFile(character.imageFile);
+  revalidatePortraitPages(character.campaignId, character.userId);
 }
 
 // ---------- inventory ----------

@@ -27,6 +27,12 @@ export const errors = {
       tooLarge: "Image is larger than 10 MB.",
       badType: "Use a PNG, JPG, or WebP image.",
     },
+    portrait: {
+      notAllowed: "You cannot edit this character sheet.",
+      noFile: "Pick an image file.",
+      tooLarge: "Image is larger than 4 MB.",
+      badType: "Use a PNG, JPG, or WebP image.",
+    },
     session: {
       dmOnlyAdd: "Only the DM can add combatants.",
       nameRequired: "Name is required.",
@@ -57,6 +63,12 @@ export const errors = {
       dmOnly: "Haritaları yalnız DM yükleyebilir.",
       noFile: "Bir görsel dosyası seç.",
       tooLarge: "Görsel 10 MB'den büyük.",
+      badType: "PNG, JPG veya WebP kullan.",
+    },
+    portrait: {
+      notAllowed: "Bu karakter sayfasını düzenleyemezsin.",
+      noFile: "Bir görsel dosyası seç.",
+      tooLarge: "Görsel 4 MB'den büyük.",
       badType: "PNG, JPG veya WebP kullan.",
     },
     session: {

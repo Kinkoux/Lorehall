@@ -63,6 +63,8 @@ import {
   DmBadge,
   Input,
   Label,
+  Portrait,
+  portraitSrc,
   QuestStatusBadge,
   RoleBadge,
   SectionTitle,
@@ -246,11 +248,14 @@ export default async function CampaignPage({
                           href={`/c/${campaignId}/ch/${memberUser.id}`}
                           className="group flex items-center justify-between gap-3"
                         >
-                          <div>
-                            <p className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
-                              {member.characterName ?? t("campaign.party.unnamed")}
-                            </p>
-                            {memberLabel}
+                          <div className="flex items-center gap-3">
+                            <Portrait src={null} alt="" size={40} />
+                            <div>
+                              <p className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                                {member.characterName ?? t("campaign.party.unnamed")}
+                              </p>
+                              {memberLabel}
+                            </div>
                           </div>
                           <span className="text-parchment-500 transition group-hover:text-gold-400">
                             →
@@ -267,6 +272,11 @@ export default async function CampaignPage({
                           : null;
                         return (
                           <div key={character.id} className="flex items-center justify-between gap-3">
+                            <Portrait
+                              src={portraitSrc(character.id, character.imageFile)}
+                              alt={character.name}
+                              size={40}
+                            />
                             <Link
                               href={`/c/${campaignId}/ch/${memberUser.id}?ch=${character.id}`}
                               className="group min-w-0 flex-1"
