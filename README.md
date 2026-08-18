@@ -107,7 +107,7 @@ npm run dev -- -p 3456
 
 ## Roadmap
 
-- [ ] Vercel + Supabase deploy — see `DEPLOY.md` (DB port to Postgres pending)
+- [x] Vercel + Supabase deploy — live at <https://lorehall.vercel.app>; see `DEPLOY.md`
 - [ ] Live-table upgrades from the VTT research — see `docs/roadmap-vtt-ideas.md`
   (table display mode, statblock drawer, condition markers, fog brush…)
 - [ ] Markdown + `[[wiki-links]]` in codex bodies

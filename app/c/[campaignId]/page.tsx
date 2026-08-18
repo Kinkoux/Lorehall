@@ -24,12 +24,11 @@ import {
   addChapter,
   deleteBeat,
   deleteChapter,
-  getBeats,
-  getChapters,
   moveBeatToChapter,
   renameChapter,
   setBeatStatus,
 } from "@/lib/beat-actions";
+import { getBeats, getChapters } from "@/lib/queries";
 import {
   addLedgerEntry,
   addPartyItem,

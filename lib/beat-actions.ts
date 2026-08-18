@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { db, storyBeats, storyChapters } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
+import { getBeats, getChapters } from "@/lib/queries";
 
 function str(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -18,22 +19,6 @@ const cap = (s: string, n: number) => s.slice(0, n);
 async function requireDm(campaignId: string, userId: string) {
   const access = await getCampaignAccess(campaignId, userId);
   return access?.isDm ? access : null;
-}
-
-export async function getBeats(campaignId: string) {
-  return db
-    .select()
-    .from(storyBeats)
-    .where(eq(storyBeats.campaignId, campaignId))
-    .orderBy(asc(storyBeats.position), asc(storyBeats.createdAt));
-}
-
-export async function getChapters(campaignId: string) {
-  return db
-    .select()
-    .from(storyChapters)
-    .where(eq(storyChapters.campaignId, campaignId))
-    .orderBy(asc(storyChapters.position), asc(storyChapters.createdAt));
 }
 
 /** A chapter id from a form is only honoured if it belongs to this campaign. */

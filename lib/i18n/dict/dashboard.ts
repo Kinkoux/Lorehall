@@ -20,6 +20,8 @@ export const dashboard = {
       rolePlayer: "Player",
     },
     roleOwner: "Owner",
+    logoutEverywhere: "Sign out everywhere",
+    logoutEverywhereHint: "Ends every other session. This device stays signed in.",
     joinForm: {
       codePh: "Join code, e.g. K7KKQD",
       join: "Join",
@@ -47,6 +49,8 @@ export const dashboard = {
       rolePlayer: "Oyuncu",
     },
     roleOwner: "Kurucu",
+    logoutEverywhere: "Tüm cihazlardan çık",
+    logoutEverywhereHint: "Diğer bütün oturumları kapatır. Bu cihazda açık kalırsın.",
     joinForm: {
       codePh: "Katılım kodu, örn. K7KKQD",
       join: "Katıl",

@@ -27,8 +27,13 @@ function secretKey() {
   return new TextEncoder().encode(secret);
 }
 
-export async function createSession(userId: string) {
-  const token = await new SignJWT({})
+/**
+ * Sign a session cookie for `userId`. `sessionVersion` is the account's
+ * current value; the cookie stops verifying once the account moves past it,
+ * which is how "sign out everywhere" reaches devices we cannot touch.
+ */
+export async function createSession(userId: string, sessionVersion: number) {
+  const token = await new SignJWT({ sv: sessionVersion })
     .setProtectedHeader({ alg: "HS256" })
     .setSubject(userId)
     .setIssuedAt()
@@ -50,23 +55,34 @@ export async function destroySession() {
   cookieStore.delete(COOKIE_NAME);
 }
 
-export async function getSessionUserId(): Promise<string | null> {
+type SessionClaims = { userId: string; sessionVersion: number };
+
+async function readSessionClaims(): Promise<SessionClaims | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) return null;
   try {
     const { payload } = await jwtVerify(token, secretKey());
-    return payload.sub ?? null;
+    if (!payload.sub) return null;
+    // Cookies signed before `sv` existed carry no version. Reading them as 1
+    // — the column's default for every account that predates it — keeps those
+    // sessions valid instead of signing everyone out on deploy.
+    const sv = typeof payload.sv === "number" ? payload.sv : 1;
+    return { userId: payload.sub, sessionVersion: sv };
   } catch {
     return null;
   }
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  const userId = await getSessionUserId();
-  if (!userId) return null;
-  const user = await db.query.users.findFirst({ where: eq(users.id, userId) });
-  return user ?? null;
+  const claims = await readSessionClaims();
+  if (!claims) return null;
+  const user = await db.query.users.findFirst({ where: eq(users.id, claims.userId) });
+  if (!user) return null;
+  // A retired cookie is simply not a session. It is left in place rather than
+  // deleted: this runs during page render, where cookies are read-only.
+  if (claims.sessionVersion !== user.sessionVersion) return null;
+  return user;
 }
 
 /** Load the signed-in user or bounce to /login. Use at the top of protected pages. */

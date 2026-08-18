@@ -2,11 +2,20 @@ import Link from "next/link";
 import { eq } from "drizzle-orm";
 import { db, worlds, worldMembers, campaigns, campaignMembers } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { createWorld } from "@/lib/actions";
+import { createWorld, logoutEverywhere } from "@/lib/actions";
 import { getT } from "@/lib/locale";
 import { SiteHeader } from "@/components/SiteHeader";
 import { JoinCampaignForm } from "@/components/JoinCampaignForm";
-import { Button, Card, Input, Label, RoleBadge, SectionTitle, Textarea } from "@/components/ui";
+import {
+  Button,
+  Card,
+  GhostButton,
+  Input,
+  Label,
+  RoleBadge,
+  SectionTitle,
+  Textarea,
+} from "@/components/ui";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -113,6 +122,14 @@ export default async function DashboardPage() {
             </Card>
           </section>
         </div>
+
+        <form
+          action={logoutEverywhere}
+          className="mt-10 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-ink-600/70 pt-5"
+        >
+          <GhostButton type="submit">{t("dashboard.logoutEverywhere")}</GhostButton>
+          <p className="text-sm text-parchment-500">{t("dashboard.logoutEverywhereHint")}</p>
+        </form>
       </main>
     </>
   );

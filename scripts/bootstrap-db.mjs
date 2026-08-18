@@ -249,6 +249,13 @@ CREATE TABLE IF NOT EXISTS campaign_events (
   created_at BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_campaign_events ON campaign_events(campaign_id, created_at);
+-- Fixed-window attempt counters shared by every instance (see lib/rate-limit.ts).
+-- reset_at is the ms epoch the window ends; a lapsed row restarts in place.
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  reset_at BIGINT NOT NULL
+);
 
 -- Guarded migrations for databases created before these changes:
 -- multi-character support (2026-08-18) drops the one-per-user constraint
@@ -280,6 +287,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uniq_live_session ON sessions(campaign_id) WHE
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS image_file TEXT;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS image_mime TEXT;
 ALTER TABLE combatants ADD COLUMN IF NOT EXISTS character_id TEXT REFERENCES characters(id);
+-- session revocation (2026-08-18): raising this retires every cookie already
+-- handed out for the account. Existing rows start at 1, which is also what a
+-- cookie minted before this column shipped is read as.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS session_version INTEGER NOT NULL DEFAULT 1;
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

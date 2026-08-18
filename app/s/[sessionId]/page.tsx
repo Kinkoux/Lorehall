@@ -8,7 +8,6 @@ import {
   adjustHp,
   endCombat,
   endSession,
-  getTurnOrder,
   joinInitiative,
   nextTurn,
   recordDeathSave,
@@ -20,7 +19,8 @@ import {
 import { deployEncounter } from "@/lib/compendium-actions";
 import { encounters as encountersTable } from "@/lib/db";
 import { asc } from "drizzle-orm";
-import { getBeats, getChapters, setBeatStatus } from "@/lib/beat-actions";
+import { setBeatStatus } from "@/lib/beat-actions";
+import { getBeats, getChapters, getTurnOrder } from "@/lib/queries";
 import { chooseActiveMap } from "@/lib/map-actions";
 import { getT } from "@/lib/locale";
 import { renderEventMessage } from "@/lib/session-log";

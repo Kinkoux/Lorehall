@@ -11,7 +11,22 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   displayName: text("display_name"),
   passwordHash: text("password_hash").notNull(),
+  // Bumped to retire every cookie issued so far — a session token carries the
+  // version it was signed with and stops verifying once this moves past it.
+  sessionVersion: integer("session_version").notNull().default(1),
   createdAt: ms("created_at").notNull(),
+});
+
+/**
+ * Fixed-window attempt counters for sign-in, registration and join codes.
+ * Kept in the database rather than process memory so every serverless
+ * instance counts against the same window. Rows are self-healing: an elapsed
+ * window is restarted in place by the next attempt (see lib/rate-limit.ts).
+ */
+export const authAttempts = pgTable("auth_attempts", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  resetAt: ms("reset_at").notNull(),
 });
 
 export const worlds = pgTable("worlds", {

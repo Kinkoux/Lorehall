@@ -5,8 +5,11 @@ export const errors = {
     auth: {
       usernameFormat: "Username must be 3-20 characters: letters, numbers, underscore.",
       passwordTooShort: "Password must be at least 6 characters.",
+      passwordTooLong: "Password must be at most 128 characters.",
       usernameTaken: "That username is taken.",
       badCredentials: "Wrong username or password.",
+      // Deliberately says nothing about which limit was hit or when it lifts.
+      tooManyAttempts: "Too many attempts. Please try again later.",
     },
     join: {
       emptyCode: "Enter a join code.",
@@ -43,8 +46,10 @@ export const errors = {
     auth: {
       usernameFormat: "Kullanıcı adı 3-20 karakter olmalı: harf, rakam, alt çizgi.",
       passwordTooShort: "Şifre en az 6 karakter olmalı.",
+      passwordTooLong: "Parola en fazla 128 karakter olabilir.",
       usernameTaken: "Bu kullanıcı adı alınmış.",
       badCredentials: "Kullanıcı adı veya şifre hatalı.",
+      tooManyAttempts: "Çok fazla deneme yapıldı. Lütfen daha sonra tekrar deneyin.",
     },
     join: {
       emptyCode: "Katılım kodu gir.",

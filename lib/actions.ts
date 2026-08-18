@@ -1,8 +1,9 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { customAlphabet, nanoid } from "nanoid";
 import {
@@ -18,6 +19,7 @@ import {
 } from "@/lib/db";
 import { createSession, destroySession, requireUser } from "@/lib/auth";
 import { canEditEntry, getWorldMembership, hasDmPowers } from "@/lib/perms";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getT } from "@/lib/locale";
 
 export type FormState = { error?: string };
@@ -34,17 +36,47 @@ const cap = (s: string, n: number) => s.slice(0, n);
 
 // ---------- auth ----------
 
+const MINUTE = 60_000;
+const HOUR = 60 * MINUTE;
+
+/**
+ * Upper bound on a password. Hashing cost is paid per submission, so the
+ * input needs an end; 128 is far past any real passphrase, and bcrypt only
+ * reads the first 72 bytes anyway.
+ */
+const PASSWORD_MAX = 128;
+
+/**
+ * Caller's address, used only as a rate-limit key. Behind a proxy the
+ * left-most x-forwarded-for entry is the client; "unknown" buckets everything
+ * we cannot place together, which is the conservative direction here.
+ */
+async function clientIp(): Promise<string> {
+  const h = await headers();
+  const forwarded = h.get("x-forwarded-for")?.split(",")[0]?.trim();
+  if (forwarded) return forwarded;
+  return h.get("x-real-ip")?.trim() || "unknown";
+}
+
 export async function register(_prev: FormState, formData: FormData): Promise<FormState> {
   const username = str(formData, "username").toLowerCase();
   const displayName = str(formData, "displayName");
   const password = formData.get("password");
 
   const { t } = await getT();
+  // A handful of new accounts an hour per address: plenty for a household
+  // sharing a connection, and a low ceiling for anything automated.
+  if (!(await checkRateLimit(`register:ip:${await clientIp()}`, 5, HOUR))) {
+    return { error: t("errors.auth.tooManyAttempts") };
+  }
   if (!/^[a-z0-9_]{3,20}$/.test(username)) {
     return { error: t("errors.auth.usernameFormat") };
   }
   if (typeof password !== "string" || password.length < 6) {
     return { error: t("errors.auth.passwordTooShort") };
+  }
+  if (password.length > PASSWORD_MAX) {
+    return { error: t("errors.auth.passwordTooLong") };
   }
   const existing = await db.query.users.findFirst({ where: eq(users.username, username) });
   if (existing) return { error: t("errors.auth.usernameTaken") };
@@ -54,27 +86,64 @@ export async function register(_prev: FormState, formData: FormData): Promise<Fo
     id,
     username,
     displayName: cap(displayName, 80) || username,
-    passwordHash: bcrypt.hashSync(password, 10),
+    passwordHash: await bcrypt.hash(password, 10),
     createdAt: Date.now(),
   });
-  await createSession(id);
+  // A brand-new row is at session_version 1 (the column default).
+  await createSession(id, 1);
   redirect("/dashboard");
 }
 
 export async function login(_prev: FormState, formData: FormData): Promise<FormState> {
   const username = str(formData, "username").toLowerCase();
   const password = formData.get("password");
-  const user = await db.query.users.findFirst({ where: eq(users.username, username) });
-  if (!user || typeof password !== "string" || !bcrypt.compareSync(password, user.passwordHash)) {
-    return { error: (await getT()).t("errors.auth.badCredentials") };
+  const { t } = await getT();
+
+  // Counted per account and per address; either ceiling alone leaves an
+  // obvious way around it. Both are checked before the hash comparison, which
+  // is the expensive half of this action.
+  const ip = await clientIp();
+  const [ipAllowed, userAllowed] = await Promise.all([
+    checkRateLimit(`login:ip:${ip}`, 30, 15 * MINUTE),
+    checkRateLimit(`login:u:${username}`, 10, 15 * MINUTE),
+  ]);
+  if (!ipAllowed || !userAllowed) {
+    return { error: t("errors.auth.tooManyAttempts") };
   }
-  await createSession(user.id);
+
+  const user = await db.query.users.findFirst({ where: eq(users.username, username) });
+  if (!user || typeof password !== "string" || !(await bcrypt.compare(password, user.passwordHash))) {
+    return { error: t("errors.auth.badCredentials") };
+  }
+  await createSession(user.id, user.sessionVersion);
   redirect("/dashboard");
 }
 
 export async function logout() {
   await destroySession();
   redirect("/login");
+}
+
+/**
+ * Retire every cookie issued for this account by moving the account's session
+ * version past all of them. The bump happens in SQL rather than as a
+ * read-then-write, so two concurrent clicks cannot land on the same number.
+ * The device that asked is re-signed at the new version and stays put; every
+ * other one falls out the next time it loads a page.
+ */
+export async function logoutEverywhere() {
+  const user = await requireUser();
+  const [row] = await db
+    .update(users)
+    .set({ sessionVersion: sql`${users.sessionVersion} + 1` })
+    .where(eq(users.id, user.id))
+    .returning({ sessionVersion: users.sessionVersion });
+  if (!row) {
+    await destroySession();
+    redirect("/login");
+  }
+  await createSession(user.id, row.sessionVersion);
+  redirect("/dashboard");
 }
 
 // ---------- worlds ----------
@@ -135,11 +204,18 @@ export async function createCampaign(worldId: string, formData: FormData) {
 
 export async function joinCampaign(_prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser();
+  const { t } = await getT();
+  // A join code is the only thing standing between someone and a table, so
+  // the number of codes one account may try in an hour is bounded.
+  if (!(await checkRateLimit(`join:u:${user.id}`, 10, HOUR))) {
+    return { error: t("errors.auth.tooManyAttempts") };
+  }
+
   const code = str(formData, "code").toUpperCase();
-  if (!code) return { error: (await getT()).t("errors.join.emptyCode") };
+  if (!code) return { error: t("errors.join.emptyCode") };
 
   const campaign = await db.query.campaigns.findFirst({ where: eq(campaigns.joinCode, code) });
-  if (!campaign) return { error: (await getT()).t("errors.join.notFound") };
+  if (!campaign) return { error: t("errors.join.notFound") };
 
   const now = Date.now();
   const alreadyIn = await db.query.campaignMembers.findFirst({

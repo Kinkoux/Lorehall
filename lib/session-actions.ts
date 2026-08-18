@@ -3,7 +3,7 @@
 import { randomInt } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import {
   db,
@@ -11,11 +11,11 @@ import {
   combatants,
   sessionEvents,
   characters,
-  type Combatant,
 } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { getT } from "@/lib/locale";
+import { getTurnOrder } from "@/lib/queries";
 import { logMessage } from "@/lib/session-log";
 import type { FormState } from "@/lib/actions";
 
@@ -51,15 +51,6 @@ async function logEvent(
     message,
     createdAt: Date.now(),
   });
-}
-
-/** Combatants in table order: highest initiative first, earliest added wins ties. */
-export async function getTurnOrder(sessionId: string): Promise<Combatant[]> {
-  return db
-    .select()
-    .from(combatants)
-    .where(eq(combatants.sessionId, sessionId))
-    .orderBy(desc(combatants.initiative), asc(combatants.createdAt));
 }
 
 /**
