@@ -168,6 +168,38 @@ export function IconExpand(props: IconProps) {
   );
 }
 
+/** Banded treasure chest (items / equipment). */
+export function IconChest(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 10.5a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4V19H3v-8.5z" />
+      <path d="M3 12.5h18M10 12.5v-2h4v2" />
+      <path d="M10 15.5h4" />
+    </Svg>
+  );
+}
+
+/** Round-bottomed flask (potions, magic items). */
+export function IconFlask(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M9.5 3h5M10.5 3v6L5.6 16.6A3 3 0 0 0 8.1 21h7.8a3 3 0 0 0 2.5-4.4L13.5 9V3" />
+      <path d="M7.4 14h9.2" />
+    </Svg>
+  );
+}
+
+/** Two-wheeled cart (mounts and vehicles). */
+export function IconCart(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3 7h3l2.5 8h9l2.5-6H7" />
+      <circle cx="10" cy="19" r="1.8" />
+      <circle cx="17" cy="19" r="1.8" />
+    </Svg>
+  );
+}
+
 /** Diagonal cross (delete / remove) — replaces raw ✕ glyphs. */
 export function IconX(props: IconProps) {
   return (
@@ -230,4 +262,21 @@ export function SchoolSigil({ school, ...props }: IconProps & { school: string }
   const Sigil = SIGILS[school];
   if (!Sigil) return <IconDie {...props} />;
   return <Sigil {...props} />;
+}
+
+// ---------- item category marks ----------
+
+const ITEM_ICONS: Record<string, (props: IconProps) => React.ReactElement> = {
+  weapon: IconSwords,
+  armor: IconShield,
+  gear: IconChest,
+  tool: IconQuill,
+  vehicle: IconCart,
+  magic: IconFlask,
+};
+
+/** Category mark for an SRD item (`weapon`, `armor`, `gear`, …). */
+export function ItemIcon({ category, ...props }: IconProps & { category: string }) {
+  const Mark = ITEM_ICONS[category] ?? IconChest;
+  return <Mark {...props} />;
 }

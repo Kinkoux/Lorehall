@@ -1,6 +1,7 @@
 import spellsJson from "@/lib/data/spells.json";
 import monstersJson from "@/lib/data/monsters.json";
 import monsterImagesJson from "@/lib/data/monster-images.json";
+import itemsJson from "@/lib/data/items.json";
 
 export type SrdSpell = {
   index: string;
@@ -55,8 +56,38 @@ export type SrdMonster = {
   legendary: SrdMonsterAction[];
 };
 
+/** The six filter buckets `scripts/fetch-srd-items.mjs` sorts SRD gear into. */
+export const ITEM_CATEGORIES = ["weapon", "armor", "gear", "tool", "vehicle", "magic"] as const;
+export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
+
+export type SrdItem = {
+  index: string;
+  name: string;
+  category: ItemCategory;
+  /** Finer SRD grouping: "Martial Melee", "Heavy", "Artisan's Tools", "Potion"… */
+  sub: string | null;
+  cost: string | null;
+  /** Pounds. */
+  weight: number | null;
+  ac: string | null;
+  strMin: number | null;
+  stealth: boolean;
+  damage: string | null;
+  twoHanded: string | null;
+  range: string | null;
+  thrown: string | null;
+  properties: string | null;
+  rarity: string | null;
+  attunement: boolean;
+  speed: string | null;
+  capacity: string | null;
+  contents: string | null;
+  desc: string;
+};
+
 export const SPELLS = spellsJson as SrdSpell[];
 export const MONSTERS = monstersJson as SrdMonster[];
+export const ITEMS = itemsJson as SrdItem[];
 
 /** Freely-licensed artwork (Wikimedia Commons only), matched at fetch time. */
 export type MonsterImage = { img: string; page: string; title: string };
@@ -128,6 +159,7 @@ function crValue(label: string) {
 
 export const getSpell = (index: string) => SPELLS.find((s) => s.index === index);
 export const getMonster = (index: string) => MONSTERS.find((m) => m.index === index);
+export const getItem = (index: string) => ITEMS.find((i) => i.index === index);
 
 export function searchSpells(
   q: string,
@@ -148,6 +180,15 @@ export function searchSpells(
   );
 }
 
+export function searchItems(q: string, category: string) {
+  const needle = q.trim().toLowerCase();
+  return ITEMS.filter(
+    (i) =>
+      (!needle || i.name.toLowerCase().includes(needle)) &&
+      (!category || i.category === category)
+  );
+}
+
 export function searchMonsters(q: string, cr: string) {
   const needle = q.trim().toLowerCase();
   return MONSTERS.filter(
@@ -159,6 +200,35 @@ export function searchMonsters(q: string, cr: string) {
 
 export const spellLevelLabel = (level: number) =>
   level === 0 ? "Cantrip" : `Level ${level}`;
+
+/**
+ * English fallback labels for the item buckets. The UI translates categories
+ * through the dictionary; this map is for `itemSummary`, whose text is written
+ * into the database next to the (English) SRD item name.
+ */
+const ITEM_CATEGORY_LABELS: Record<ItemCategory, string> = {
+  weapon: "Weapon",
+  armor: "Armor",
+  gear: "Adventuring gear",
+  tool: "Tool",
+  vehicle: "Mount or vehicle",
+  magic: "Magic item",
+};
+
+/** One-line summary used when adding an SRD item to a character's inventory. */
+export function itemSummary(item: SrdItem) {
+  const rarity = item.rarity && (item.attunement ? `${item.rarity} (attunement)` : item.rarity);
+  const parts = [
+    item.sub ?? ITEM_CATEGORY_LABELS[item.category],
+    rarity,
+    item.damage && (item.twoHanded ? `${item.damage} (${item.twoHanded})` : item.damage),
+    item.ac && `AC ${item.ac}`,
+    item.properties,
+    item.cost,
+    item.weight != null && `${item.weight} lb.`,
+  ].filter(Boolean);
+  return parts.join(" · ");
+}
 
 /** One-line summary used when adding an SRD spell to a character sheet. */
 export function spellSummary(spell: SrdSpell) {

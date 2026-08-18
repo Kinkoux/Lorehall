@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { MONSTERS, SPELLS } from "@/lib/srd-data";
+import { ITEMS, MONSTERS, SPELLS } from "@/lib/srd-data";
 import { SiteHeader } from "@/components/SiteHeader";
-import { IconBook, IconClaw } from "@/components/Icons";
+import { IconBook, IconChest, IconClaw } from "@/components/Icons";
 import { Card } from "@/components/ui";
 
 export async function generateMetadata() {
@@ -42,6 +42,17 @@ export default async function CompendiumPage() {
               </h2>
               <p className="mt-1 text-sm text-parchment-500">
                 {t("compendium.monsters.cardBody", { n: MONSTERS.length })}
+              </p>
+            </Card>
+          </Link>
+          <Link href="/compendium/items" className="block">
+            <Card className="transition hover:border-gold-500">
+              <IconChest size={30} className="text-blood-400" />
+              <h2 className="mt-3 font-display text-xl font-bold text-parchment-100">
+                {t("compendium.items.title")}
+              </h2>
+              <p className="mt-1 text-sm text-parchment-500">
+                {t("compendium.items.cardBody", { n: ITEMS.length })}
               </p>
             </Card>
           </Link>

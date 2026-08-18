@@ -8,6 +8,7 @@ import {
   db,
   characters,
   characterAbilities,
+  characterItems,
   encounters,
   encounterMonsters,
   combatants,
@@ -58,6 +59,37 @@ export async function addSpellToCharacter(spellIndex: string, characterId: strin
     name: spell.name,
     kind: "spell",
     notes: spellSummary(spell),
+    createdAt: Date.now(),
+  });
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+}
+
+// ---------- items → character inventory ----------
+
+/** From an item detail page: drop an SRD item into a character's inventory. */
+export async function addItemToCharacter(itemIndex: string, formData: FormData) {
+  const user = await requireUser();
+  // Lazy import keeps the SRD JSON out of the campaign/session chunks.
+  const { getItem, itemSummary } = await import("@/lib/srd-data");
+  const item = getItem(itemIndex);
+  if (!item) return;
+  const characterId = str(formData, "characterId");
+  const character = await db.query.characters.findFirst({
+    where: eq(characters.id, characterId),
+  });
+  if (!character) return;
+  // Mine, or one in a campaign I run.
+  if (character.userId !== user.id) {
+    const access = await getCampaignAccess(character.campaignId, user.id);
+    if (!access?.isDm) return;
+  }
+
+  await db.insert(characterItems).values({
+    id: nanoid(12),
+    characterId,
+    name: item.name,
+    qty: Math.min(Math.max(int(formData, "qty") ?? 1, 1), 999),
+    notes: itemSummary(item),
     createdAt: Date.now(),
   });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
