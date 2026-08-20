@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { CR_LABELS, getMonsterImage, searchMonsters } from "@/lib/srd-data";
+import { CR_LABELS, getMonsterArt, searchMonsters } from "@/lib/srd-data";
 import { SiteHeader } from "@/components/SiteHeader";
 import { IconClaw } from "@/components/Icons";
 import { Pagination } from "@/components/Pagination";
@@ -60,7 +60,7 @@ export default async function MonstersPage({
 
         <ul className="divide-y divide-ink-700 rounded-sm border border-ink-700 bg-ink-900/85">
           {shown.map((monster) => {
-            const image = getMonsterImage(monster.index);
+            const image = getMonsterArt(monster.index);
             return (
               <li key={monster.index}>
                 <Link
@@ -70,7 +70,7 @@ export default async function MonstersPage({
                   {image ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={image.img}
+                      src={image.thumb}
                       alt=""
                       loading="lazy"
                       referrerPolicy="no-referrer"

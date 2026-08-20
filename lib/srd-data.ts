@@ -2,6 +2,7 @@ import type { WorldItemSlot } from "@/lib/db/schema";
 import spellsJson from "@/lib/data/spells.json";
 import monstersJson from "@/lib/data/monsters.json";
 import monsterImagesJson from "@/lib/data/monster-images.json";
+import monsterArtJson from "@/lib/data/monster-art.json";
 import itemsJson from "@/lib/data/items.json";
 
 export type SrdSpell = {
@@ -95,6 +96,31 @@ export type MonsterImage = { img: string; page: string; title: string };
 export const MONSTER_IMAGES = monsterImagesJson as Record<string, MonsterImage>;
 export const getMonsterImage = (index: string): MonsterImage | undefined =>
   MONSTER_IMAGES[index];
+
+/**
+ * Monsters with a local engraving plate under `public/monsters/`, written by
+ * `scripts/convert-monster-art.mjs`.
+ */
+export const MONSTER_ART = new Set(monsterArtJson as string[]);
+
+/**
+ * The picture to show for a monster: the local plate when we have one, else the
+ * Wikimedia photo we matched at fetch time. `credit` is set only in the second
+ * case — the local art is ours, so it carries no attribution line.
+ */
+export type MonsterArt = { src: string; thumb: string; credit: MonsterImage | null };
+
+export function getMonsterArt(index: string): MonsterArt | undefined {
+  if (MONSTER_ART.has(index))
+    return {
+      src: `/monsters/${index}.webp`,
+      thumb: `/monsters/t/${index}.webp`,
+      credit: null,
+    };
+  const fallback = getMonsterImage(index);
+  // Wikimedia URLs are already thumbnail-sized; the same file serves both roles.
+  return fallback ? { src: fallback.img, thumb: fallback.img, credit: fallback } : undefined;
+}
 
 export const SPELL_CLASSES = [...new Set(SPELLS.flatMap((s) => s.classes))].sort();
 export const SPELL_SCHOOLS = [...new Set(SPELLS.map((s) => s.school))].sort();

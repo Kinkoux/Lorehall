@@ -3,7 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { db, campaigns, encounters, gameSessions } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { getMonster, getMonsterImage, type SrdMonsterAction } from "@/lib/srd-data";
+import { getMonster, getMonsterArt, type SrdMonsterAction } from "@/lib/srd-data";
 import { addMonsterToEncounter, addMonsterToLiveSession } from "@/lib/compendium-actions";
 import { fmt, mod } from "@/lib/dnd";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -20,7 +20,7 @@ export default async function MonsterPage({
   const { index } = await params;
   const monster = getMonster(index);
   if (!monster) notFound();
-  const image = getMonsterImage(index);
+  const image = getMonsterArt(index);
 
   const myCampaigns = user
     ? await db.select().from(campaigns).where(eq(campaigns.dmUserId, user.id))
@@ -79,22 +79,26 @@ export default async function MonsterPage({
             <figure className="w-36 shrink-0 sm:w-44">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={image.img}
+                src={image.src}
                 alt={monster.name}
                 referrerPolicy="no-referrer"
                 className="w-full rounded-sm border border-ink-600 object-cover"
               />
-              <figcaption className="mt-1 text-[10px] leading-snug text-parchment-500">
-                {t("compendium.monsters.imageCredit")}{" "}
-                <a
-                  href={image.page}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline hover:text-gold-300"
-                >
-                  Wikipedia
-                </a>
-              </figcaption>
+              {/* Attribution belongs to the Wikimedia fallback only; the local
+                  plates under public/monsters/ are our own artwork. */}
+              {image.credit && (
+                <figcaption className="mt-1 text-[10px] leading-snug text-parchment-500">
+                  {t("compendium.monsters.imageCredit")}{" "}
+                  <a
+                    href={image.credit.page}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline hover:text-gold-300"
+                  >
+                    Wikipedia
+                  </a>
+                </figcaption>
+              )}
             </figure>
           )}
         </div>
