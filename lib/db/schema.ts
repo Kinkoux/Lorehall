@@ -355,6 +355,30 @@ export const characterAbilities = pgTable("character_abilities", {
   createdAt: ms("created_at").notNull(),
 });
 
+/**
+ * Spell slots, the 5e resource the sheet's per-line "uses" counter cannot
+ * express: a slot belongs to the caster, not to any one spell, and the same
+ * three level-1 slots are spent by whichever spell reaches for them.
+ *
+ * One row per spell level a character actually has slots in (1..9) — a level
+ * with no slots has no row, which is what keeps the tracker showing three
+ * lines for a level 5 wizard instead of nine. `total` is what a long rest
+ * restores to, `used` how many are currently spent; both are plain numbers the
+ * player edits, because the table's homebrew is nobody else's business.
+ */
+export const characterSpellSlots = pgTable(
+  "character_spell_slots",
+  {
+    characterId: text("character_id")
+      .notNull()
+      .references(() => characters.id),
+    level: integer("level").notNull(),
+    total: integer("total").notNull(),
+    used: integer("used").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.characterId, t.level] })]
+);
+
 /** Chapters of the DM's story book; beats file into one (or stay unfiled). */
 export const storyChapters = pgTable("story_chapters", {
   id: text("id").primaryKey(),
@@ -504,6 +528,7 @@ export type StoryBeat = typeof storyBeats.$inferSelect;
 export type Character = typeof characters.$inferSelect;
 export type CharacterItem = typeof characterItems.$inferSelect;
 export type CharacterAbility = typeof characterAbilities.$inferSelect;
+export type CharacterSpellSlot = typeof characterSpellSlots.$inferSelect;
 export type Quest = typeof quests.$inferSelect;
 export type Encounter = typeof encounters.$inferSelect;
 export type EncounterMonster = typeof encounterMonsters.$inferSelect;

@@ -82,7 +82,7 @@ export async function addSpellToCharacter(spellIndex: string, characterId: strin
 export async function addItemToCharacter(itemIndex: string, formData: FormData) {
   const user = await requireUser();
   // Lazy import keeps the SRD JSON out of the campaign/session chunks.
-  const { getItem, itemSummary, srdItemSlot } = await import("@/lib/srd-data");
+  const { getItem, itemSummary, srdItemSlot, magicAcBonus } = await import("@/lib/srd-data");
   const item = getItem(itemIndex);
   if (!item) return;
   const characterId = str(formData, "characterId");
@@ -97,6 +97,7 @@ export async function addItemToCharacter(itemIndex: string, formData: FormData) 
   }
 
   const qty = Math.min(Math.max(int(formData, "qty") ?? 1, 1), 999);
+  const acBonus = magicAcBonus(item);
   await db.insert(characterItems).values({
     id: nanoid(12),
     characterId,
@@ -105,9 +106,9 @@ export async function addItemToCharacter(itemIndex: string, formData: FormData) 
     notes: itemSummary(item),
     // The index is the link back to this page from the inventory row.
     srdIndex: item.index,
-    // Nothing in the SRD carries a machine-readable bonus, so no snapshot
-    // travels with it — only a slot, and only where the category is
-    // unambiguous about where the thing goes.
+    // The one machine-readable magic bonus the SRD's prose yields; mundane
+    // armour math stays derived from the index at read time instead.
+    statBonuses: acBonus ? JSON.stringify({ ac: acBonus }) : null,
     slot: srdItemSlot(item),
     createdAt: Date.now(),
   });

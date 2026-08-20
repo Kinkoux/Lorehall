@@ -95,6 +95,27 @@ export function bonusEntries(bonuses: StatBonuses): Array<[WorldItemStat, number
 }
 
 /**
+ * The one slot a category leaves no argument about. A sword is held, a hauberk
+ * is worn on the body, a shield is carried in a hand — three facts no table
+ * negotiates, and the only three this function claims. Everything else (a
+ * potion, a cloak, a wondrous trinket) answers null, and the player names the
+ * slot themselves.
+ *
+ * `sub` is the SRD's finer grouping ("Light", "Heavy", "Shield"); a library
+ * entry has none, so a homebrew shield is filed under the body-armour rule
+ * unless its author gave the entry an explicit slot — which is why the writers
+ * consult a stored slot *before* falling back here.
+ */
+export function categorySlot(
+  category: string | null | undefined,
+  sub: string | null | undefined = null
+): WorldItemSlot | null {
+  if (category === "weapon") return "weapon";
+  if (category === "armor") return sub === "Shield" ? "hands" : "armor";
+  return null;
+}
+
+/**
  * A slot name that came off a form (or any other untrusted string). Anything
  * outside the set — including the blank a "carried" selection sends — reads as
  * "no slot", which is the state every writer treats as "not equippable".

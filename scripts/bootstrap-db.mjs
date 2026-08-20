@@ -181,6 +181,17 @@ CREATE TABLE IF NOT EXISTS character_abilities (
   srd_index TEXT,
   created_at BIGINT NOT NULL
 );
+-- spell slots (2026-08-20): the 5e resource a per-line "uses" counter cannot
+-- express — a slot belongs to the caster, not to a spell. One row per spell
+-- level (1..9) the character actually has slots in; a level with none has no
+-- row. total is what a long rest restores to, used is how many are spent.
+CREATE TABLE IF NOT EXISTS character_spell_slots (
+  character_id TEXT NOT NULL REFERENCES characters(id),
+  level INTEGER NOT NULL,
+  total INTEGER NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (character_id, level)
+);
 CREATE TABLE IF NOT EXISTS story_chapters (
   id TEXT PRIMARY KEY,
   campaign_id TEXT NOT NULL REFERENCES campaigns(id),

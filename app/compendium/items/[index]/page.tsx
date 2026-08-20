@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import { db, characters, campaigns } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { getItem } from "@/lib/srd-data";
+import { getItem, magicAcBonus } from "@/lib/srd-data";
 import { addItemToCharacter } from "@/lib/compendium-actions";
 import { categoryArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -29,11 +29,13 @@ export default async function ItemPage({
         .where(and(eq(characters.userId, user.id), eq(characters.approval, "approved")))
     : [];
 
+  const acBonus = magicAcBonus(item);
   const facts: Array<[string, string | null]> = [
     [t("compendium.items.cost"), item.cost],
     [t("compendium.items.weight"), item.weight != null ? `${item.weight} lb.` : null],
     [t("compendium.items.rarity"), item.rarity],
     [t("compendium.items.armorClass"), item.ac],
+    [t("compendium.items.magicBonus"), acBonus ? `+${acBonus} AC` : null],
     [t("compendium.items.minStrength"), item.strMin != null ? `Str ${item.strMin}` : null],
     [
       t("compendium.items.stealth"),

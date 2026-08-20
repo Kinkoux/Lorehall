@@ -1,4 +1,5 @@
 import type { WorldItemSlot } from "@/lib/db/schema";
+import { categorySlot } from "@/lib/world-items";
 import spellsJson from "@/lib/data/spells.json";
 import monstersJson from "@/lib/data/monsters.json";
 import monsterImagesJson from "@/lib/data/monster-images.json";
@@ -251,9 +252,119 @@ const ITEM_CATEGORY_LABELS: Record<ItemCategory, string> = {
  * player names the slot themselves when they equip it.
  */
 export function srdItemSlot(item: SrdItem): WorldItemSlot | null {
-  if (item.category === "weapon") return "weapon";
-  if (item.category === "armor") return item.sub === "Shield" ? "hands" : "armor";
-  if (item.category === "magic" && item.sub === "Ring") return "ring";
+  const byCategory = categorySlot(item.category, item.sub);
+  if (byCategory) return byCategory;
+  if (item.category === "magic") {
+    if (item.sub === "Ring") return "ring";
+    if (item.sub === "Weapon") return "weapon";
+    // The SRD files magic shields under the "Armor" sub-bucket; the name is
+    // the only thing left that says which limb the piece belongs to.
+    if (item.sub === "Armor")
+      return item.name.toLowerCase().includes("shield") ? "hands" : "armor";
+  }
+  return null;
+}
+
+/**
+ * What a piece of armour is worth, read off the SRD's own wording.
+ *
+ * The `ac` field is prose, not a number — the eleven shapes in items.json are
+ * "11 + Dex" (light), "14 + Dex (max 2)" (medium), "16" (heavy) and "2" (the
+ * shield's bonus, which is not an armour class at all). This turns those into
+ * the three ways 5e folds DEX in, so effectiveAc() can do arithmetic instead
+ * of string-matching.
+ *
+ * Deliberately narrow: a shape the SRD does not use — a cap other than 2, a
+ * range, a sentence — answers null, and the sheet falls back to the armour
+ * class the player typed in by hand. Guessing at unknown wording would be a
+ * worse answer than admitting we cannot read it.
+ */
+export type ArmorAc =
+  | {
+      kind: "armor";
+      base: number;
+      /** How the wearer's DEX modifier joins in: all of it, at most +2, none. */
+      dex: "full" | "capped2" | "none";
+    }
+  | { kind: "shield"; shieldBonus: number };
+
+/** "16" — heavy armour, or (on a shield) the bonus it grants. */
+const AC_FLAT = /^(\d{1,2})$/;
+/** "11 + Dex", tolerating case, spacing and the fuller spellings. */
+const AC_DEX = /^(\d{1,2})\s*\+\s*dex(?:terity)?(?:\s*(?:mod|modifier))?$/;
+/** "14 + Dex (max 2)". */
+const AC_DEX_CAPPED =
+  /^(\d{1,2})\s*\+\s*dex(?:terity)?(?:\s*(?:mod|modifier))?\s*\(\s*max(?:imum)?\.?\s*(\d{1,2})\s*\)$/;
+
+export function parseArmorAc(item: SrdItem): ArmorAc | null {
+  if (item.category !== "armor" || !item.ac) return null;
+  const text = item.ac.trim().toLowerCase().replace(/\.$/, "");
+
+  const flat = AC_FLAT.exec(text);
+  if (flat) {
+    const n = Number(flat[1]);
+    // A shield's "2" is a bonus on top of whatever else is worn; every other
+    // flat number is heavy armour, which ignores DEX entirely.
+    return item.sub === "Shield"
+      ? { kind: "shield", shieldBonus: n }
+      : { kind: "armor", base: n, dex: "none" };
+  }
+
+  const capped = AC_DEX_CAPPED.exec(text);
+  // The SRD's only cap is +2 (medium armour). Anything else is wording we do
+  // not understand, and we say so rather than quietly rounding it to 2.
+  if (capped) {
+    return Number(capped[2]) === 2
+      ? { kind: "armor", base: Number(capped[1]), dex: "capped2" }
+      : null;
+  }
+
+  const open = AC_DEX.exec(text);
+  if (open) return { kind: "armor", base: Number(open[1]), dex: "full" };
+  return null;
+}
+
+/** The same reading, straight from an index on an inventory line. */
+export function armorAcFor(index: string | null | undefined): ArmorAc | null {
+  if (!index) return null;
+  const item = getItem(index);
+  return item ? parseArmorAc(item) : null;
+}
+
+/**
+ * Magic items keep their mechanics in prose. The one pattern that is both
+ * common and unambiguous — "+N bonus to AC" — is read out so protective gear
+ * actually protects; everything else stays prose.
+ */
+const MAGIC_AC = /\+([123])\s+bonus\s+to\s+(?:AC|Armor\s*Class)/i;
+
+export function magicAcBonus(item: SrdItem): number | null {
+  const m = MAGIC_AC.exec(item.desc || "");
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Where a line whose source is known *must* be worn — the discipline the
+ * equip form is held to, and the button the sheet offers instead of a
+ * dropdown. A sword cannot be strapped to a head just because a select box
+ * offered the option.
+ *
+ * The source has the last word in both halves: an SRD entry answers through
+ * srdItemSlot() above, and a library entry answers with the slot its author
+ * chose, falling back to what its category dictates only when they left it
+ * blank. A line with neither source — a hand-typed heirloom — answers null,
+ * and the player is free to name any slot they like, which is the deliberate
+ * design (docs/design-economy.md phase 3), not an oversight.
+ */
+export function requiredSlot(
+  srdIndex: string | null | undefined,
+  source: { slot: WorldItemSlot | null; category: string } | null | undefined
+): WorldItemSlot | null {
+  if (srdIndex) {
+    const item = getItem(srdIndex);
+    if (item) return srdItemSlot(item);
+  }
+  if (source) return source.slot ?? categorySlot(source.category);
   return null;
 }
 

@@ -1,11 +1,12 @@
 import { type WorldItemSlot } from "@/lib/db/schema";
 import { unequipItem } from "@/lib/character-actions";
-import { fmt } from "@/lib/dnd";
+import { acGearBonus, acTitle, fmt, type AcBreakdown } from "@/lib/dnd";
 import { statBonusEntries, STAT_LABELS } from "@/lib/world-items";
 import type { T } from "@/lib/i18n";
 import { IconShield, IconX, SlotIcon } from "@/components/Icons";
 import { Card, Portrait, SectionTitle } from "@/components/ui";
-import { itemArtSrc } from "@/components/character/item-art";
+import { itemArtSrc, SLOT_CATEGORY } from "@/components/character/item-art";
+import { SlotDrop } from "@/components/character/DragEquip";
 
 /**
  * The paper doll (docs/design-economy.md phase 3), laid out the way every game
@@ -22,6 +23,8 @@ export type EquippedPiece = {
   id: string;
   name: string;
   slot: WorldItemSlot;
+  /** Where the line came from, so the armour rules can read its SRD entry. */
+  srdIndex: string | null;
   /** The row's own snapshot, or its source's — resolved by the caller. */
   statBonuses: string | null;
   /** The library entry's photograph, when it has one. */
@@ -38,30 +41,17 @@ export type EquippedPiece = {
 const LEFT_SLOTS: readonly WorldItemSlot[] = ["head", "armor", "hands", "weapon"];
 const RIGHT_SLOTS: readonly WorldItemSlot[] = ["neck", "wrist", "ring", "boots"];
 
-/**
- * What a slot is holding when the piece itself never said. Only the two slots
- * that can only ever hold one kind of thing get to guess; a ring, a cloak or a
- * pair of boots could be anything, so those fall through to the slot's mark.
- */
-const SLOT_CATEGORY: Partial<Record<WorldItemSlot, string>> = {
-  weapon: "weapon",
-  armor: "armor",
-};
-
 export function EquipmentPanel({
   equipped,
   portrait,
-  armorClass,
-  acBonus,
+  ac,
   editable,
   t,
 }: {
   equipped: EquippedPiece[];
   portrait: { src: string | null; alt: string; fallbackSrc: string | null };
-  /** The sheet's own AC. NULL when nobody has filled it in yet. */
-  armorClass: number | null;
-  /** What the worn pieces add to it. */
-  acBonus: number;
+  /** Armour class as effectiveAc() worked it out, terms and all. */
+  ac: AcBreakdown;
   editable: boolean;
   t: T;
 }) {
@@ -90,7 +80,7 @@ export function EquipmentPanel({
         <div className="grid grid-cols-4 items-start justify-items-center gap-3 md:flex md:justify-center md:gap-8">
           <div className="col-span-4 mb-2 flex flex-col items-center gap-3 md:order-2 md:mb-0">
             <Figure {...portrait} />
-            <AcPlate armorClass={armorClass} bonus={acBonus} t={t} />
+            <AcPlate ac={ac} t={t} />
           </div>
           <div className="contents md:order-1 md:flex md:flex-col md:gap-3">
             {column(LEFT_SLOTS)}
@@ -148,22 +138,19 @@ function Figure({
 /**
  * Armour class, where the eye already is. Deliberately independent of whether
  * the six ability scores are filled in — AC is the one number a sheet can have
- * before it has anything else, and it is also where worn bonuses show up
+ * before it has anything else, and it is also where worn armour shows up
  * first, so it must not hide behind the stat block's gate.
+ *
+ * The hover text is the sum written out ("11 + DEX 3 + Shield 2"), which is
+ * the only way a player can tell a working number from a wrong one.
  */
-function AcPlate({
-  armorClass,
-  bonus,
-  t,
-}: {
-  armorClass: number | null;
-  bonus: number;
-  t: T;
-}) {
-  const total = armorClass === null ? null : armorClass + bonus;
+function AcPlate({ ac, t }: { ac: AcBreakdown; t: T }) {
+  const total = ac.value;
+  const bonus = acGearBonus(ac);
+  const label = t("character.sheet.form.armorClass");
   return (
     <p
-      title={t("character.sheet.form.armorClass")}
+      title={total === null ? label : `${label}: ${acTitle(ac)}`}
       className="flex items-center gap-2 rounded-sm border border-gold-500/60 bg-ink-950/70 px-3 py-1.5 outline outline-1 outline-gold-500/25 outline-offset-[-4px]"
     >
       <IconShield size={16} className="shrink-0 text-gold-400" />
@@ -215,8 +202,16 @@ function SlotCell({
         No role="img" here: the square can hold the take-off button, and
         labelling the box as an image would hide that button from a screen
         reader. What the square shows is named in the caption underneath.
+
+        SlotDrop is the only client-side thing on the doll — it lends this box
+        a dragover and a drop, and lends a worn piece the ability to be dragged
+        back to the pack. The button below is untouched and remains the way to
+        do it with a keyboard, or with a finger.
       */}
-      <div
+      <SlotDrop
+        slot={slot}
+        pieceId={piece?.id ?? null}
+        enabled={editable}
         title={label}
         className={`relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-sm border bg-ink-950/60 sm:h-20 sm:w-20 ${
           piece ? "border-gold-500/70" : "border-dashed border-ink-600"
@@ -229,6 +224,9 @@ function SlotCell({
             alt=""
             loading="lazy"
             decoding="async"
+            // Images drag themselves by default, which would hand the browser
+            // a picture to drag instead of the piece this square is holding.
+            draggable={false}
             className="h-full w-full object-cover"
           />
         ) : (
@@ -255,7 +253,7 @@ function SlotCell({
             </button>
           </form>
         )}
-      </div>
+      </SlotDrop>
       {piece ? (
         <>
           <p

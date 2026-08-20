@@ -1,3 +1,4 @@
+import type { WorldItemSlot } from "@/lib/db/schema";
 import { categoryArt } from "@/lib/ui-art";
 
 /**
@@ -17,6 +18,28 @@ export type ItemArt = {
   /** One of WORLD_ITEM_CATEGORIES — from the SRD entry or the library entry. */
   category: string | null;
 };
+
+/**
+ * What a slot says about what it is holding, when the piece itself never said.
+ * Only the three slots that can hold one kind of thing get to guess: the
+ * weapon slot holds a weapon, the armour slot holds armour, the finger holds
+ * something enchanted (nobody wears a plain iron band into a dungeon). A
+ * cloak, a pair of boots or a pair of gloves could be anything, so those fall
+ * through — to the slot's own mark on the paper doll, and to the "a thing in a
+ * backpack" plate in the inventory.
+ *
+ * One map for both places on purpose: the doll and the grid draw the same
+ * items, and had drifted apart on exactly this question.
+ */
+export const SLOT_CATEGORY: Partial<Record<WorldItemSlot, string>> = {
+  weapon: "weapon",
+  armor: "armor",
+  ring: "magic",
+};
+
+/** The above, for a slot that may be NULL (a line that is merely carried). */
+export const slotCategory = (slot: WorldItemSlot | null | undefined): string | null =>
+  (slot && SLOT_CATEGORY[slot]) ?? null;
 
 /**
  * The image for a line, or null when nothing is known about it. `fallback` is

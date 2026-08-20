@@ -1,6 +1,6 @@
 import type { Character } from "@/lib/db";
 import { SKILLS } from "@/lib/srd";
-import type { StatBonuses } from "@/lib/world-items";
+import { STAT_LABELS, type StatBonuses } from "@/lib/world-items";
 
 export const ABILITIES = ["str", "dex", "con", "intel", "wis", "cha"] as const;
 export type AbilityKey = (typeof ABILITIES)[number];
@@ -39,6 +39,47 @@ const SKILL_ABILITY_KEY: Record<string, AbilityKey> = {
 export const mod = (score: number) => Math.floor((score - 10) / 2);
 export const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 export const profBonus = (level: number) => 2 + Math.floor((level - 1) / 4);
+
+/**
+ * Armour class, shown as a sum rather than a verdict.
+ *
+ * The number on the badge is one addition of several terms, and a player who
+ * cannot see the terms cannot tell a working sheet from a broken one — "why
+ * is it 17?" is the question the breakdown answers. The parts are built by
+ * effectiveAc() in lib/armor.ts; the shape and the wording live here so a
+ * component can render them without dragging the SRD's JSON into its chunk.
+ *
+ * `kind` is what the term *is*, so a caller can single out the share that came
+ * from equipment; `label` is null for the base, which reads as a bare number.
+ */
+export type AcPart = {
+  kind: "base" | "dex" | "shield" | "item";
+  label: string | null;
+  value: number;
+};
+
+export type AcBreakdown = {
+  /** NULL when the sheet has nothing to compute an AC from at all. */
+  value: number | null;
+  parts: AcPart[];
+};
+
+/** "11 + DEX 3 + Shield 2 + Ring of Protection 1" — the badge's tooltip. */
+export function acTitle(ac: AcBreakdown): string {
+  return ac.parts
+    .map((part) => (part.label === null ? `${part.value}` : `${part.label} ${part.value}`))
+    .join(" + ");
+}
+
+/** What the worn pieces contribute — the shield and every flat AC bonus. */
+export function acGearBonus(ac: AcBreakdown): number {
+  return ac.parts
+    .filter((part) => part.kind === "shield" || part.kind === "item")
+    .reduce((sum, part) => sum + part.value, 0);
+}
+
+/** The label a DEX term wears in a breakdown. */
+export const AC_DEX_LABEL = STAT_LABELS.dex;
 
 export function hasScores(character: Character) {
   return ABILITIES.every((a) => character[a] !== null);

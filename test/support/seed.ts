@@ -4,6 +4,7 @@ import {
   campaigns,
   characterAbilities,
   characterItems,
+  characterSpellSlots,
   characters,
   codexEntries,
   combatants,
@@ -121,18 +122,36 @@ export async function seedCodexEntry(
   return id;
 }
 
-export async function seedCharacter(campaignId: string, userId: string, maxHp = 20) {
+export async function seedCharacter(
+  campaignId: string,
+  userId: string,
+  maxHp = 20,
+  /** What the sheet says it is, for the rules that read the written class. */
+  sheet: { klass?: string; level?: number } = {}
+) {
   const id = nextId("character");
   await db.insert(characters).values({
     id,
     campaignId,
     userId,
     name: "Vex",
-    level: 3,
+    klass: sheet.klass,
+    level: sheet.level ?? 3,
     maxHp,
     updatedAt: Date.now(),
   });
   return id;
+}
+
+/** A row of the spell slot tracker: how many of a level, how many spent. */
+export async function seedSpellSlot(
+  characterId: string,
+  level: number,
+  total: number,
+  used = 0
+) {
+  await db.insert(characterSpellSlots).values({ characterId, level, total, used });
+  return level;
 }
 
 export async function seedItem(
@@ -140,7 +159,14 @@ export async function seedItem(
   qty: number,
   name = "Healing Potion",
   /** Equipment fields, for the tests that care where a line is worn. */
-  worn: { slot?: WorldItemSlot; equipped?: 0 | 1; statBonuses?: string; worldItemId?: string } = {}
+  worn: {
+    slot?: WorldItemSlot;
+    equipped?: 0 | 1;
+    statBonuses?: string;
+    worldItemId?: string;
+    /** The compendium entry the line was stamped from, when it had one. */
+    srdIndex?: string;
+  } = {}
 ) {
   const id = nextId("item");
   await db.insert(characterItems).values({
@@ -152,6 +178,7 @@ export async function seedItem(
     equipped: worn.equipped ?? 0,
     statBonuses: worn.statBonuses,
     worldItemId: worn.worldItemId,
+    srdIndex: worn.srdIndex,
     createdAt: Date.now(),
   });
   return id;

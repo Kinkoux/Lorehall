@@ -1,58 +1,22 @@
+import { matchClass } from "@/lib/class-match";
+
 /**
  * URLs for the engraving plates under `public/art/`, written by
  * `scripts/convert-ui-art.mjs`.
  *
- * Deliberately free of imports: these are plain string constants, so a client
- * component can reach for a plate without dragging the compendium's JSON into
- * its bundle.
+ * These are plain string constants, so a client component can reach for a
+ * plate without dragging the compendium's JSON into its bundle. The one import
+ * is lib/class-match.ts, which is a list of strings and imports nothing itself
+ * — the reading of a free-text class lives there because the spell slot table
+ * needs the same answer this module does.
  */
 
 const ART = (name: string) => `/art/${name}.webp`;
 
-/**
- * A character's class is free text — the sheet takes whatever the player types,
- * in either language. So we look for a known class name *inside* the string
- * rather than demanding an exact match: "Level 3 Wizard", "büyücü/hırsız" and
- * "Fighter (Champion)" all land on a plate.
- *
- * Matching folds the input twice: plain `toLowerCase()` keeps the English
- * names intact ("FIGHTER" → "fighter") but breaks ALL-CAPS Turkish, whose
- * dotless I lowers to a dotted i ("SAVAŞÇI" → "savaşçi"); the Turkish-locale
- * fold repairs exactly that case. A needle only has to match either fold.
- */
-const CLASS_ALIASES: Array<[needle: string, slug: string]> = [
-  ["barbarian", "barbarian"],
-  ["bard", "bard"],
-  ["cleric", "cleric"],
-  ["druid", "druid"],
-  ["fighter", "fighter"],
-  ["monk", "monk"],
-  ["paladin", "paladin"],
-  ["ranger", "ranger"],
-  ["rogue", "rogue"],
-  ["sorcerer", "sorcerer"],
-  ["warlock", "warlock"],
-  ["wizard", "wizard"],
-  ["büyücü", "wizard"],
-  ["sihirbaz", "wizard"],
-  ["savaşçı", "fighter"],
-  ["barbar", "barbarian"],
-  ["ozan", "bard"],
-  ["rahip", "cleric"],
-  ["hırsız", "rogue"],
-  ["keşiş", "monk"],
-  ["korucu", "ranger"],
-  ["avcı", "ranger"],
-];
-
 /** The class plate for a written class, or null when nothing is recognised. */
 export function classArtFor(klass: string | null | undefined): string | null {
-  if (!klass) return null;
-  const folds = [klass.toLowerCase(), klass.toLocaleLowerCase("tr")];
-  for (const [needle, slug] of CLASS_ALIASES) {
-    if (folds.some((text) => text.includes(needle))) return ART(`class-${slug}`);
-  }
-  return null;
+  const slug = matchClass(klass);
+  return slug ? ART(`class-${slug}`) : null;
 }
 
 /** The sigil plate for a spell school. SRD school names are English. */

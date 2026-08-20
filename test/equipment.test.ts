@@ -149,6 +149,84 @@ describe("equipItem", () => {
     expect((await rowOf(helm))?.equipped).toBe(1);
   });
 
+  it("refuses to strap body armour to a head, whatever the form says", async () => {
+    // The row itself has no slot (stocked before the sheet recorded one), so
+    // the only thing standing between a breastplate and a hat is its source.
+    const plate = await seedItem(sheet, 1, "Breastplate", { srdIndex: "breastplate" });
+    await equipItem(plate, formData({ slot: "head" }));
+    const row = await rowOf(plate);
+    expect(row?.equipped).toBe(0);
+    expect(row?.slot).toBeNull();
+  });
+
+  it("places a piece by its source when the form names no slot", async () => {
+    const plate = await seedItem(sheet, 1, "Breastplate", { srdIndex: "breastplate" });
+    await equipItem(plate, formData({}));
+    const row = await rowOf(plate);
+    expect(row?.slot).toBe("armor");
+    expect(row?.equipped).toBe(1);
+  });
+
+  it("keeps a shield in a hand and a sword in the weapon slot", async () => {
+    const shield = await seedItem(sheet, 1, "Shield", { srdIndex: "shield" });
+    const sword = await seedItem(sheet, 1, "Longsword", { srdIndex: "longsword" });
+    await equipItem(shield, formData({ slot: "armor" }));
+    await equipItem(sword, formData({ slot: "ring" }));
+    expect((await rowOf(shield))?.equipped).toBe(0);
+    expect((await rowOf(sword))?.equipped).toBe(0);
+
+    await equipItem(shield, formData({}));
+    await equipItem(sword, formData({}));
+    expect((await rowOf(shield))?.slot).toBe("hands");
+    expect((await rowOf(sword))?.slot).toBe("weapon");
+  });
+
+  it("moves a line its source placed differently than the row remembers", async () => {
+    // A line stocked before the rule existed, sitting in the wrong square: the
+    // source outranks it, and wearing it once puts it right.
+    const armour = await seedItem(sheet, 1, "Leather Armor", {
+      srdIndex: "leather-armor",
+      slot: "head",
+    });
+    await equipItem(armour, formData({}));
+    const row = await rowOf(armour);
+    expect(row?.slot).toBe("armor");
+    expect(row?.equipped).toBe(1);
+  });
+
+  it("holds a library entry to its category when its author named no slot", async () => {
+    const forged = await seedWorldItem(fx.worldId, fx.dm, {
+      name: "Dwarven Mail",
+      category: "armor",
+    });
+    const mail = await seedItem(sheet, 1, "Dwarven Mail", { worldItemId: forged });
+    await equipItem(mail, formData({ slot: "boots" }));
+    expect((await rowOf(mail))?.equipped).toBe(0);
+    await equipItem(mail, formData({}));
+    expect((await rowOf(mail))?.slot).toBe("armor");
+  });
+
+  it("lets a library entry's own slot outrank its category", async () => {
+    // A homebrew shield: filed under armour, worn in a hand because its author
+    // said so. The category rule must not overrule them.
+    const forged = await seedWorldItem(fx.worldId, fx.dm, {
+      name: "Oaken Buckler",
+      category: "armor",
+      slot: "hands",
+    });
+    const buckler = await seedItem(sheet, 1, "Oaken Buckler", { worldItemId: forged });
+    await equipItem(buckler, formData({ slot: "hands" }));
+    expect((await rowOf(buckler))?.slot).toBe("hands");
+    expect((await rowOf(buckler))?.equipped).toBe(1);
+  });
+
+  it("leaves a hand-typed line free to be worn anywhere", async () => {
+    // No source ever spoke for it, so the player's word is the only word.
+    const trinket = await seedItem(sheet, 1, "Grandmother's Charm");
+    await equipItem(trinket, formData({ slot: "neck" }));
+    expect((await rowOf(trinket))?.slot).toBe("neck");
+  });
+
   it("unequipItem takes the piece off but keeps its slot", async () => {
     const helm = await seedItem(sheet, 1, "Iron Helm", { slot: "head", equipped: 1 });
     await unequipItem(helm);

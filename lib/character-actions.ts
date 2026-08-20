@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, isNotNull, sql } from "drizzle-orm";
+import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { redirect } from "next/navigation";
 import {
@@ -9,10 +9,17 @@ import {
   characters,
   characterItems,
   characterAbilities,
+  characterSpellSlots,
   campaignMembers,
   worldItems,
   type WorldItemSlot,
 } from "@/lib/db";
+import {
+  MAX_SPELL_LEVEL,
+  MIN_SPELL_LEVEL,
+  suggestSlots,
+  type SlotRow,
+} from "@/lib/spell-slots";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { campaignLog } from "@/lib/campaign-log";
@@ -127,11 +134,15 @@ export async function rejectCharacter(characterId: string) {
   if (!character || character.approval !== "pending") return;
   const access = await getCampaignAccess(character.campaignId, user.id);
   if (!access?.isDm) return;
-  // All three deletes or none: a half-removed sheet leaves items and
-  // abilities referencing a character row that is gone.
+  // All four deletes or none: a half-removed sheet leaves items, abilities and
+  // spell slots referencing a character row that is gone — and the foreign
+  // keys would refuse the last delete anyway.
   await db.transaction(async (tx) => {
     await tx.delete(characterItems).where(eq(characterItems.characterId, characterId));
     await tx.delete(characterAbilities).where(eq(characterAbilities.characterId, characterId));
+    await tx
+      .delete(characterSpellSlots)
+      .where(eq(characterSpellSlots.characterId, characterId));
     await tx.delete(characters).where(eq(characters.id, characterId));
   });
   await campaignLog(character.campaignId, user.id, "characterRejected", { name: character.name });
@@ -453,9 +464,20 @@ export async function addItem(characterId: string, formData: FormData) {
 }
 
 /**
- * Put a piece on. The slot comes from the item itself when it has one, and
- * from the form otherwise — a hand-typed "Grandfather's Signet" is only ever
- * a ring because someone said so.
+ * Put a piece on.
+ *
+ * Where it goes is decided by whatever knows best. A line that came from the
+ * compendium or the library is placed by its source: a breastplate is body
+ * armour, a shield is held, a sword is swung, and no slot the form names can
+ * move them — a request that asks otherwise is refused outright rather than
+ * quietly corrected, the same silent refusal every other bad input to this
+ * action gets. Only a hand-typed line, which no source ever spoke for, takes
+ * the slot from the form: "Grandfather's Signet" is a ring because someone
+ * said so, and it could as easily have been an amulet.
+ *
+ * The source also outranks the row's own stored slot, which heals lines
+ * stocked before this rule existed (and the ones a backfill has since given a
+ * reference to) the first time they are worn.
  *
  * Both halves are one write: whatever occupied the slot comes off in the same
  * transaction the new piece goes on in, so the sheet is never briefly wearing
@@ -469,7 +491,18 @@ export async function equipItem(itemId: string, formData: FormData) {
   if (!item) return;
   const character = await getEditableCharacter(item.characterId, user.id);
   if (!character) return;
-  const slot = item.slot ?? readSlotName(str(formData, "slot"));
+
+  // Lazy import keeps the SRD JSON out of the sheet's chunk, as everywhere
+  // else this module reaches for it.
+  const { requiredSlot } = await import("@/lib/srd-data");
+  const source = item.worldItemId
+    ? await db.query.worldItems.findFirst({ where: eq(worldItems.id, item.worldItemId) })
+    : null;
+  const required = requiredSlot(item.srdIndex, source);
+  const asked = readSlotName(str(formData, "slot"));
+  if (required && asked && asked !== required) return;
+
+  const slot = required ?? item.slot ?? asked;
   if (!slot) return;
   if (item.equipped === 1 && item.slot === slot) return;
 
@@ -634,23 +667,34 @@ export async function useAbility(abilityId: string) {
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
 
-/** Long rest: refill all limited-use abilities on the sheet. */
+/** Long rest: refill all limited-use abilities and every spent spell slot. */
 export async function longRest(characterId: string) {
   const user = await requireUser();
   const character = await getEditableCharacter(characterId, user.id);
   if (!character) return;
-  // One statement refills every limited-use ability on the sheet; the rows it
-  // touched are the ones the feed counts.
-  const refilled = await db
-    .update(characterAbilities)
-    .set({ usesLeft: sql`${characterAbilities.usesMax}` })
-    .where(
-      and(
-        eq(characterAbilities.characterId, characterId),
-        isNotNull(characterAbilities.usesMax)
+  // One statement refills every limited-use ability on the sheet, a second
+  // unseals every spell slot, and the two are one write: a rest that restored
+  // the abilities but not the slots is not a rest anyone would recognise.
+  // The rows the first statement touched are the ones the feed counts — the
+  // slots ride along inside the same "long rest" entry rather than adding a
+  // second line to the feed for the same click.
+  const refilled = await db.transaction(async (tx) => {
+    const rows = await tx
+      .update(characterAbilities)
+      .set({ usesLeft: sql`${characterAbilities.usesMax}` })
+      .where(
+        and(
+          eq(characterAbilities.characterId, characterId),
+          isNotNull(characterAbilities.usesMax)
+        )
       )
-    )
-    .returning({ id: characterAbilities.id });
+      .returning({ id: characterAbilities.id });
+    await tx
+      .update(characterSpellSlots)
+      .set({ used: 0 })
+      .where(eq(characterSpellSlots.characterId, characterId));
+    return rows;
+  });
   await campaignLog(character.campaignId, user.id, "longRest", {
     character: character.name,
     n: refilled.length,
@@ -671,5 +715,132 @@ export async function deleteAbility(abilityId: string) {
     name: ability.name,
     character: character.name,
   });
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+}
+
+// ---------- spell slots ----------
+
+/**
+ * Write a whole slot table in one go: the levels named are inserted or
+ * retuned, and every level *not* named is dropped — the table on screen is
+ * exactly the rows that come back.
+ *
+ * Spent slots survive a retune, which is the only behaviour that makes sense
+ * mid-session: a wizard who has already burned two of four level-1 slots and
+ * then fixes a typo in the table has still burned them. Lowering the total
+ * below what is spent pulls `used` down with it (LEAST), so the row can never
+ * read "3/2".
+ */
+async function writeSlotRows(characterId: string, rows: SlotRow[]) {
+  await db.transaction(async (tx) => {
+    const levels = rows.map((row) => row.level);
+    await tx
+      .delete(characterSpellSlots)
+      .where(
+        levels.length === 0
+          ? eq(characterSpellSlots.characterId, characterId)
+          : and(
+              eq(characterSpellSlots.characterId, characterId),
+              notInArray(characterSpellSlots.level, levels)
+            )
+      );
+    for (const row of rows) {
+      await tx
+        .insert(characterSpellSlots)
+        .values({ characterId, level: row.level, total: row.total, used: 0 })
+        .onConflictDoUpdate({
+          target: [characterSpellSlots.characterId, characterSpellSlots.level],
+          set: {
+            total: row.total,
+            used: sql`LEAST(${characterSpellSlots.used}, ${row.total})`,
+          },
+        });
+    }
+  });
+}
+
+/**
+ * The sheet's own slot table, nine numbers wide. A level left blank or set to
+ * zero has no slots and loses its row; anything above nine is a typo, not a
+ * character (the SRD stops at nine of a level, and so does the tracker).
+ */
+export async function setSpellSlots(characterId: string, formData: FormData) {
+  const user = await requireUser();
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character) return;
+
+  const rows: SlotRow[] = [];
+  for (let level = MIN_SPELL_LEVEL; level <= MAX_SPELL_LEVEL; level += 1) {
+    const total = clampOpt(int(formData, `level${level}`), 0, 9) ?? 0;
+    if (total > 0) rows.push({ level, total });
+  }
+  await writeSlotRows(characterId, rows);
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+}
+
+/**
+ * Fill the table in from the class the sheet already names — the button that
+ * saves a level 9 cleric from typing "4 3 3 3 1" by hand.
+ *
+ * It overwrites the totals on purpose: "suggest" here means "give me the
+ * book's answer", and a player who wanted their own numbers has the form right
+ * above it. Spent slots are still spent afterwards (writeSlotRows keeps
+ * `used`), so pressing it mid-session does not hand anyone free casts. A class
+ * the tables do not speak for — a barbarian, a homebrew name — writes nothing
+ * at all rather than clearing what is there.
+ */
+export async function suggestFromClass(characterId: string) {
+  const user = await requireUser();
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character) return;
+  const rows = suggestSlots(character.klass, character.level);
+  if (!rows || rows.length === 0) return;
+  await writeSlotRows(characterId, rows);
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+}
+
+/** Neither end of the counter takes a level the table could not hold. */
+const isSpellLevel = (level: number) =>
+  Number.isInteger(level) && level >= MIN_SPELL_LEVEL && level <= MAX_SPELL_LEVEL;
+
+/**
+ * Burn a slot. Counted in the database like every other resource on the sheet,
+ * so two casts in the same instant spend two slots rather than one; the LEAST
+ * keeps a race from spending a slot the character does not have.
+ */
+export async function spendSpellSlot(characterId: string, level: number) {
+  const user = await requireUser();
+  if (!isSpellLevel(level)) return;
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character) return;
+  await db
+    .update(characterSpellSlots)
+    .set({
+      used: sql`LEAST(${characterSpellSlots.total}, ${characterSpellSlots.used} + 1)`,
+    })
+    .where(
+      and(
+        eq(characterSpellSlots.characterId, characterId),
+        eq(characterSpellSlots.level, level)
+      )
+    );
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+}
+
+/** Misclicked. The same counter, the other way, floored at zero. */
+export async function restoreSpellSlot(characterId: string, level: number) {
+  const user = await requireUser();
+  if (!isSpellLevel(level)) return;
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character) return;
+  await db
+    .update(characterSpellSlots)
+    .set({ used: sql`GREATEST(0, ${characterSpellSlots.used} - 1)` })
+    .where(
+      and(
+        eq(characterSpellSlots.characterId, characterId),
+        eq(characterSpellSlots.level, level)
+      )
+    );
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }

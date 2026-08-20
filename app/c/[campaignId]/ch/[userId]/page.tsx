@@ -5,6 +5,7 @@ import {
   characters,
   characterItems,
   characterAbilities,
+  characterSpellSlots,
   campaignMembers,
   users,
   worldItems,
@@ -12,10 +13,21 @@ import {
   type Character,
   type CharacterAbility,
   type CharacterItem,
+  type WorldItemSlot,
 } from "@/lib/db";
-import { ABILITIES, ABILITY_LABELS, fmt, hasScores, statBlock } from "@/lib/dnd";
+import {
+  ABILITIES,
+  ABILITY_LABELS,
+  acGearBonus,
+  acTitle,
+  fmt,
+  hasScores,
+  statBlock,
+  type AcBreakdown,
+} from "@/lib/dnd";
+import { effectiveAc } from "@/lib/armor";
 import { SKILLS } from "@/lib/srd";
-import { getItem } from "@/lib/srd-data";
+import { getItem, requiredSlot } from "@/lib/srd-data";
 import { sumStatBonuses, type StatBonuses } from "@/lib/world-items";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
@@ -42,7 +54,9 @@ import { SiteHeader } from "@/components/SiteHeader";
 import { PortraitUploadForm } from "@/components/PortraitUploadForm";
 import { AutocompleteInput } from "@/components/character/AutocompleteInput";
 import { EquipmentPanel, type EquippedPiece } from "@/components/character/EquipmentPanel";
-import { itemArtSrc, worldItemPhoto } from "@/components/character/item-art";
+import { SpellSlotTracker } from "@/components/character/SpellSlotTracker";
+import { DragItem, InventoryDrop } from "@/components/character/DragEquip";
+import { itemArtSrc, slotCategory, worldItemPhoto } from "@/components/character/item-art";
 import { IconMoon, IconSkull } from "@/components/Icons";
 import {
   BackLink,
@@ -75,6 +89,8 @@ type InventoryLineShape = CharacterItem & {
   sourceWorldId: string | null;
   photo: string | null;
   category: string | null;
+  /** Where its source insists it is worn, or null when nothing insists. */
+  requiredSlot: WorldItemSlot | null;
 };
 
 export default async function CharacterPage({
@@ -137,6 +153,14 @@ export default async function CharacterPage({
         .where(eq(characterAbilities.characterId, character.id))
         .orderBy(asc(characterAbilities.createdAt))
     : [];
+  // Ordered here so the tracker can draw the rows as they come.
+  const spellSlots = character
+    ? await db
+        .select()
+        .from(characterSpellSlots)
+        .where(eq(characterSpellSlots.characterId, character.id))
+        .orderBy(asc(characterSpellSlots.level))
+    : [];
 
   const items = itemRows.map(({ item, source }) => ({
     ...item,
@@ -150,6 +174,10 @@ export default async function CharacterPage({
     // of an SRD line, the library entry knows its own, and a hand-typed line
     // knows neither.
     category: (item.srdIndex ? getItem(item.srdIndex)?.category : null) ?? source?.category ?? null,
+    // Where the line's source says it must be worn — the same rule equipItem
+    // enforces, so the button the sheet offers cannot promise a slot the
+    // action would refuse.
+    requiredSlot: requiredSlot(item.srdIndex, source),
   }));
   const equipped: EquippedPiece[] = items.flatMap((item) =>
     item.equipped === 1 && item.slot
@@ -158,6 +186,7 @@ export default async function CharacterPage({
             id: item.id,
             name: item.name,
             slot: item.slot,
+            srdIndex: item.srdIndex,
             statBonuses: item.bonuses,
             photo: item.photo,
             category: item.category,
@@ -167,8 +196,14 @@ export default async function CharacterPage({
   );
   // Derived for display only — the stored scores stay the character's own.
   const wornBonuses = sumStatBonuses(equipped.map((piece) => piece.statBonuses));
-  const acBonus = wornBonuses.ac ?? 0;
   const hpBonus = wornBonuses.hp ?? 0;
+  // Armour class is a calculation, not a stored number: worn armour states a
+  // formula, the sheet's own field is the fallback, and the shield and the
+  // flat bonuses land on top of whichever won.
+  const ac: AcBreakdown = character
+    ? effectiveAc(character, equipped, wornBonuses)
+    : { value: null, parts: [] };
+  const acBonus = acGearBonus(ac);
 
   const ownerName = owner.displayName ?? owner.username;
 
@@ -283,9 +318,12 @@ export default async function CharacterPage({
                     )}
                   </span>
                 )}
-                {character.armorClass !== null && (
-                  <span className="rounded-md border border-ink-600 px-3 py-1.5 text-parchment-300">
-                    AC {character.armorClass + acBonus}
+                {ac.value !== null && (
+                  <span
+                    title={acTitle(ac)}
+                    className="rounded-md border border-ink-600 px-3 py-1.5 text-parchment-300"
+                  >
+                    AC {ac.value}
                     {acBonus !== 0 && (
                       <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
                         ({fmt(acBonus)})
@@ -364,8 +402,7 @@ export default async function CharacterPage({
                   alt: character.name,
                   fallbackSrc: classArtFor(character.klass),
                 }}
-                armorClass={character.armorClass}
-                acBonus={acBonus}
+                ac={ac}
                 editable={editable}
                 t={t}
               />
@@ -414,15 +451,29 @@ export default async function CharacterPage({
               <section className="space-y-4">
                 <div className="flex items-center justify-between">
                   <SectionTitle>{t("character.sheet.spellsAbilities")}</SectionTitle>
-                  {editable && abilities.some((a) => a.usesMax !== null) && (
-                    <form action={longRest.bind(null, character.id)}>
-                      <GhostButton type="submit" className="!px-3 !py-1.5 text-xs">
-                        <IconMoon size={14} /> {t("character.sheet.longRest")}
-                      </GhostButton>
-                    </form>
-                  )}
+                  {/* A rest is worth offering to anyone with something to refill:
+                      a limited-use ability, a spell slot, or both. */}
+                  {editable &&
+                    (abilities.some((a) => a.usesMax !== null) || spellSlots.length > 0) && (
+                      <form action={longRest.bind(null, character.id)}>
+                        <GhostButton type="submit" className="!px-3 !py-1.5 text-xs">
+                          <IconMoon size={14} /> {t("character.sheet.longRest")}
+                        </GhostButton>
+                      </form>
+                    )}
                 </div>
                 <Card>
+                  {/*
+                    Slots first: they are the resource a caster spends between
+                    one line of this list and the next, and the list below is
+                    what they are spent *on*.
+                  */}
+                  <SpellSlotTracker
+                    characterId={character.id}
+                    slots={spellSlots}
+                    editable={editable}
+                    t={t}
+                  />
                   {abilities.length === 0 && (
                     <>
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -530,6 +581,11 @@ export default async function CharacterPage({
  * one unfolds the line's full controls beneath it, across the whole row. The
  * squares share a `name`, so the browser closes the one before — an accordion
  * with no script behind it, which is what keeps this page a server component.
+ *
+ * The one client-side thing here is the dragging: each square announces the
+ * slot it may be worn in so the paper doll can light up, and the grid as a
+ * whole is where a worn piece is dropped to come off. Both are additions to
+ * the buttons inside the folded-open square, never a replacement for them.
  */
 function InventoryGrid({
   items,
@@ -541,7 +597,7 @@ function InventoryGrid({
   t: T;
 }) {
   return (
-    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+    <InventoryDrop enabled={editable} className="grid grid-cols-4 gap-2 sm:grid-cols-6">
       {items.map((item) => (
         <details
           key={item.id}
@@ -552,30 +608,48 @@ function InventoryGrid({
             title={item.name}
             className="flex cursor-pointer list-none [&::-webkit-details-marker]:hidden"
           >
-            <span className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-sm border border-ink-600 bg-ink-950/60 transition hover:border-gold-500 group-open/cell:aspect-auto group-open/cell:h-16 group-open/cell:w-16">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                // Photograph, then the line's own category, then the plate that
-                // says "a thing in a backpack" and nothing more.
-                src={itemArtSrc(item) ?? categoryArt("gear")}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="h-full w-full object-cover"
-              />
-              {item.equipped === 1 && (
-                <span
-                  aria-hidden
-                  title={t("character.equipment.worn")}
-                  className="absolute left-1 top-1 h-2 w-2 rounded-full bg-gold-500 ring-1 ring-ink-900"
+            {/*
+              The dragged thing is the square, not the whole row: the same
+              picture the eye is already on. Where it may go is the answer the
+              equip button gives — the source's slot, else the row's own, else
+              nothing, which means the player decides and any square will take
+              it (equipItem still has the final word).
+            */}
+            <DragItem
+              itemId={item.id}
+              slot={item.requiredSlot ?? item.slot}
+              enabled={editable && item.equipped === 0}
+              className="flex min-w-0 flex-1"
+            >
+              <span className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-sm border border-ink-600 bg-ink-950/60 transition hover:border-gold-500 group-open/cell:aspect-auto group-open/cell:h-16 group-open/cell:w-16">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  // Photograph, then the line's own category, then what its slot
+                  // gives away (a line in the armour slot is armour, whatever
+                  // else the row forgot), then the plate that says "a thing in a
+                  // backpack" and nothing more. Same chain as the paper doll's.
+                  src={itemArtSrc(item, slotCategory(item.slot)) ?? categoryArt("gear")}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  // Otherwise the browser drags the picture rather than the line.
+                  draggable={false}
+                  className="h-full w-full object-cover"
                 />
-              )}
-              {item.qty > 1 && (
-                <span className="absolute bottom-0 right-0 rounded-tl-sm border-l border-t border-ink-600 bg-ink-900/90 px-1 font-mono text-[10px] font-bold text-parchment-100">
-                  {item.qty}
-                </span>
-              )}
-            </span>
+                {item.equipped === 1 && (
+                  <span
+                    aria-hidden
+                    title={t("character.equipment.worn")}
+                    className="absolute left-1 top-1 h-2 w-2 rounded-full bg-gold-500 ring-1 ring-ink-900"
+                  />
+                )}
+                {item.qty > 1 && (
+                  <span className="absolute bottom-0 right-0 rounded-tl-sm border-l border-t border-ink-600 bg-ink-900/90 px-1 font-mono text-[10px] font-bold text-parchment-100">
+                    {item.qty}
+                  </span>
+                )}
+              </span>
+            </DragItem>
             {/* The square is a picture; this is what it is called. */}
             <span className="sr-only">
               {item.name}
@@ -624,7 +698,7 @@ function InventoryGrid({
           </div>
         </details>
       ))}
-    </div>
+    </InventoryDrop>
   );
 }
 
@@ -676,17 +750,23 @@ function AbilityName({ ability, t }: { ability: CharacterAbility; t: T }) {
 }
 
 /**
- * How a backpacked item gets worn. A piece that already knows its slot is one
- * button; one that does not — a hand-typed heirloom, a wondrous item the SRD
- * never placed — asks where it goes, and asks it folded away so twenty
- * potions do not each carry a dropdown.
+ * How a backpacked item gets worn. A piece whose place is known is one button
+ * — either because its source dictates it (a shield is held, and no dropdown
+ * should pretend otherwise) or because the row already carries a slot. One
+ * that nobody has ever placed — a hand-typed heirloom, a wondrous item the SRD
+ * never filed — asks where it goes, and asks it folded away so twenty potions
+ * do not each carry a dropdown.
+ *
+ * The source wins over the stored slot, exactly as equipItem decides it, so
+ * the button never offers a placement the action would turn down.
  */
 function EquipControl({ item, t }: { item: InventoryLineShape; t: T }) {
-  if (item.slot) {
+  const slot = item.requiredSlot ?? item.slot;
+  if (slot) {
     return (
       <form action={equipItem.bind(null, item.id)}>
         <GhostButton type="submit" className="!px-2 !py-1 text-xs">
-          {t("character.equipment.equip")} · {t(`world.items.slots.${item.slot}`)}
+          {t("character.equipment.equip")} · {t(`world.items.slots.${slot}`)}
         </GhostButton>
       </form>
     );

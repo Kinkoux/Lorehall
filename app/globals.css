@@ -75,6 +75,19 @@ body {
   animation: turn-flash 0.8s ease-out;
 }
 
+/* The "add a spell / ability" form on a character sheet asks how many uses a
+   line has — which is the wrong question for a spell: a spell is paid for out
+   of the caster's spell slots, tracked once for the whole sheet, not out of a
+   tally kept per line. So the box folds away while the dropdown says "spell"
+   and comes back for an ability or a trait.
+
+   :has() over the select's own :checked option, rather than a change handler:
+   the sheet is a server component and this is a presentational rule, so it
+   costs no script and works before any has loaded. */
+form:has(select[name="kind"] option[value="spell"]:checked) input[name="usesMax"] {
+  display: none;
+}
+
 /* Ledger flap: content revealed by <details> unfolds. */
 details[open] > *:not(summary) {
   animation: log-entry-in 0.25s ease-out;
