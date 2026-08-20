@@ -109,6 +109,10 @@ export function portraitSrc(characterId: string, imageFile: string | null) {
 /**
  * Circular character portrait; falls back to a monoline helm when the sheet
  * has no image. `eager` skips lazy loading for the one above the fold.
+ *
+ * `fallbackSrc` stands in for a missing portrait — the class plate from
+ * lib/ui-art.ts, where the caller knows the character's class. It is decorative
+ * (the name is always written beside it), so it carries an empty alt.
  */
 export function Portrait({
   src,
@@ -116,15 +120,18 @@ export function Portrait({
   size,
   eager = false,
   className = "",
+  fallbackSrc = null,
 }: {
   src: string | null;
   alt: string;
   size: number;
   eager?: boolean;
   className?: string;
+  fallbackSrc?: string | null;
 }) {
   const box = { width: size, height: size };
-  if (!src) {
+  const shown = src ?? fallbackSrc;
+  if (!shown) {
     return (
       <span
         aria-hidden
@@ -138,8 +145,8 @@ export function Portrait({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src={src}
-      alt={alt}
+      src={shown}
+      alt={src ? alt : ""}
       width={size}
       height={size}
       style={box}

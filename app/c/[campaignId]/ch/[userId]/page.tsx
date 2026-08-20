@@ -35,6 +35,7 @@ import {
 import Link from "next/link";
 import { getT } from "@/lib/locale";
 import type { T } from "@/lib/i18n";
+import { classArtFor, EMPTY_ART } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PortraitUploadForm } from "@/components/PortraitUploadForm";
 import { AutocompleteInput } from "@/components/character/AutocompleteInput";
@@ -227,6 +228,7 @@ export default async function CharacterPage({
                   alt={character.name}
                   size={96}
                   eager
+                  fallbackSrc={classArtFor(character.klass)}
                 />
                 <div>
                   <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
@@ -342,7 +344,17 @@ export default async function CharacterPage({
                 <SectionTitle>{t("character.sheet.inventory")}</SectionTitle>
                 <Card>
                   {items.length === 0 && (
-                    <p className="text-sm text-parchment-500">{t("character.sheet.backpackEmpty")}</p>
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={EMPTY_ART.inventory}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="mx-auto mb-3 w-24 opacity-70"
+                      />
+                      <p className="text-sm text-parchment-500">{t("character.sheet.backpackEmpty")}</p>
+                    </>
                   )}
                   <ul className="divide-y divide-ink-700">
                     {items.map((item) => (
@@ -417,9 +429,19 @@ export default async function CharacterPage({
                 </div>
                 <Card>
                   {abilities.length === 0 && (
-                    <p className="text-sm text-parchment-500">
-                      {t("character.sheet.noAbilities")}
-                    </p>
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={EMPTY_ART.spells}
+                        alt=""
+                        loading="lazy"
+                        decoding="async"
+                        className="mx-auto mb-3 w-24 opacity-70"
+                      />
+                      <p className="text-sm text-parchment-500">
+                        {t("character.sheet.noAbilities")}
+                      </p>
+                    </>
                   )}
                   <ul className="divide-y divide-ink-700">
                     {abilities.map((ability) => (

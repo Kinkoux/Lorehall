@@ -7,6 +7,7 @@ import {
   removeEncounterMonster,
 } from "@/lib/compendium-actions";
 import type { T } from "@/lib/i18n";
+import { EMPTY_ART } from "@/lib/ui-art";
 import { IconX } from "@/components/Icons";
 import { Button, Card, Input, SectionTitle } from "@/components/ui";
 import { SmallButton } from "./shared";
@@ -32,6 +33,16 @@ export function EncountersSection({
         </Link>{" "}
         {t("campaign.encounters.hintB")}
       </p>
+      {encounters.length === 0 && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={EMPTY_ART.encounters}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="mx-auto mb-3 w-24 opacity-70"
+        />
+      )}
       <div className="grid gap-4 md:grid-cols-2">
         {encounters.map((encounter) => {
           const rows = encounterRows.filter((r) => r.encounterId === encounter.id);
@@ -47,9 +58,7 @@ export function EncountersSection({
               </div>
               <ul className="mt-2 space-y-1">
                 {rows.length === 0 && (
-                  <li className="text-sm text-parchment-500">
-                    {t("campaign.encounters.empty")}
-                  </li>
+                  <li className="text-sm text-parchment-500">{t("campaign.encounters.empty")}</li>
                 )}
                 {rows.map((row) => (
                   <li key={row.id} className="flex items-center gap-2 text-sm">

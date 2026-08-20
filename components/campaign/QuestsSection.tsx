@@ -1,6 +1,7 @@
 import type { Quest } from "@/lib/db";
 import { addQuest, deleteQuest, setQuestStatus } from "@/lib/quest-actions";
 import type { Locale, T } from "@/lib/i18n";
+import { EMPTY_ART } from "@/lib/ui-art";
 import { IconScroll, IconX } from "@/components/Icons";
 import {
   Button,
@@ -32,9 +33,19 @@ export function QuestsSection({
     <>
       <SectionTitle>{t("campaign.quests.title")}</SectionTitle>
       {activeQuests.length === 0 && closedQuests.length === 0 && (
-        <p className="text-sm text-parchment-500">
-          {isDm ? t("campaign.quests.emptyDm") : t("campaign.quests.empty")}
-        </p>
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={EMPTY_ART.quests}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="mx-auto mb-3 w-24 opacity-70"
+          />
+          <p className="text-sm text-parchment-500">
+            {isDm ? t("campaign.quests.emptyDm") : t("campaign.quests.empty")}
+          </p>
+        </div>
       )}
       {activeQuests.map((quest) => (
         <Card key={quest.id} className="border-l-2 !border-l-gold-500 py-4">

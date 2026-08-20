@@ -4,6 +4,7 @@ import { kickMember, leaveCampaign } from "@/lib/actions";
 import { approveCharacter, rejectCharacter } from "@/lib/character-actions";
 import { hasScores, statBlock } from "@/lib/dnd";
 import type { T } from "@/lib/i18n";
+import { classArtFor } from "@/lib/ui-art";
 import { IconSkull } from "@/components/Icons";
 import { Card, Portrait, portraitSrc, SectionTitle } from "@/components/ui";
 import { SmallButton } from "./shared";
@@ -116,6 +117,7 @@ export function PartySection({
                         src={portraitSrc(character.id, character.imageFile)}
                         alt={character.name}
                         size={40}
+                        fallbackSrc={classArtFor(character.klass)}
                       />
                       <Link
                         href={`/c/${campaignId}/ch/${memberUser.id}?ch=${character.id}`}

@@ -1,6 +1,7 @@
 import { partyItems, partyLedger, type User } from "@/lib/db";
 import { addLedgerEntry, addPartyItem, adjustPartyItemQty } from "@/lib/quest-actions";
 import type { Locale, T } from "@/lib/i18n";
+import { EMPTY_ART } from "@/lib/ui-art";
 import { Button, Card, Input, Label, SectionTitle } from "@/components/ui";
 import { SmallButton } from "./shared";
 
@@ -71,9 +72,19 @@ export function TreasurySection({
         <div className="mt-4 border-t border-ink-700 pt-3">
           <Label>{t("campaign.treasury.loot")}</Label>
           {loot.length === 0 && (
-            <p className="mt-1 text-sm text-parchment-500">
-              {t("campaign.treasury.nothing")}
-            </p>
+            <div className="mt-1">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={EMPTY_ART.treasury}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="mx-auto mb-3 w-24 opacity-70"
+              />
+              <p className="text-sm text-parchment-500">
+                {t("campaign.treasury.nothing")}
+              </p>
+            </div>
           )}
           <ul className="mt-1 space-y-1.5">
             {loot.map((item) => (

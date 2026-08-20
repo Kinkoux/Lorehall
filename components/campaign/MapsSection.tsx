@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CampaignMap } from "@/lib/db";
 import { deleteMap, setActiveMap, setMapVisibility } from "@/lib/map-actions";
 import type { Locale, T } from "@/lib/i18n";
+import { EMPTY_ART } from "@/lib/ui-art";
 import { IconX } from "@/components/Icons";
 import { MapUploadForm } from "@/components/MapUploadForm";
 import { Card, DmBadge, SectionTitle } from "@/components/ui";
@@ -27,9 +28,19 @@ export function MapsSection({
       <SectionTitle>{t("campaign.maps.title")}</SectionTitle>
       {isDm && <p className="-mt-2 text-xs text-parchment-500">{t("campaign.maps.hint")}</p>}
       {visibleMaps.length === 0 && (
-        <p className="text-sm text-parchment-500">
-          {isDm ? t("campaign.maps.emptyDm") : t("campaign.maps.empty")}
-        </p>
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={EMPTY_ART.maps}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="mx-auto mb-3 w-24 opacity-70"
+          />
+          <p className="text-sm text-parchment-500">
+            {isDm ? t("campaign.maps.emptyDm") : t("campaign.maps.empty")}
+          </p>
+        </div>
       )}
       {visibleMaps.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

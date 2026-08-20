@@ -7,8 +7,8 @@ import {
   SPELL_SCHOOLS,
   SUBCLASS_FILTERS,
 } from "@/lib/srd-data";
+import { schoolArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
-import { SchoolSigil } from "@/components/Icons";
 import { Pagination } from "@/components/Pagination";
 import { BackLink, Button, Input, Select } from "@/components/ui";
 
@@ -115,10 +115,12 @@ export default async function SpellsPage({
                 href={`/compendium/spells/${spell.index}`}
                 className="group flex items-center gap-3 px-4 py-2.5"
               >
-                <SchoolSigil
-                  school={spell.school}
-                  size={18}
-                  className="shrink-0 text-blood-400/80"
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={schoolArt(spell.school)}
+                  alt=""
+                  loading="lazy"
+                  className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
                 />
                 <span className="w-14 shrink-0 text-xs font-bold text-gold-300">
                   {spell.level === 0 ? t("compendium.spells.cantrip") : `${spell.level}`}

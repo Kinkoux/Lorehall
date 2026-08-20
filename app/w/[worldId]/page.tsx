@@ -14,6 +14,7 @@ import { requireUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { getWorldMembership } from "@/lib/perms";
 import { createCampaign } from "@/lib/actions";
+import { EMPTY_ART } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ItemLibrarySection } from "@/components/world/ItemLibrarySection";
 import {
@@ -111,13 +112,23 @@ export default async function WorldPage({
             </div>
 
             {entries.length === 0 && (
-              <p className="text-sm text-parchment-500">
-                {activeType
-                  ? t("world.codex.emptyType")
-                  : dmPowers
-                    ? t("world.codex.empty")
-                    : t("world.codex.emptyPlayer")}
-              </p>
+              <div>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={EMPTY_ART.codex}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="mx-auto mb-3 w-24 opacity-70"
+                />
+                <p className="text-sm text-parchment-500">
+                  {activeType
+                    ? t("world.codex.emptyType")
+                    : dmPowers
+                      ? t("world.codex.empty")
+                      : t("world.codex.emptyPlayer")}
+                </p>
+              </div>
             )}
             {entries.map((entry) => (
               <Link key={entry.id} href={`/w/${worldId}/codex/${entry.id}`} className="block">

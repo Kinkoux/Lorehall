@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { GameSession } from "@/lib/db";
 import type { Locale, T } from "@/lib/i18n";
+import { EMPTY_ART } from "@/lib/ui-art";
 import { Card, SectionTitle } from "@/components/ui";
 
 export function JournalSection({
@@ -16,7 +17,17 @@ export function JournalSection({
     <>
       <SectionTitle>{t("campaign.journal.title")}</SectionTitle>
       {pastSessions.length === 0 && (
-        <p className="text-sm text-parchment-500">{t("campaign.journal.empty")}</p>
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={EMPTY_ART.journal}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="mx-auto mb-3 w-24 opacity-70"
+          />
+          <p className="text-sm text-parchment-500">{t("campaign.journal.empty")}</p>
+        </div>
       )}
       {pastSessions.map((session) => (
         <Link key={session.id} href={`/s/${session.id}`} className="block">

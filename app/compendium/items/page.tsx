@@ -2,8 +2,8 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { ITEM_CATEGORIES, searchItems } from "@/lib/srd-data";
+import { categoryArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
-import { ItemIcon } from "@/components/Icons";
 import { Pagination } from "@/components/Pagination";
 import { BackLink, Button, Input } from "@/components/ui";
 
@@ -83,10 +83,12 @@ export default async function ItemsPage({
                 href={`/compendium/items/${item.index}`}
                 className="group flex items-center gap-3 px-4 py-2.5"
               >
-                <ItemIcon
-                  category={item.category}
-                  size={18}
-                  className="shrink-0 text-blood-400/80"
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={categoryArt(item.category)}
+                  alt=""
+                  loading="lazy"
+                  className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
                 />
                 <span className="flex-1 font-semibold text-parchment-100 transition group-hover:text-gold-400">
                   {item.name}

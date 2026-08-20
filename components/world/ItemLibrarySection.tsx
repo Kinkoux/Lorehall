@@ -3,7 +3,8 @@ import { deleteWorldItem } from "@/lib/world-item-actions";
 import { fmt } from "@/lib/dnd";
 import type { Locale, T } from "@/lib/i18n";
 import { statBonusEntries, STAT_LABELS } from "@/lib/world-items";
-import { IconX, ItemIcon } from "@/components/Icons";
+import { categoryArt, EMPTY_ART } from "@/lib/ui-art";
+import { IconX } from "@/components/Icons";
 import { Card, GhostButton, SectionTitle } from "@/components/ui";
 import { WorldItemForm } from "./WorldItemForm";
 
@@ -31,9 +32,19 @@ export function ItemLibrarySection({
       <SectionTitle>{t("world.items.title")}</SectionTitle>
       {canManage && <p className="-mt-2 text-xs text-parchment-500">{t("world.items.hintDm")}</p>}
       {items.length === 0 && (
-        <p className="text-sm text-parchment-500">
-          {canManage ? t("world.items.emptyDm") : t("world.items.empty")}
-        </p>
+        <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={EMPTY_ART.library}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="mx-auto mb-3 w-24 opacity-70"
+          />
+          <p className="text-sm text-parchment-500">
+            {canManage ? t("world.items.emptyDm") : t("world.items.empty")}
+          </p>
+        </div>
       )}
       {items.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -93,12 +104,17 @@ function ItemCard({
             className="h-16 w-16 shrink-0 rounded-sm border border-ink-700 object-cover"
           />
         ) : (
-          <span
-            aria-hidden
-            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-sm border border-ink-700 bg-ink-950/70 text-parchment-500"
-          >
-            <ItemIcon category={item.category} size={26} />
-          </span>
+          // No photograph of this one yet, so the category's plate stands in.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={categoryArt(item.category)}
+            alt=""
+            width={64}
+            height={64}
+            loading="lazy"
+            decoding="async"
+            className="h-16 w-16 shrink-0 rounded-sm border border-ink-700 object-cover"
+          />
         )}
         <div className="min-w-0 flex-1">
           <h3 className="truncate font-display text-sm font-bold text-parchment-100">

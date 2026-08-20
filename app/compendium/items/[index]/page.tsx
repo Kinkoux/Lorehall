@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { getItem } from "@/lib/srd-data";
 import { addItemToCharacter } from "@/lib/compendium-actions";
+import { categoryArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ItemIcon } from "@/components/Icons";
 import { BackLink, Button, Card, Input, Label, Select } from "@/components/ui";
@@ -53,21 +54,35 @@ export default async function ItemPage({
       <SiteHeader user={user} />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-8">
         <BackLink href="/compendium/items">{t("compendium.items.title")}</BackLink>
-        <div className="mt-2 flex items-center gap-3">
-          <ItemIcon category={item.category} size={30} className="shrink-0 text-blood-400" />
-          <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
-            {item.name}
-          </h1>
+        <div className="mt-2 mb-6 flex items-start justify-between gap-6">
+          <div>
+            <div className="flex items-center gap-3">
+              <ItemIcon category={item.category} size={30} className="shrink-0 text-blood-400" />
+              <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
+                {item.name}
+              </h1>
+            </div>
+            <p className="mt-1 text-sm italic text-parchment-500">
+              {[
+                t(`compendium.items.categories.${item.category}`),
+                item.sub,
+                item.attunement ? t("compendium.items.attunement") : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+          </div>
+          {/* A category plate, not a picture of this item — the compendium has
+              no per-item art. Ours, so no caption. */}
+          <figure className="w-24 shrink-0 sm:w-28">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={categoryArt(item.category)}
+              alt=""
+              className="w-full rounded-sm border border-ink-600 object-cover"
+            />
+          </figure>
         </div>
-        <p className="mt-1 mb-6 text-sm italic text-parchment-500">
-          {[
-            t(`compendium.items.categories.${item.category}`),
-            item.sub,
-            item.attunement ? t("compendium.items.attunement") : null,
-          ]
-            .filter(Boolean)
-            .join(" · ")}
-        </p>
 
         {facts.length > 0 && (
           <Card className="mb-6">

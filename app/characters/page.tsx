@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { hasScores, statBlock } from "@/lib/dnd";
 import { createCharacter } from "@/lib/character-actions";
+import { classArtFor, EMPTY_ART } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import {
   Button,
@@ -16,7 +17,7 @@ import {
   Select,
   SectionTitle,
 } from "@/components/ui";
-import { IconParty, IconQuill, IconSkull } from "@/components/Icons";
+import { IconQuill, IconSkull } from "@/components/Icons";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -50,8 +51,15 @@ export default async function CharactersPage() {
         <section className="space-y-4">
           <SectionTitle>{t("character.hub.mine")}</SectionTitle>
           {mine.length === 0 && (
-            <Card className="flex items-start gap-4">
-              <IconParty size={28} className="mt-1 shrink-0 text-parchment-500" />
+            <Card className="flex items-center gap-4">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={EMPTY_ART.party}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="w-20 shrink-0 opacity-70"
+              />
               <p className="text-sm leading-relaxed text-parchment-300">
                 {t("character.hub.empty")}
               </p>
@@ -76,6 +84,7 @@ export default async function CharactersPage() {
                       alt={character.name}
                       size={40}
                       className="mt-0.5"
+                      fallbackSrc={classArtFor(character.klass)}
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
