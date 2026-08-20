@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { db, characters, campaigns, campaignMembers } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { hasScores, statBlock } from "@/lib/dnd";
+import { acTitle, hasScores, statBlock } from "@/lib/dnd";
+import { effectiveAc, loadWornFor, wornSetFor } from "@/lib/armor";
 import { createCharacter } from "@/lib/character-actions";
 import { classArtFor, EMPTY_ART } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -34,11 +35,17 @@ export default async function CharactersPage() {
     .innerJoin(campaigns, eq(characters.campaignId, campaigns.id))
     .where(eq(characters.userId, user.id));
 
-  const memberships = await db
-    .select({ campaign: campaigns })
-    .from(campaignMembers)
-    .innerJoin(campaigns, eq(campaignMembers.campaignId, campaigns.id))
-    .where(eq(campaignMembers.userId, user.id));
+  // One extra query for the whole list, not one per card: the hub shows an
+  // armour class and a passive Perception, and both are computed from what
+  // each sheet is wearing rather than from the number typed on the form.
+  const [memberships, worn] = await Promise.all([
+    db
+      .select({ campaign: campaigns })
+      .from(campaignMembers)
+      .innerJoin(campaigns, eq(campaignMembers.campaignId, campaigns.id))
+      .where(eq(campaignMembers.userId, user.id)),
+    loadWornFor(mine.map((row) => row.character.id)),
+  ]);
 
   return (
     <>
@@ -66,7 +73,11 @@ export default async function CharactersPage() {
             </Card>
           )}
           {mine.map(({ character, campaign }) => {
-            const pp = hasScores(character) ? statBlock(character).passivePerception : null;
+            const gear = wornSetFor(worn, character.id);
+            const pp = hasScores(character)
+              ? statBlock(character, gear.bonuses).passivePerception
+              : null;
+            const ac = effectiveAc(character, gear.worn, gear.bonuses);
             return (
               <Link
                 key={character.id}
@@ -115,8 +126,10 @@ export default async function CharactersPage() {
                           {character.maxHp !== null && (
                             <span className="text-blood-400">{character.maxHp} HP</span>
                           )}
-                          {character.armorClass !== null && (
-                            <span className="text-parchment-300">AC {character.armorClass}</span>
+                          {ac.value !== null && (
+                            <span className="text-parchment-300" title={acTitle(ac)}>
+                              AC {ac.value}
+                            </span>
                           )}
                           {pp !== null && <span className="text-gold-300">PP {pp}</span>}
                         </span>

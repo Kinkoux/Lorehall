@@ -16,8 +16,9 @@ vi.mock("@/lib/auth", () => ({
   destroySession: async () => {},
 }));
 
-import { addItem, equipItem, unequipItem } from "@/lib/character-actions";
+import { addItem, equipItem, setItemStats, unequipItem } from "@/lib/character-actions";
 import { characterItems } from "@/lib/db/schema";
+import { effectiveAc, loadWornFor, wornSetFor } from "@/lib/armor";
 import { sumStatBonuses } from "@/lib/world-items";
 import { applySchema, db, sqlState, truncateAll } from "./support/db";
 import {
@@ -294,6 +295,142 @@ describe("addItem takes a reference, never the numbers", () => {
     expect(rows[0].notes).toBeTruthy();
     expect(rows[1].srdIndex).toBeNull();
     expect(rows[1].slot).toBeNull();
+  });
+});
+
+/**
+ * The line editor. Nothing it writes is trusted: the source still decides the
+ * slot, the numbers are clamped, and a form nobody is allowed to submit writes
+ * nothing at all.
+ */
+describe("setItemStats", () => {
+  it("writes the base, the DEX rule and the bonuses onto the line", async () => {
+    const mail = await seedItem(sheet, 1, "Adamantine Armor", { slot: "armor" });
+    await setItemStats(
+      mail,
+      formData({ slot: "armor", acBase: "16", acDex: "capped2", bonus_ac: "1", bonus_str: "2" })
+    );
+    const row = await rowOf(mail);
+    expect(row?.acBase).toBe(16);
+    expect(row?.acDex).toBe("capped2");
+    expect(sumStatBonuses([row?.statBonuses])).toEqual({ ac: 1, str: 2 });
+  });
+
+  it("clamps a base and a bonus that no piece of gear could carry", async () => {
+    const cheat = await seedItem(sheet, 1, "Plate of Nonsense", { slot: "armor" });
+    await setItemStats(cheat, formData({ slot: "armor", acBase: "99", bonus_ac: "50" }));
+    expect((await rowOf(cheat))?.acBase).toBe(30);
+    expect(sumStatBonuses([(await rowOf(cheat))?.statBonuses])).toEqual({ ac: 10 });
+
+    await setItemStats(cheat, formData({ slot: "armor", acBase: "-5", bonus_dex: "-40" }));
+    expect((await rowOf(cheat))?.acBase).toBe(0);
+    expect(sumStatBonuses([(await rowOf(cheat))?.statBonuses])).toEqual({ dex: -10 });
+  });
+
+  it("refuses a DEX rule that is not one of the three, and blanks that say nothing", async () => {
+    const mail = await seedItem(sheet, 1, "Star Mail", { slot: "armor" });
+    await setItemStats(mail, formData({ slot: "armor", acDex: "sideways", acBase: "" }));
+    const row = await rowOf(mail);
+    expect(row?.acDex).toBeNull();
+    expect(row?.acBase).toBeNull();
+    // Every bonus blank is a plain item again — NULL, not an empty object.
+    expect(row?.statBonuses).toBeNull();
+  });
+
+  it("holds a line to the slot its source insists on", async () => {
+    // The very case this feature exists for: SRD magic armour, which states
+    // its class in prose. Its slot is still not the player's to move.
+    const plate = await seedItem(sheet, 1, "Adamantine Armor", {
+      srdIndex: "adamantine-armor",
+    });
+    await setItemStats(plate, formData({ slot: "head", acBase: "16" }));
+    const row = await rowOf(plate);
+    expect(row?.slot).toBe("armor");
+    expect(row?.acBase).toBe(16);
+  });
+
+  it("lets a line with no source be moved, and blank means carried", async () => {
+    const charm = await seedItem(sheet, 1, "Grandmother's Charm", { slot: "ring" });
+    await setItemStats(charm, formData({ slot: "neck" }));
+    expect((await rowOf(charm))?.slot).toBe("neck");
+    await setItemStats(charm, formData({ slot: "" }));
+    expect((await rowOf(charm))?.slot).toBeNull();
+  });
+
+  it("takes a worn piece off when its square changes, and leaves it on when it does not", async () => {
+    const helm = await seedItem(sheet, 1, "Iron Helm", { slot: "head", equipped: 1 });
+    // Same square: still worn, and the new numbers are in play immediately.
+    await setItemStats(helm, formData({ slot: "head", bonus_ac: "1" }));
+    expect((await rowOf(helm))?.equipped).toBe(1);
+
+    await setItemStats(helm, formData({ slot: "ring" }));
+    const row = await rowOf(helm);
+    expect(row?.slot).toBe("ring");
+    // A helm cannot still be the worn head once it has become a ring.
+    expect(row?.equipped).toBe(0);
+    expect(await wornIn(sheet, "head")).toHaveLength(0);
+  });
+
+  it("writes nothing when someone else reaches for the sheet, and everything for the DM", async () => {
+    const helm = await seedItem(sheet, 1, "Iron Helm", { slot: "head" });
+    auth.userId = fx.stranger;
+    await setItemStats(helm, formData({ slot: "head", acBase: "20" }));
+    expect((await rowOf(helm))?.acBase).toBeNull();
+
+    auth.userId = fx.dm;
+    await setItemStats(helm, formData({ slot: "head", acBase: "20" }));
+    expect((await rowOf(helm))?.acBase).toBe(20);
+  });
+});
+
+describe("loadWornFor", () => {
+  it("answers for a whole party in one query, gear and sums together", async () => {
+    const other = await seedCharacter(fx.campaignId, fx.dm);
+    await seedItem(sheet, 1, "Adamantine Armor", {
+      slot: "armor",
+      equipped: 1,
+      srdIndex: "adamantine-armor",
+      acBase: 16,
+      acDex: "none",
+    });
+    await seedItem(sheet, 1, "Ring of Protection", {
+      slot: "ring",
+      equipped: 1,
+      statBonuses: JSON.stringify({ ac: 1, dex: 2 }),
+    });
+    // Carried, not worn: it belongs to neither answer.
+    await seedItem(sheet, 1, "Spare Shield", { slot: "hands", srdIndex: "shield" });
+    await seedItem(other, 1, "Iron Helm", { slot: "head", equipped: 1 });
+
+    const loaded = await loadWornFor([sheet, other, "nobody"]);
+    const gear = wornSetFor(loaded, sheet);
+    expect(gear.worn).toHaveLength(2);
+    expect(gear.bonuses).toEqual({ ac: 1, dex: 2 });
+    expect(wornSetFor(loaded, other).worn).toHaveLength(1);
+    // A character with nothing on is an empty answer, never undefined.
+    expect(wornSetFor(loaded, "nobody")).toEqual({ worn: [], bonuses: {} });
+
+    // And the whole point: the list page's armour class agrees with the sheet.
+    const ac = effectiveAc({ armorClass: null, dex: 16 }, gear.worn, gear.bonuses);
+    expect(ac.value).toBe(17); // 16 typed base + 1 from the ring
+  });
+
+  it("takes the bonuses off the library entry for a line stocked before snapshots", async () => {
+    const forged = await seedWorldItem(fx.worldId, fx.dm, {
+      name: "Cloak of the Fox",
+      slot: "neck",
+      statBonuses: JSON.stringify({ dex: 2 }),
+    });
+    await seedItem(sheet, 1, "Cloak of the Fox", {
+      slot: "neck",
+      equipped: 1,
+      worldItemId: forged,
+    });
+    expect(wornSetFor(await loadWornFor([sheet]), sheet).bonuses).toEqual({ dex: 2 });
+  });
+
+  it("asks nothing at all when there is nobody to ask about", async () => {
+    expect(await loadWornFor([])).toEqual(new Map());
   });
 });
 

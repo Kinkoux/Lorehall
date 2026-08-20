@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { effectiveAc, type WornForAc } from "@/lib/armor";
 import { acGearBonus, acTitle } from "@/lib/dnd";
-import { ITEMS, getItem, parseArmorAc, type SrdItem } from "@/lib/srd-data";
+import { ITEMS, armorAcFor, getItem, parseArmorAc, type SrdItem } from "@/lib/srd-data";
 
 /**
  * The armour rules, which the sheet had none of: every piece of SRD armour
@@ -25,6 +25,13 @@ const plain = (name: string, slot: WornForAc["slot"], statBonuses: string | null
   srdIndex: null,
   statBonuses,
 });
+
+/** The same line after a player has typed an armour class onto their copy. */
+const typed = (
+  line: WornForAc,
+  acBase: number | null,
+  acDex: WornForAc["acDex"] = null
+): WornForAc => ({ ...line, acBase, acDex });
 
 const acOf = (index: string) => parseArmorAc(getItem(index) as SrdItem);
 
@@ -163,5 +170,80 @@ describe("effectiveAc", () => {
   it("ignores a hand-typed line that merely calls itself armour", () => {
     // No source, no formula: the name on a line grants nothing by itself.
     expect(effectiveAc(nimble, [plain("Rusty Plate", "armor")]).value).toBe(13);
+  });
+});
+
+/**
+ * The escape hatch. SRD magic armour keeps its mechanic in prose — Adamantine
+ * Armor carries no `ac` field at all — so the compendium has nothing to say
+ * and wearing the thing moved no number. A base typed onto the line does, and
+ * it outranks every other source: the player has stated something about their
+ * own copy that nothing else in the app could know.
+ */
+describe("effectiveAc with a base typed onto the line", () => {
+  const nimble = { armorClass: null, dex: 16 }; // +3
+  const blank = { armorClass: null, dex: null };
+
+  it("gives magic armour the class its prose never stated", () => {
+    // The compendium reads nothing off this entry: category "magic", ac null.
+    expect(armorAcFor("adamantine-armor")).toBeNull();
+    const ac = effectiveAc(nimble, [typed(worn("adamantine-armor", "armor"), 16, "none")]);
+    expect(ac.value).toBe(16);
+    // Named, not bare: the reader can tell which piece claimed the number.
+    expect(acTitle(ac)).toBe("Adamantine Armor 16");
+  });
+
+  it("overrules the compendium's own reading of the same piece", () => {
+    // Chain mail is 16 and ignores DEX; this copy is not, because its owner
+    // says so. Intent wins over the parser, or the field is decoration.
+    const ac = effectiveAc(nimble, [typed(worn("chain-mail", "armor"), 12, "full")]);
+    expect(ac.value).toBe(15);
+    expect(acTitle(ac)).toBe("Chain Mail 12 + DEX 3");
+  });
+
+  it("applies the DEX rule the line states, cap and all", () => {
+    expect(effectiveAc(nimble, [typed(plain("Star Mail", "armor"), 14, "capped2")]).value).toBe(16);
+    expect(effectiveAc(nimble, [typed(plain("Star Mail", "armor"), 14, "full")]).value).toBe(17);
+    // An unstated rule is "none" — the safe reading, not the generous one.
+    expect(effectiveAc(nimble, [typed(plain("Star Mail", "armor"), 14)]).value).toBe(14);
+    // And a sheet with no DEX score still wears it.
+    expect(effectiveAc(blank, [typed(plain("Star Mail", "armor"), 14, "full")]).value).toBe(14);
+  });
+
+  it("reads a base typed onto the hand as the bonus it adds", () => {
+    // A +1 shield: the SRD says 2, this copy says 3, and the copy wins.
+    const ac = effectiveAc(nimble, [
+      worn("leather-armor", "armor"),
+      typed(worn("shield", "hands"), 3),
+    ]);
+    expect(ac.value).toBe(17);
+    expect(acTitle(ac)).toBe("11 + DEX 3 + Shield 3");
+    expect(acGearBonus(ac)).toBe(3);
+  });
+
+  it("lets a hand-typed buckler count that the SRD has never heard of", () => {
+    const ac = effectiveAc(nimble, [typed(plain("Oaken Buckler", "hands"), 1)]);
+    expect(ac.value).toBe(14);
+    expect(acGearBonus(ac)).toBe(1);
+  });
+
+  it("ignores a base typed onto a line worn anywhere else", () => {
+    // Body and hand are the two places an armour class is stated from; a ring
+    // that wants to add to it says so through its flat `ac` bonus.
+    const ring = typed(plain("Signet", "ring", JSON.stringify({ ac: 1 })), 5);
+    const ac = effectiveAc(nimble, [ring]);
+    expect(ac.value).toBe(14);
+    expect(acTitle(ac)).toBe("10 + DEX 3 + Signet 1");
+  });
+
+  it("leaves a line nobody has edited exactly as it was", () => {
+    // The columns are NULL on every existing row, and NULL means "say nothing
+    // and let the compendium answer" — not "this piece is worth 0".
+    const untouched = typed(worn("chain-mail", "armor"), null);
+    expect(effectiveAc(nimble, [untouched]).value).toBe(16);
+    expect(effectiveAc(nimble, [typed(worn("shield", "hands"), null)]).value).toBe(15);
+    // Nothing to say and no compendium entry either: the sheet's own field.
+    expect(effectiveAc({ armorClass: 15, dex: 16 }, [typed(plain("Rags", "armor"), null)]).value)
+      .toBe(15);
   });
 });

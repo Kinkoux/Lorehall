@@ -96,6 +96,25 @@ export const character = {
       slotLabel: "Slot",
       bonusTitle: "From equipment",
     },
+    // The per-line editor inside an inventory square. Sibling of `equipment`
+    // for the same reason: it is the backpack's business, not the doll's.
+    itemStats: {
+      title: "Stats",
+      hint: "The armour base overrides what the compendium reads off this item; on a piece held in hand it counts as a shield bonus instead. The DEX rule only applies to body armour.",
+      slotLabel: "Slot",
+      slotLocked: "Fixed by the item itself",
+      carried: "Carried (not worn)",
+      acBaseLabel: "AC base",
+      acDexLabel: "DEX rule",
+      dex: {
+        none: "No DEX",
+        full: "Full DEX",
+        capped2: "DEX, max +2",
+      },
+      bonusesLabel: "Bonuses",
+      bonusesHint: "Flat bonuses this line grants while worn, −10 to +10. Leave a field blank for none.",
+      save: "Save stats",
+    },
     // Spell slots are the caster's own resource, not any one spell's, so they
     // sit apart from `sheet.kind.spell` and the per-line uses counter.
     spellSlots: {
@@ -210,6 +229,23 @@ export const character = {
       worn: "Kuşanılı",
       slotLabel: "Yuva",
       bonusTitle: "Ekipmandan",
+    },
+    itemStats: {
+      title: "Statlar",
+      hint: "Zırh tabanı, derlemenin bu eşyadan okuduğu değeri ezer; elde tutulan bir parçada kalkan bonusu olarak sayılır. DEX kuralı yalnızca gövde zırhında işler.",
+      slotLabel: "Yuva",
+      slotLocked: "Eşyanın kendisi belirliyor",
+      carried: "Taşınıyor (kuşanılmadı)",
+      acBaseLabel: "AC tabanı",
+      acDexLabel: "DEX kuralı",
+      dex: {
+        none: "DEX yok",
+        full: "Tam DEX",
+        capped2: "DEX, en fazla +2",
+      },
+      bonusesLabel: "Bonuslar",
+      bonusesHint: "Bu satır kuşanılıyken verdiği düz bonuslar, −10 ile +10 arası. Olmayanı boş bırak.",
+      save: "Statları kaydet",
     },
     spellSlots: {
       title: "Büyü yuvaları",

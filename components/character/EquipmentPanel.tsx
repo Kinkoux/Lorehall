@@ -1,4 +1,4 @@
-import { type WorldItemSlot } from "@/lib/db/schema";
+import { type AcDexRule, type WorldItemSlot } from "@/lib/db/schema";
 import { unequipItem } from "@/lib/character-actions";
 import { acGearBonus, acTitle, fmt, type AcBreakdown } from "@/lib/dnd";
 import { statBonusEntries, STAT_LABELS } from "@/lib/world-items";
@@ -27,6 +27,10 @@ export type EquippedPiece = {
   srdIndex: string | null;
   /** The row's own snapshot, or its source's — resolved by the caller. */
   statBonuses: string | null;
+  /** The armour class typed onto the line, when a player typed one. */
+  acBase: number | null;
+  /** How DEX joins that typed base — see lib/armor.ts. */
+  acDex: AcDexRule | null;
   /** The library entry's photograph, when it has one. */
   photo: string | null;
   /** The item's category, for the plate that stands in for a photograph. */

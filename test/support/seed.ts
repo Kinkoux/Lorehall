@@ -15,6 +15,7 @@ import {
   worldItems,
   worldMembers,
   worlds,
+  type AcDexRule,
   type WorldItemSlot,
 } from "@/lib/db/schema";
 import { db } from "./db";
@@ -166,6 +167,9 @@ export async function seedItem(
     worldItemId?: string;
     /** The compendium entry the line was stamped from, when it had one. */
     srdIndex?: string;
+    /** An armour class the player typed onto this copy. */
+    acBase?: number;
+    acDex?: AcDexRule;
   } = {}
 ) {
   const id = nextId("item");
@@ -179,6 +183,8 @@ export async function seedItem(
     statBonuses: worn.statBonuses,
     worldItemId: worn.worldItemId,
     srdIndex: worn.srdIndex,
+    acBase: worn.acBase,
+    acDex: worn.acDex,
     createdAt: Date.now(),
   });
   return id;

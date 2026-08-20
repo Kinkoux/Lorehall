@@ -10,6 +10,15 @@ import { WORLD_ITEM_SLOTS, WORLD_ITEM_STATS, type WorldItemSlot, type WorldItemS
 export const STAT_BONUS_MIN = -10;
 export const STAT_BONUS_MAX = 10;
 
+/**
+ * Both ends of a hand-written armour base on an inventory line. Nothing in 5e
+ * reaches 30 (plate, a shield and a +3 ring is 23), and 0 is the floor a
+ * number can honestly have — a blank field is how a line says it has none.
+ * Stated here so the form's `min`/`max` and the action's clamp are one fact.
+ */
+export const AC_BASE_MIN = 0;
+export const AC_BASE_MAX = 30;
+
 export type StatBonuses = Partial<Record<WorldItemStat, number>>;
 
 /** Abbreviations, not prose — the sheet spells scores this way in both locales. */

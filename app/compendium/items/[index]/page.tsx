@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
-import { and, eq } from "drizzle-orm";
-import { db, characters, campaigns } from "@/lib/db";
+import { and, asc, eq, or } from "drizzle-orm";
+import { db, characters, campaigns, users } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { getItem, magicAcBonus } from "@/lib/srd-data";
@@ -21,12 +21,27 @@ export default async function ItemPage({
   const item = getItem(index);
   if (!item) notFound();
 
+  /**
+   * Where this item could go: my own sheets, plus every sheet at a table I
+   * run. `addItemToCharacter` has always accepted both — the picker was the
+   * half that only ever offered mine, so a DM reading the compendium had to
+   * walk to the campaign page to hand anything over. One `or` over the join
+   * covers both without a second query, and without duplicates: a character
+   * of mine in a campaign of mine still matches one row, not two.
+   */
   const myCharacters = user
     ? await db
-        .select({ character: characters, campaign: campaigns })
+        .select({ character: characters, campaign: campaigns, owner: users })
         .from(characters)
         .innerJoin(campaigns, eq(characters.campaignId, campaigns.id))
-        .where(and(eq(characters.userId, user.id), eq(characters.approval, "approved")))
+        .innerJoin(users, eq(characters.userId, users.id))
+        .where(
+          and(
+            eq(characters.approval, "approved"),
+            or(eq(characters.userId, user.id), eq(campaigns.dmUserId, user.id))
+          )
+        )
+        .orderBy(asc(campaigns.name), asc(characters.name))
     : [];
 
   const acBonus = magicAcBonus(item);
@@ -117,9 +132,19 @@ export default async function ItemPage({
               <label className="block">
                 <Label>{t("compendium.items.character")}</Label>
                 <Select name="characterId" className="!w-64">
-                  {myCharacters.map(({ character, campaign }) => (
+                  {myCharacters.map(({ character, campaign, owner }) => (
                     <option key={character.id} value={character.id}>
-                      {character.name} · {campaign.name}
+                      {/* Someone else's sheet is named by its player too —
+                          two tables can each have a Vex. */}
+                      {[
+                        character.name,
+                        campaign.name,
+                        character.userId === user?.id
+                          ? null
+                          : (owner.displayName ?? owner.username),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </option>
                   ))}
                 </Select>

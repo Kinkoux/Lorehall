@@ -21,6 +21,7 @@ const KIND_BY_EVENT = {
   portraitChanged: "sheet",
   portraitRemoved: "sheet",
   itemAdded: "item",
+  itemGiven: "item",
   itemRemoved: "item",
   itemQty: "item",
   srdItemAdded: "item",

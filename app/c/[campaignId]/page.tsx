@@ -17,6 +17,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { getBeats, getChapters } from "@/lib/queries";
+import { loadWornFor, wornSetFor } from "@/lib/armor";
 import { getT } from "@/lib/locale";
 import { SiteHeader } from "@/components/SiteHeader";
 import { BackLink, RoleBadge } from "@/components/ui";
@@ -29,6 +30,7 @@ import { JournalSection } from "@/components/campaign/JournalSection";
 import { MapsSection } from "@/components/campaign/MapsSection";
 import { ChangeFeedSection, FEED_FILTERS } from "@/components/campaign/ChangeFeedSection";
 import { EncountersSection } from "@/components/campaign/EncountersSection";
+import { GiveItemSection } from "@/components/campaign/GiveItemSection";
 import { StoryBookSection } from "@/components/campaign/StoryBookSection";
 
 export default async function CampaignPage({
@@ -128,13 +130,23 @@ export default async function CampaignPage({
   const liveSession = sessions.find((s) => s.status === "live");
   const pastSessions = sessions.filter((s) => s.status === "ended");
 
-  const encounterRows = encounterList.length
-    ? await db
-        .select()
-        .from(encounterMonsters)
-        .where(inArray(encounterMonsters.encounterId, encounterList.map((e) => e.id)))
-        .orderBy(asc(encounterMonsters.createdAt))
-    : [];
+  // Both depend on the batch above, so they go out together rather than one
+  // after the other. The worn gear is one query for the whole party — the
+  // party list shows numbers the equipped lines move, and asking per character
+  // would turn a two-query section into a dozen.
+  const [encounterRows, worn] = await Promise.all([
+    encounterList.length
+      ? db
+          .select()
+          .from(encounterMonsters)
+          .where(inArray(encounterMonsters.encounterId, encounterList.map((e) => e.id)))
+          .orderBy(asc(encounterMonsters.createdAt))
+      : Promise.resolve([]),
+    loadWornFor(campaignCharacters.map((c) => c.id)),
+  ]);
+  const wornBonuses = new Map(
+    campaignCharacters.map((c) => [c.id, wornSetFor(worn, c.id).bonuses] as const)
+  );
 
   return (
     <>
@@ -163,6 +175,7 @@ export default async function CampaignPage({
             <PartySection
               members={members}
               campaignCharacters={campaignCharacters}
+              wornBonuses={wornBonuses}
               campaignId={campaignId}
               dmUserId={campaign.dmUserId}
               currentUserId={user.id}
@@ -219,6 +232,16 @@ export default async function CampaignPage({
             encounters={encounterList}
             encounterRows={encounterRows}
             campaignId={campaignId}
+            t={t}
+          />
+        )}
+
+        {isDm && (
+          <GiveItemSection
+            members={members}
+            campaignCharacters={campaignCharacters}
+            campaignId={campaignId}
+            locale={locale}
             t={t}
           />
         )}

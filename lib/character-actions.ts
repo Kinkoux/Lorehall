@@ -12,6 +12,9 @@ import {
   characterSpellSlots,
   campaignMembers,
   worldItems,
+  AC_DEX_RULES,
+  WORLD_ITEM_STATS,
+  type AcDexRule,
   type WorldItemSlot,
 } from "@/lib/db";
 import {
@@ -26,7 +29,14 @@ import { campaignLog } from "@/lib/campaign-log";
 import { fmt } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
-import { readSlotName } from "@/lib/world-items";
+import {
+  AC_BASE_MAX,
+  AC_BASE_MIN,
+  readSlotName,
+  STAT_BONUS_MAX,
+  STAT_BONUS_MIN,
+  type StatBonuses,
+} from "@/lib/world-items";
 import type { FormState } from "@/lib/actions";
 
 function str(formData: FormData, key: string) {
@@ -362,6 +372,41 @@ export async function removePortrait(characterId: string) {
 // ---------- inventory ----------
 
 /**
+ * Every page that shows a number the worn gear moves. The armour class on the
+ * hub and the passive Perception in the party list are computed from the
+ * equipped lines now, so taking a helm off is not only the sheet's business.
+ */
+function revalidateSheetPages(campaignId: string, userId: string) {
+  revalidatePath(`/c/${campaignId}/ch/${userId}`);
+  revalidatePath(`/c/${campaignId}`);
+  revalidatePath("/characters");
+}
+
+/** One of the three DEX rules, or nothing — which lib/armor.ts reads as "none". */
+function readAcDex(formData: FormData): AcDexRule | null {
+  const raw = str(formData, "acDex");
+  return (AC_DEX_RULES as readonly string[]).includes(raw) ? (raw as AcDexRule) : null;
+}
+
+/**
+ * The eight bonus fields off the line editor, rebuilt the way the library form
+ * rebuilds its own: only the allowed keys, each clamped to ±10, blanks and
+ * zeroes left out, and an all-blank form storing NULL rather than `{}` — so a
+ * line the player cleared is a plain item again, not an item granting nothing.
+ */
+function readItemBonuses(formData: FormData): string | null {
+  const bonuses: StatBonuses = {};
+  for (const stat of WORLD_ITEM_STATS) {
+    const raw = str(formData, `bonus_${stat}`);
+    if (!raw) continue;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n) || n === 0) continue;
+    bonuses[stat] = Math.min(Math.max(n, STAT_BONUS_MIN), STAT_BONUS_MAX);
+  }
+  return Object.keys(bonuses).length > 0 ? JSON.stringify(bonuses) : null;
+}
+
+/**
  * What an inventory line is, beyond its name: the source it was picked from
  * (if any), where it can be worn, and what it grants. The autocomplete on the
  * sheet sends a reference, never the numbers — the slot and the bonuses are
@@ -432,18 +477,29 @@ async function resolveItemSource(
   return blank;
 }
 
-export async function addItem(characterId: string, formData: FormData) {
-  const user = await requireUser();
-  const character = await getEditableCharacter(characterId, user.id);
-  if (!character) return;
+/**
+ * The write both "stock a line" paths make. Whether the sheet's own player
+ * typed it or the DM handed it over, an inventory line is resolved the same
+ * way and stored in the same shape — only the gate in front of it and the
+ * feed line behind it differ, and those belong to the callers.
+ *
+ * Returns what was written so the caller can name it in the log, or null when
+ * the form carried no name at all (nothing is written then).
+ */
+async function stockItem(
+  character: { id: string; campaignId: string },
+  formData: FormData,
+  actorId: string,
+  maxQty: number
+): Promise<{ name: string; qty: number } | null> {
   const name = str(formData, "name");
-  if (!name) return;
+  if (!name) return null;
   const itemName = cap(name, 150);
-  const qty = Math.min(Math.max(int(formData, "qty") ?? 1, 1), 9999);
-  const source = await resolveItemSource(formData, character.campaignId, user.id);
+  const qty = Math.min(Math.max(int(formData, "qty") ?? 1, 1), maxQty);
+  const source = await resolveItemSource(formData, character.campaignId, actorId);
   await db.insert(characterItems).values({
     id: nanoid(12),
-    characterId,
+    characterId: character.id,
     name: itemName,
     qty,
     // A line the player annotated keeps their words; one they left blank
@@ -455,12 +511,58 @@ export async function addItem(characterId: string, formData: FormData) {
     statBonuses: source.statBonuses,
     createdAt: Date.now(),
   });
+  return { name: itemName, qty };
+}
+
+export async function addItem(characterId: string, formData: FormData) {
+  const user = await requireUser();
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character) return;
+  const stocked = await stockItem(character, formData, user.id, 9999);
+  if (!stocked) return;
   await campaignLog(character.campaignId, user.id, "itemAdded", {
-    name: itemName,
-    n: qty,
+    name: stocked.name,
+    n: stocked.qty,
     character: character.name,
   });
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+}
+
+/**
+ * The other direction: the DM hands something over from the campaign page,
+ * without opening the sheet it lands on.
+ *
+ * The campaign is the capability here, not the character — the id in the form
+ * is checked against it rather than trusted, so a DM can only reach the sheets
+ * at the table they actually run, and only the ones they have already
+ * approved: a character still waiting on its nod is not yet a place to put
+ * treasure. The reference the autocomplete attaches is resolved exactly as it
+ * is on the sheet, which is what keeps a handed-over sword the same kind of
+ * row as a typed one.
+ */
+export async function giveItem(campaignId: string, formData: FormData) {
+  const user = await requireUser();
+  const access = await getCampaignAccess(campaignId, user.id);
+  if (!access?.isDm) return;
+
+  const characterId = str(formData, "characterId");
+  if (!characterId) return;
+  const character = await db.query.characters.findFirst({
+    where: eq(characters.id, characterId),
+  });
+  if (!character || character.campaignId !== campaignId) return;
+  if (character.approval !== "approved") return;
+
+  const stocked = await stockItem(character, formData, user.id, 999);
+  if (!stocked) return;
+  await campaignLog(campaignId, user.id, "itemGiven", {
+    name: stocked.name,
+    n: stocked.qty,
+    character: character.name,
+  });
+  // The sheet gained a line, and the campaign page's own party numbers read
+  // from the same rows — one helper already covers both.
+  revalidateSheetPages(campaignId, character.userId);
 }
 
 /**
@@ -531,7 +633,7 @@ export async function equipItem(itemId: string, formData: FormData) {
     name: item.name,
     character: character.name,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheetPages(character.campaignId, character.userId);
 }
 
 /** Take it off. The slot stays on the row — it is still a helm, just not worn. */
@@ -546,7 +648,65 @@ export async function unequipItem(itemId: string) {
     name: item.name,
     character: character.name,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheetPages(character.campaignId, character.userId);
+}
+
+/**
+ * The numbers on one line, typed by the player.
+ *
+ * The compendium answers for ordinary gear and the library answers for
+ * homebrew, but neither answers for SRD magic armour: "Adamantine Armor" keeps
+ * its whole mechanic in prose, carries no armour class a parser can read, and
+ * wearing it therefore moved nothing at all. This is the escape hatch every
+ * inventory-driven RPG has — the player states what the piece does, and the
+ * sheet believes them.
+ *
+ * Everything is rebuilt from scratch rather than trusted: the slot is checked
+ * against the eight names (and loses outright to the one the line's source
+ * insists on — a breastplate is body armour however the select was tampered
+ * with), the base is clamped to 0..30, the DEX rule must be one of the three,
+ * and the eight bonuses go through the same ±10 clamp the library form uses.
+ * A form with every bonus blank stores NULL, not `{}`.
+ *
+ * Moving a worn piece to a different square takes it off on the way: the row
+ * cannot sit in `ring` while the sheet still counts it as the worn helm, and
+ * one UPDATE carries both halves, so `character_items_one_per_slot` never sees
+ * the row in between.
+ */
+export async function setItemStats(itemId: string, formData: FormData) {
+  const user = await requireUser();
+  const item = await db.query.characterItems.findFirst({ where: eq(characterItems.id, itemId) });
+  if (!item) return;
+  const character = await getEditableCharacter(item.characterId, user.id);
+  if (!character) return;
+
+  // Lazy import keeps the SRD JSON out of the sheet's chunk, as everywhere
+  // else this module reaches for it.
+  const { requiredSlot } = await import("@/lib/srd-data");
+  const source = item.worldItemId
+    ? await db.query.worldItems.findFirst({ where: eq(worldItems.id, item.worldItemId) })
+    : null;
+  // The source has the last word, exactly as equipItem decides it — the form's
+  // select is read-only in that case, and a forged one is simply overruled.
+  const required = requiredSlot(item.srdIndex, source);
+  const slot = required ?? readSlotName(str(formData, "slot"));
+
+  await db
+    .update(characterItems)
+    .set({
+      slot,
+      // Worn stays worn only while the square does not change; anywhere else
+      // the piece comes off first and the player puts it back on.
+      equipped: item.equipped === 1 && slot === item.slot ? 1 : 0,
+      acBase: clampOpt(int(formData, "acBase"), AC_BASE_MIN, AC_BASE_MAX),
+      acDex: readAcDex(formData),
+      statBonuses: readItemBonuses(formData),
+    })
+    .where(eq(characterItems.id, itemId));
+
+  // The party list and the character hub both show a computed armour class
+  // now, so a line that changes one changes them too.
+  revalidateSheetPages(character.campaignId, character.userId);
 }
 
 export async function adjustItemQty(itemId: string, delta: number) {

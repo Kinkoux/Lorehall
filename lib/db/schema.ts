@@ -191,6 +191,15 @@ export const WORLD_ITEM_STATS = [
 ] as const;
 export type WorldItemStat = (typeof WORLD_ITEM_STATS)[number];
 
+/**
+ * How a hand-written armour base lets the wearer's DEX join in — the same
+ * three answers `parseArmorAc` reads out of the SRD's prose, spelled here so
+ * a player can state them for a piece the SRD never wrote a formula for (a
+ * magic hauberk whose entry is all flavour). NULL on a row reads as "none".
+ */
+export const AC_DEX_RULES = ["full", "capped2", "none"] as const;
+export type AcDexRule = (typeof AC_DEX_RULES)[number];
+
 export const worldItems = pgTable("world_items", {
   id: text("id").primaryKey(),
   worldId: text("world_id")
@@ -332,6 +341,14 @@ export const characterItems = pgTable("character_items", {
   // silently restat every copy already in play. NULL falls back to the
   // referenced world item, and a line with neither is simply flavour.
   statBonuses: text("stat_bonuses"),
+  // A hand-written armour class for this copy, the way an ARPG lets a player
+  // state what a piece actually does: `acBase` is the number the wearer's
+  // class starts from (a line worn in `armor`), or the bonus it adds (a line
+  // worn in `hands`), and `acDex` says how DEX joins that base. Both NULL on
+  // every row nobody has edited, which leaves the SRD's own reading in charge
+  // of ordinary armour — lib/armor.ts spells out the order of precedence.
+  acBase: integer("ac_base"),
+  acDex: text("ac_dex", { enum: AC_DEX_RULES }),
   createdAt: ms("created_at").notNull(),
 });
 

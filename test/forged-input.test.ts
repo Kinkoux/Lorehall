@@ -17,19 +17,30 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 import { addBeat, addChapter, deleteChapter, moveBeatToChapter } from "@/lib/beat-actions";
+import { giveItem } from "@/lib/character-actions";
 import { chooseActiveMap, setActiveMap } from "@/lib/map-actions";
 import { adjustHp } from "@/lib/session-actions";
-import { campaignMaps, combatants, storyBeats, storyChapters } from "@/lib/db/schema";
+import {
+  campaignEvents,
+  campaignMaps,
+  characterItems,
+  characters,
+  combatants,
+  storyBeats,
+  storyChapters,
+} from "@/lib/db/schema";
 import { applySchema, db, truncateAll } from "./support/db";
 import {
   formData,
   seedBeat,
   seedCampaign,
   seedChapter,
+  seedCharacter,
   seedCombatant,
   seedMap,
   seedSession,
   seedWorld,
+  seedWorldItem,
   type Fixture,
 } from "./support/seed";
 
@@ -168,5 +179,86 @@ describe("session and map ids are scoped before they are used", () => {
     await setActiveMap(map, true);
     const after = await db.query.campaignMaps.findFirst({ where: eq(campaignMaps.id, map) });
     expect(after?.isActive).toBe(0);
+  });
+});
+
+describe("giveItem — the campaign is the capability, not the character id", () => {
+  /** Everything anyone was handed, anywhere. */
+  const allItems = () => db.select().from(characterItems);
+
+  it("writes nothing when a player hands themselves treasure", async () => {
+    const sheet = await seedCharacter(fx.campaignId, fx.player);
+    auth.userId = fx.player;
+    await giveItem(fx.campaignId, formData({ characterId: sheet, name: "Vorpal Sword" }));
+    expect(await allItems()).toHaveLength(0);
+  });
+
+  it("refuses a sheet that sits at another table, even one the same DM runs", async () => {
+    const theirs = await seedCharacter(elsewhere, fx.player);
+    // The id is real and the caller does run that other campaign — but they
+    // are not running *this* one's hand-over, and the two are not the same key.
+    await giveItem(fx.campaignId, formData({ characterId: theirs, name: "Vorpal Sword" }));
+    expect(await allItems()).toHaveLength(0);
+  });
+
+  it("refuses a sheet still waiting on the DM's nod", async () => {
+    const sheet = await seedCharacter(fx.campaignId, fx.player);
+    await db.update(characters).set({ approval: "pending" }).where(eq(characters.id, sheet));
+    await giveItem(fx.campaignId, formData({ characterId: sheet, name: "Vorpal Sword" }));
+    expect(await allItems()).toHaveLength(0);
+  });
+
+  it("re-reads an SRD reference server-side rather than trusting the form", async () => {
+    const sheet = await seedCharacter(fx.campaignId, fx.player);
+    await giveItem(
+      fx.campaignId,
+      // The quantity is past the form's own ceiling and the bonus is a field
+      // the DM would have had to type by hand; neither survives the round trip.
+      formData({ characterId: sheet, name: "Shield", srdIndex: "shield", qty: "5000", bonus_ac: "9" })
+    );
+
+    const [row] = await allItems();
+    expect(row.characterId).toBe(sheet);
+    expect(row.srdIndex).toBe("shield");
+    // Slot and summary come from the compendium entry the index names.
+    expect(row.slot).toBe("hands");
+    expect(row.notes).toBeTruthy();
+    expect(row.statBonuses).toBeNull();
+    expect(row.qty).toBe(999);
+  });
+
+  it("carries a world library entry's own slot and bonuses onto the sheet", async () => {
+    const sheet = await seedCharacter(fx.campaignId, fx.player);
+    const relic = await seedWorldItem(fx.worldId, fx.dm, {
+      name: "Emberfang Dagger",
+      slot: "hands",
+      statBonuses: JSON.stringify({ str: 2 }),
+    });
+    await giveItem(
+      fx.campaignId,
+      formData({ characterId: sheet, name: "Emberfang Dagger", worldItemId: relic })
+    );
+
+    const [row] = await allItems();
+    expect(row.worldItemId).toBe(relic);
+    expect(row.slot).toBe("hands");
+    expect(JSON.parse(row.statBonuses ?? "{}")).toEqual({ str: 2 });
+  });
+
+  it("names the hand-over in the feed as its own kind of event", async () => {
+    const sheet = await seedCharacter(fx.campaignId, fx.player);
+    await giveItem(fx.campaignId, formData({ characterId: sheet, name: "Rope", qty: "2" }));
+
+    const events = await db
+      .select()
+      .from(campaignEvents)
+      .where(eq(campaignEvents.campaignId, fx.campaignId));
+    expect(events).toHaveLength(1);
+    expect(events[0].kind).toBe("item");
+    expect(events[0].actorId).toBe(fx.dm);
+    const { k, p } = JSON.parse(events[0].message);
+    // Not "itemAdded": the feed should read as the DM handing it over.
+    expect(k).toBe("itemGiven");
+    expect(p).toMatchObject({ name: "Rope", n: 2, character: "Vex" });
   });
 });

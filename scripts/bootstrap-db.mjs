@@ -168,6 +168,8 @@ CREATE TABLE IF NOT EXISTS character_items (
   slot TEXT,
   equipped INTEGER NOT NULL DEFAULT 0,
   stat_bonuses TEXT,
+  ac_base INTEGER,
+  ac_dex TEXT,
   created_at BIGINT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS character_abilities (
@@ -393,6 +395,18 @@ ALTER TABLE character_items ADD COLUMN IF NOT EXISTS slot TEXT;
 ALTER TABLE character_items ADD COLUMN IF NOT EXISTS equipped INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE character_items ADD COLUMN IF NOT EXISTS stat_bonuses TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS character_items_one_per_slot ON character_items (character_id, slot) WHERE equipped = 1;
+-- hand-written armour on a line (2026-08-21): the SRD's magic armour states
+-- its class in prose ("as adamantine plate"), so nothing machine-readable
+-- reaches the sheet and wearing it changed no number. ac_base is that number,
+-- typed by the player — the base a wearer's class starts from on a line worn
+-- in the armor slot, the bonus it adds on one worn in hands — and ac_dex
+-- ('full'|'capped2'|'none', NULL reading as 'none') is how DEX joins it.
+-- Plain TEXT like slot: the allowed values are AC_DEX_RULES in
+-- lib/db/schema.ts, and the validated writer is what keeps the column honest.
+-- Both NULL on every existing row, which is exactly "nobody has said
+-- anything, keep reading the SRD".
+ALTER TABLE character_items ADD COLUMN IF NOT EXISTS ac_base INTEGER;
+ALTER TABLE character_items ADD COLUMN IF NOT EXISTS ac_dex TEXT;
 -- spell provenance (2026-08-19): the SRD index a sheet line was stamped from,
 -- so the sheet links back to the compendium text. NULL for hand-typed lines.
 ALTER TABLE character_abilities ADD COLUMN IF NOT EXISTS srd_index TEXT;

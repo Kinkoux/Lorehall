@@ -3,6 +3,7 @@ import { campaignMembers, type Character, type User } from "@/lib/db";
 import { kickMember, leaveCampaign } from "@/lib/actions";
 import { approveCharacter, rejectCharacter } from "@/lib/character-actions";
 import { hasScores, statBlock } from "@/lib/dnd";
+import type { StatBonuses } from "@/lib/world-items";
 import type { T } from "@/lib/i18n";
 import { classArtFor } from "@/lib/ui-art";
 import { IconSkull } from "@/components/Icons";
@@ -14,6 +15,7 @@ type MemberRow = { member: typeof campaignMembers.$inferSelect; user: User };
 export function PartySection({
   members,
   campaignCharacters,
+  wornBonuses,
   campaignId,
   dmUserId,
   currentUserId,
@@ -22,6 +24,13 @@ export function PartySection({
 }: {
   members: MemberRow[];
   campaignCharacters: Character[];
+  /**
+   * What each sheet's equipped gear adds, keyed by character id — loaded once
+   * for the whole party by the page. A passive Perception that ignored the
+   * ring of +2 WIS the sheet itself counts would be the list quietly
+   * contradicting the character it links to.
+   */
+  wornBonuses: ReadonlyMap<string, StatBonuses>;
   campaignId: string;
   dmUserId: string;
   currentUserId: string;
@@ -109,7 +118,8 @@ export function PartySection({
               <li key={memberUser.id} className="space-y-1.5">
                 {memberCharacters.map((character, ci) => {
                   const pp = hasScores(character)
-                    ? statBlock(character).passivePerception
+                    ? statBlock(character, wornBonuses.get(character.id) ?? {})
+                        .passivePerception
                     : null;
                   return (
                     <div key={character.id} className="flex items-center justify-between gap-3">
