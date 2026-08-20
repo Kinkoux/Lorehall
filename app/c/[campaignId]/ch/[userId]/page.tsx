@@ -15,6 +15,7 @@ import {
 } from "@/lib/db";
 import { ABILITIES, ABILITY_LABELS, fmt, hasScores, statBlock } from "@/lib/dnd";
 import { SKILLS } from "@/lib/srd";
+import { getItem } from "@/lib/srd-data";
 import { sumStatBonuses, type StatBonuses } from "@/lib/world-items";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
@@ -29,17 +30,19 @@ import {
   longRest,
   rejectCharacter,
   setCharacterStatus,
+  unequipItem,
   upsertCharacter,
   useAbility,
 } from "@/lib/character-actions";
 import Link from "next/link";
 import { getT } from "@/lib/locale";
 import type { T } from "@/lib/i18n";
-import { classArtFor, EMPTY_ART } from "@/lib/ui-art";
+import { categoryArt, classArtFor, EMPTY_ART } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { PortraitUploadForm } from "@/components/PortraitUploadForm";
 import { AutocompleteInput } from "@/components/character/AutocompleteInput";
 import { EquipmentPanel, type EquippedPiece } from "@/components/character/EquipmentPanel";
+import { itemArtSrc, worldItemPhoto } from "@/components/character/item-art";
 import { IconMoon, IconSkull } from "@/components/Icons";
 import {
   BackLink,
@@ -62,13 +65,16 @@ const KIND_STYLES: Record<string, string> = {
 };
 
 /**
- * An inventory row as this page reads it: the stored line plus the two things
- * the join answered — what it grants (its own snapshot, or its source's) and
- * which world the library entry lives in, for the link back.
+ * An inventory row as this page reads it: the stored line plus what the join
+ * answered — what it grants (its own snapshot, or its source's), which world
+ * the library entry lives in for the link back, and the two things the square
+ * needs to draw itself.
  */
 type InventoryLineShape = CharacterItem & {
   bonuses: string | null;
   sourceWorldId: string | null;
+  photo: string | null;
+  category: string | null;
 };
 
 export default async function CharacterPage({
@@ -138,10 +144,25 @@ export default async function CharacterPage({
     // lines stocked before there was one to take.
     bonuses: item.statBonuses ?? source?.statBonuses ?? null,
     sourceWorldId: source?.worldId ?? null,
+    // Only a library entry can carry a photograph of the actual piece.
+    photo: worldItemPhoto(item.worldItemId, source?.imageFile),
+    // For the plate that stands in for one: the compendium knows the category
+    // of an SRD line, the library entry knows its own, and a hand-typed line
+    // knows neither.
+    category: (item.srdIndex ? getItem(item.srdIndex)?.category : null) ?? source?.category ?? null,
   }));
   const equipped: EquippedPiece[] = items.flatMap((item) =>
     item.equipped === 1 && item.slot
-      ? [{ id: item.id, name: item.name, slot: item.slot, statBonuses: item.bonuses }]
+      ? [
+          {
+            id: item.id,
+            name: item.name,
+            slot: item.slot,
+            statBonuses: item.bonuses,
+            photo: item.photo,
+            category: item.category,
+          },
+        ]
       : []
   );
   // Derived for display only — the stored scores stay the character's own.
@@ -336,7 +357,18 @@ export default async function CharacterPage({
 
             {/* An all-empty doll is only worth drawing for someone who can fill it. */}
             {(editable || equipped.length > 0) && (
-              <EquipmentPanel equipped={equipped} editable={editable} t={t} />
+              <EquipmentPanel
+                equipped={equipped}
+                portrait={{
+                  src: portraitSrc(character.id, character.imageFile),
+                  alt: character.name,
+                  fallbackSrc: classArtFor(character.klass),
+                }}
+                armorClass={character.armorClass}
+                acBonus={acBonus}
+                editable={editable}
+                t={t}
+              />
             )}
 
             <div className="grid gap-6 md:grid-cols-2">
@@ -356,46 +388,9 @@ export default async function CharacterPage({
                       <p className="text-sm text-parchment-500">{t("character.sheet.backpackEmpty")}</p>
                     </>
                   )}
-                  <ul className="divide-y divide-ink-700">
-                    {items.map((item) => (
-                      <li key={item.id} className="py-2.5 first:pt-0 last:pb-0">
-                        <div className="flex items-center gap-2">
-                          <div className="min-w-0 flex-1">
-                            <p className="font-semibold text-parchment-100">
-                              <ItemName item={item} t={t} />
-                              {item.qty > 1 && (
-                                <span className="ml-1.5 text-sm text-parchment-500">
-                                  ×{item.qty}
-                                </span>
-                              )}
-                              {item.equipped === 1 && (
-                                <span className="ml-1.5 rounded-sm border border-gold-500/60 bg-gold-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300">
-                                  {t("character.equipment.worn")}
-                                </span>
-                              )}
-                            </p>
-                            {item.notes && (
-                              <p className="text-xs text-parchment-500">{item.notes}</p>
-                            )}
-                          </div>
-                          {editable && (
-                            <div className="flex items-center gap-1">
-                              <form action={adjustItemQty.bind(null, item.id, -1)}>
-                                <IconButton label="−" />
-                              </form>
-                              <form action={adjustItemQty.bind(null, item.id, 1)}>
-                                <IconButton label="+" />
-                              </form>
-                              <form action={deleteItem.bind(null, item.id)}>
-                                <IconButton label="✕" danger />
-                              </form>
-                            </div>
-                          )}
-                        </div>
-                        {editable && item.equipped === 0 && <EquipControl item={item} t={t} />}
-                      </li>
-                    ))}
-                  </ul>
+                  {items.length > 0 && (
+                    <InventoryGrid items={items} editable={editable} t={t} />
+                  )}
                   {editable && (
                     <form action={addItem.bind(null, character.id)} className="mt-4 space-y-2 border-t border-ink-700 pt-4">
                       <div className="flex gap-2">
@@ -529,6 +524,111 @@ export default async function CharacterPage({
 }
 
 /**
+ * The backpack as squares rather than lines — what every game with an
+ * inventory settled on, because a picture is found faster than a name in a
+ * column. Each square is a `<details>` whose summary *is* the square; opening
+ * one unfolds the line's full controls beneath it, across the whole row. The
+ * squares share a `name`, so the browser closes the one before — an accordion
+ * with no script behind it, which is what keeps this page a server component.
+ */
+function InventoryGrid({
+  items,
+  editable,
+  t,
+}: {
+  items: InventoryLineShape[];
+  editable: boolean;
+  t: T;
+}) {
+  return (
+    <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+      {items.map((item) => (
+        <details
+          key={item.id}
+          name="inventory-cell"
+          className="group/cell rounded-sm border border-transparent open:col-span-full open:border-gold-500/40 open:bg-ink-950/40 open:p-3"
+        >
+          <summary
+            title={item.name}
+            className="flex cursor-pointer list-none [&::-webkit-details-marker]:hidden"
+          >
+            <span className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-sm border border-ink-600 bg-ink-950/60 transition hover:border-gold-500 group-open/cell:aspect-auto group-open/cell:h-16 group-open/cell:w-16">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                // Photograph, then the line's own category, then the plate that
+                // says "a thing in a backpack" and nothing more.
+                src={itemArtSrc(item) ?? categoryArt("gear")}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-cover"
+              />
+              {item.equipped === 1 && (
+                <span
+                  aria-hidden
+                  title={t("character.equipment.worn")}
+                  className="absolute left-1 top-1 h-2 w-2 rounded-full bg-gold-500 ring-1 ring-ink-900"
+                />
+              )}
+              {item.qty > 1 && (
+                <span className="absolute bottom-0 right-0 rounded-tl-sm border-l border-t border-ink-600 bg-ink-900/90 px-1 font-mono text-[10px] font-bold text-parchment-100">
+                  {item.qty}
+                </span>
+              )}
+            </span>
+            {/* The square is a picture; this is what it is called. */}
+            <span className="sr-only">
+              {item.name}
+              {item.qty > 1 && ` ×${item.qty}`}
+              {item.equipped === 1 && ` — ${t("character.equipment.worn")}`}
+            </span>
+          </summary>
+
+          <div className="mt-3 space-y-2">
+            <p className="font-semibold text-parchment-100">
+              <ItemName item={item} t={t} />
+              {item.qty > 1 && (
+                <span className="ml-1.5 text-sm text-parchment-500">×{item.qty}</span>
+              )}
+              {item.equipped === 1 && (
+                <span className="ml-1.5 rounded-sm border border-gold-500/60 bg-gold-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300">
+                  {t("character.equipment.worn")}
+                </span>
+              )}
+            </p>
+            {item.notes && <p className="text-xs text-parchment-500">{item.notes}</p>}
+            {editable && (
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="flex items-center gap-1">
+                  <form action={adjustItemQty.bind(null, item.id, -1)}>
+                    <IconButton label="−" />
+                  </form>
+                  <form action={adjustItemQty.bind(null, item.id, 1)}>
+                    <IconButton label="+" />
+                  </form>
+                </span>
+                {item.equipped === 1 ? (
+                  <form action={unequipItem.bind(null, item.id)}>
+                    <GhostButton type="submit" className="!px-2 !py-1 text-xs">
+                      {t("character.equipment.unequip")}
+                    </GhostButton>
+                  </form>
+                ) : (
+                  <EquipControl item={item} t={t} />
+                )}
+                <form action={deleteItem.bind(null, item.id)} className="ml-auto">
+                  <IconButton label="✕" danger />
+                </form>
+              </div>
+            )}
+          </div>
+        </details>
+      ))}
+    </div>
+  );
+}
+
+/**
  * The inventory line's name, which is a link whenever the row remembers where
  * it came from: an SRD index opens the compendium entry, a library reference
  * jumps to the card in the world's own forge. A hand-typed line is just a
@@ -584,7 +684,7 @@ function AbilityName({ ability, t }: { ability: CharacterAbility; t: T }) {
 function EquipControl({ item, t }: { item: InventoryLineShape; t: T }) {
   if (item.slot) {
     return (
-      <form action={equipItem.bind(null, item.id)} className="mt-1.5">
+      <form action={equipItem.bind(null, item.id)}>
         <GhostButton type="submit" className="!px-2 !py-1 text-xs">
           {t("character.equipment.equip")} · {t(`world.items.slots.${item.slot}`)}
         </GhostButton>
@@ -592,7 +692,7 @@ function EquipControl({ item, t }: { item: InventoryLineShape; t: T }) {
     );
   }
   return (
-    <details className="mt-1.5">
+    <details>
       <summary className="inline-block cursor-pointer text-xs font-bold text-parchment-500 transition hover:text-gold-300">
         {t("character.equipment.equip")}
       </summary>

@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { logout } from "@/lib/actions";
 import { setLocale } from "@/lib/locale-actions";
 import { makeT, type Locale } from "@/lib/i18n";
-import { IconCompass } from "@/components/Icons";
 
 export function Navbar({
   userName,
@@ -52,7 +51,8 @@ export function Navbar({
           href={userName ? "/dashboard" : "/"}
           className="flex items-center gap-2 font-display text-lg font-bold tracking-[0.25em] text-gold-400"
         >
-          <IconCompass size={20} className="text-blood-400" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.webp" alt="" className="h-7 w-7 rounded-full" />
           LOREHALL
         </Link>
 

@@ -81,9 +81,14 @@ export function statBlock(character: Character, bonuses: StatBonuses = {}) {
     bonus: a.mod + (profSaves.has(a.key) ? pb : 0),
   }));
 
+  // Skills read the *worn* modifier, not the stored one: a ring of +2 DEX has
+  // to move Stealth and passive Perception along with the tile, or the sheet
+  // quietly contradicts itself about what the character can do.
+  const modByAbility = new Map(abilities.map((a) => [a.key, a.mod] as const));
+
   const skills = SKILLS.map((skill) => {
     const key = SKILL_ABILITY_KEY[skill.ability];
-    const base = mod(character[key] as number);
+    const base = modByAbility.get(key) ?? 0;
     const proficient = profSkills.has(skill.name);
     return {
       name: skill.name,
