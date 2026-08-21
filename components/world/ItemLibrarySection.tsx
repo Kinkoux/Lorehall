@@ -1,11 +1,10 @@
 import type { WorldItem } from "@/lib/db";
 import { deleteWorldItem } from "@/lib/world-item-actions";
-import { fmt } from "@/lib/dnd";
 import type { Locale, T } from "@/lib/i18n";
-import { statBonusEntries, STAT_LABELS } from "@/lib/world-items";
-import { categoryArt, EMPTY_ART } from "@/lib/ui-art";
+import { EMPTY_ART } from "@/lib/ui-art";
 import { IconX } from "@/components/Icons";
 import { Card, GhostButton, SectionTitle } from "@/components/ui";
+import { WorldItemCardFace } from "./WorldItemCardFace";
 import { WorldItemForm } from "./WorldItemForm";
 
 /**
@@ -13,6 +12,10 @@ import { WorldItemForm } from "./WorldItemForm";
  * the world reads it like a private extension of the compendium; forging,
  * editing and retiring are behind `canManage` — the same DM powers the actions
  * check for themselves.
+ *
+ * A DM-only entry is filtered out here rather than at the query, so the world
+ * page keeps its one read of the table; the same `canManage` that draws the
+ * controls decides who is shown the hidden half.
  */
 export function ItemLibrarySection({
   worldId,
@@ -27,11 +30,12 @@ export function ItemLibrarySection({
   locale: Locale;
   t: T;
 }) {
+  const visibleItems = canManage ? items : items.filter((i) => i.visibility === "everyone");
   return (
     <section className="mt-10 space-y-4">
       <SectionTitle>{t("world.items.title")}</SectionTitle>
       {canManage && <p className="-mt-2 text-xs text-parchment-500">{t("world.items.hintDm")}</p>}
-      {items.length === 0 && (
+      {visibleItems.length === 0 && (
         <div>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -46,9 +50,9 @@ export function ItemLibrarySection({
           </p>
         </div>
       )}
-      {items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <ItemCard
               key={item.id}
               item={item}
@@ -85,61 +89,11 @@ function ItemCard({
   locale: Locale;
   t: T;
 }) {
-  const bonuses = statBonusEntries(item.statBonuses);
   return (
     // The anchor a character sheet's inventory line links back to, so "where
     // did this come from?" lands on the card itself rather than the page top.
     <Card id={`wi-${item.id}`} className="!p-3 scroll-mt-6 target:border-gold-500/70">
-      <div className="flex gap-3">
-        {item.imageFile ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            // The key rides along so a replacement lands on a new cache entry.
-            src={`/files/items/${item.id}?v=${item.imageFile}`}
-            alt={item.name}
-            width={64}
-            height={64}
-            loading="lazy"
-            decoding="async"
-            className="h-16 w-16 shrink-0 rounded-sm border border-ink-700 object-cover"
-          />
-        ) : (
-          // No photograph of this one yet, so the category's plate stands in.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={categoryArt(item.category)}
-            alt=""
-            width={64}
-            height={64}
-            loading="lazy"
-            decoding="async"
-            className="h-16 w-16 shrink-0 rounded-sm border border-ink-700 object-cover"
-          />
-        )}
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate font-display text-sm font-bold text-parchment-100">
-            {item.name}
-          </h3>
-          <div className="mt-1 flex flex-wrap gap-1">
-            <Chip>{t(`world.items.categories.${item.category}`)}</Chip>
-            {item.slot && <Chip tone="slot">{t(`world.items.slots.${item.slot}`)}</Chip>}
-          </div>
-          <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-xs">
-            {bonuses.length === 0 ? (
-              <span className="text-parchment-500">{t("world.items.noBonuses")}</span>
-            ) : (
-              bonuses.map(([stat, value]) => (
-                <span key={stat} className="font-semibold text-gold-300">
-                  {fmt(value)} {STAT_LABELS[stat]}
-                </span>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-      {item.description && (
-        <p className="mt-2 line-clamp-3 text-sm text-parchment-500">{item.description}</p>
-      )}
+      <WorldItemCardFace item={item} t={t} />
       {canManage && (
         <div className="mt-2 space-y-2 border-t border-ink-700 pt-2">
           {/* No detail page for an item: the edit form unfolds in the row. */}
@@ -160,19 +114,5 @@ function ItemCard({
         </div>
       )}
     </Card>
-  );
-}
-
-function Chip({ children, tone }: { children: React.ReactNode; tone?: "slot" }) {
-  const style =
-    tone === "slot"
-      ? "border-gold-500/60 bg-gold-500/10 text-gold-300"
-      : "border-ink-600 bg-ink-950/60 text-parchment-500";
-  return (
-    <span
-      className={`rounded-sm border px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide ${style}`}
-    >
-      {children}
-    </span>
   );
 }

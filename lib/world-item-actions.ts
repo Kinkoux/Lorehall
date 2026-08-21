@@ -70,6 +70,15 @@ function readSlot(formData: FormData): WorldItemSlot | null {
 }
 
 /**
+ * Who may see the entry. Only the DM's own form sends this field, and only
+ * "dm" hides anything — every other value (including a forged one, and the
+ * absence of the field) reads as the public library the world already had.
+ */
+function readVisibility(formData: FormData): "everyone" | "dm" {
+  return str(formData, "visibility") === "dm" ? "dm" : "everyone";
+}
+
+/**
  * The bonus fields, rebuilt from scratch: only the eight allowed keys are
  * read, each clamped to ±10, and a blank or zero field is left out entirely.
  * Nothing the form sends reaches the column verbatim, so the JSON in the
@@ -142,6 +151,7 @@ export async function createWorldItem(
       category: readCategory(formData),
       slot: readSlot(formData),
       statBonuses: readStatBonuses(formData),
+      visibility: readVisibility(formData),
       imageFile: upload?.fileName ?? null,
       imageMime: upload?.mime ?? null,
       createdBy: user.id,
@@ -186,6 +196,7 @@ export async function updateWorldItem(
         category: readCategory(formData),
         slot: readSlot(formData),
         statBonuses: readStatBonuses(formData),
+        visibility: readVisibility(formData),
         // An empty file field leaves the current picture in place.
         ...(upload ? { imageFile: upload.fileName, imageMime: upload.mime } : {}),
       })
@@ -261,6 +272,10 @@ export async function addWorldItemToCharacter(itemId: string, formData: FormData
   // Mine (and I actually sit at this table), or one in a campaign I run.
   const mine = character.userId === user.id && access.canParticipate;
   if (!mine && !access.isDm) return;
+  // A hidden entry does not exist as far as a player is concerned: the id
+  // never reached them through any list, and handing it over is the DM's move
+  // to make. Silent, like every other refusal here — the id is forgeable.
+  if (item.visibility === "dm" && !access.isDm) return;
 
   const rawQty = Number.parseInt(str(formData, "qty"), 10);
   const qty = Math.min(Math.max(Number.isFinite(rawQty) ? rawQty : 1, 1), 999);

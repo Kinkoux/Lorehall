@@ -45,6 +45,7 @@ import { getCampaignAccess } from "@/lib/perms";
 import {
   addAbility,
   addItem,
+  adjustCharacterHp,
   adjustItemQty,
   approveCharacter,
   deleteAbility,
@@ -322,30 +323,77 @@ export default async function CharacterPage({
                 Both numbers read as the value that matters at the table — what
                 the character actually has right now — with the equipment's
                 share spelled out beside it so nobody wonders where it came from.
+
+                Hit points read "current / maximum", and the maximum is the
+                sheet's own field: `currentHp` is clamped to it, so pairing the
+                pool with the equipment-inflated number would show a character
+                at full health as though they were wounded. The worn share stays
+                the parenthetical it always was.
               */}
-              <div className="flex gap-2 font-mono text-sm font-bold">
-                {character.maxHp !== null && (
-                  <span className="rounded-md border border-blood-500/50 bg-blood-500/10 px-3 py-1.5 text-blood-400">
-                    {character.maxHp + hpBonus} HP
-                    {hpBonus !== 0 && (
-                      <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
-                        ({fmt(hpBonus)})
-                      </span>
-                    )}
-                  </span>
-                )}
-                {ac.value !== null && (
-                  <span
-                    title={acTitle(ac)}
-                    className="rounded-md border border-ink-600 px-3 py-1.5 text-parchment-300"
+              <div className="flex flex-col items-end gap-2">
+                <div className="flex gap-2 font-mono text-sm font-bold">
+                  {character.maxHp !== null && (
+                    <span
+                      title={t("character.hp.title")}
+                      className="rounded-md border border-blood-500/50 bg-blood-500/10 px-3 py-1.5 text-blood-400"
+                    >
+                      {character.currentHp ?? character.maxHp} / {character.maxHp}{" "}
+                      {t("character.hp.label")}
+                      {hpBonus !== 0 && (
+                        <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
+                          ({fmt(hpBonus)})
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {ac.value !== null && (
+                    <span
+                      title={acTitle(ac)}
+                      className="rounded-md border border-ink-600 px-3 py-1.5 text-parchment-300"
+                    >
+                      AC {ac.value}
+                      {acBonus !== 0 && (
+                        <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
+                          ({fmt(acBonus)})
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+                {/* The wounds taken away from the live screen: a trap in the
+                    corridor, a night that went badly, a table that never opens
+                    the session view at all. */}
+                {editable && character.maxHp !== null && (
+                  <form
+                    action={adjustCharacterHp.bind(null, character.id)}
+                    className="flex items-center gap-1"
                   >
-                    AC {ac.value}
-                    {acBonus !== 0 && (
-                      <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
-                        ({fmt(acBonus)})
-                      </span>
-                    )}
-                  </span>
+                    <Input
+                      name="amount"
+                      type="number"
+                      min={0}
+                      max={999}
+                      defaultValue={1}
+                      aria-label={t("character.hp.amount")}
+                      className="!w-16 !py-1"
+                    />
+                    <button
+                      type="submit"
+                      name="op"
+                      value="damage"
+                      className="rounded border border-blood-500 px-2 py-1 text-xs font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
+                    >
+                      {t("character.hp.damage")}
+                    </button>
+                    <button
+                      type="submit"
+                      name="op"
+                      value="heal"
+                      className="rounded border border-emerald-700/60 px-2 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
+                    >
+                      {t("character.hp.heal")}
+                    </button>
+                  </form>
                 )}
               </div>
             </div>

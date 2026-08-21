@@ -81,6 +81,26 @@ export function acGearBonus(ac: AcBreakdown): number {
 /** The label a DEX term wears in a breakdown. */
 export const AC_DEX_LABEL = STAT_LABELS.dex;
 
+/**
+ * What a creature *looks* like, for a table where the DM never reads a
+ * monster's hit points out loud. The four words are the whole vocabulary —
+ * they are the dictionary keys under `session.combatant.condition`, so the
+ * ratio is turned into language exactly once, here, instead of in the markup.
+ *
+ * NULL is "say nothing": a creature with no maximum has no ratio to describe,
+ * and inventing a word for it would leak more than the number would.
+ */
+export type HpCondition = "unscathed" | "wounded" | "badlyWounded" | "down";
+
+export function hpCondition(hp: number | null, maxHp: number | null): HpCondition | null {
+  if (hp === null || !maxHp || maxHp <= 0) return null;
+  if (hp <= 0) return "down";
+  const ratio = hp / maxHp;
+  if (ratio > 0.75) return "unscathed";
+  if (ratio >= 0.4) return "wounded";
+  return "badlyWounded";
+}
+
 export function hasScores(character: Character) {
   return ABILITIES.every((a) => character[a] !== null);
 }

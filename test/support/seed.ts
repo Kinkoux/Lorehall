@@ -198,6 +198,8 @@ export async function seedWorldItem(
     slot?: WorldItemSlot;
     statBonuses?: string;
     category?: "weapon" | "armor" | "gear" | "tool" | "vehicle" | "magic";
+    /** 'dm' is the piece the party has not been shown yet. */
+    visibility?: "everyone" | "dm";
   } = {}
 ) {
   const id = nextId("worlditem");
@@ -208,6 +210,7 @@ export async function seedWorldItem(
     category: values.category ?? "gear",
     slot: values.slot,
     statBonuses: values.statBonuses,
+    visibility: values.visibility ?? "everyone",
     createdBy,
     createdAt: Date.now(),
   });

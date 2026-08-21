@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { customAlphabet, nanoid } from "nanoid";
 import {
@@ -12,6 +12,7 @@ import {
   worldMembers,
   campaigns,
   campaignMembers,
+  characters,
   codexEntries,
   CODEX_TYPES,
   type CodexType,
@@ -292,6 +293,70 @@ export async function kickMember(campaignId: string, formData: FormData) {
   await campaignLog(campaignId, user.id, "memberKicked", {
     name: target?.displayName ?? target?.username ?? "",
   });
+  revalidatePath(`/c/${campaignId}`);
+  revalidatePath("/dashboard");
+}
+
+/**
+ * The other half of kickMember, and what makes removal safe to offer at all:
+ * the sheets that stayed behind are the way back. "Left behind" is the whole
+ * condition — at least one characters row in this campaign — so this is an
+ * undo for a removal or a departure, never a door a stranger can be pulled
+ * through. Their world membership returns with them, exactly as joining
+ * grants it, since half of it would seat a player who cannot read the codex.
+ */
+export async function readdMember(campaignId: string, formData: FormData) {
+  const user = await requireUser();
+  const access = await getCampaignAccess(campaignId, user.id);
+  if (!access?.isDm) return;
+  const targetId = str(formData, "userId");
+  if (!targetId) return;
+  // The DM runs the table without a membership row (createCampaign leaves it
+  // out deliberately); this is not the side door onto their own roster.
+  if (targetId === user.id || targetId === access.campaign.dmUserId) return;
+
+  // The oldest sheet names the row — the same name the party list showed
+  // before the player was sent away.
+  const [own] = await db
+    .select({ name: characters.name })
+    .from(characters)
+    .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, targetId)))
+    .orderBy(asc(characters.updatedAt))
+    .limit(1);
+  if (!own) return;
+
+  const target = await db.query.users.findFirst({ where: eq(users.id, targetId) });
+  const now = Date.now();
+  const seated = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(campaignMembers)
+      .values({ campaignId, userId: targetId, characterName: own.name, joinedAt: now })
+      // A double click, or a player who typed the join code in the meantime:
+      // the second write is a no-op rather than a 23505 in the DM's face.
+      .onConflictDoNothing()
+      .returning({ userId: campaignMembers.userId });
+    const inWorld = await tx.query.worldMembers.findFirst({
+      where: and(
+        eq(worldMembers.worldId, access.campaign.worldId),
+        eq(worldMembers.userId, targetId)
+      ),
+    });
+    if (!inWorld) {
+      await tx.insert(worldMembers).values({
+        worldId: access.campaign.worldId,
+        userId: targetId,
+        role: "member",
+        joinedAt: now,
+      });
+    }
+    return inserted.length > 0;
+  });
+  // A press that seated nobody says nothing: the feed is a list of changes.
+  if (seated) {
+    await campaignLog(campaignId, user.id, "memberReadded", {
+      name: target?.displayName ?? target?.username ?? "",
+    });
+  }
   revalidatePath(`/c/${campaignId}`);
   revalidatePath("/dashboard");
 }

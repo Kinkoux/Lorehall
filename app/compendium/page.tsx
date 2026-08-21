@@ -1,19 +1,70 @@
 import Link from "next/link";
+import { and, count, eq } from "drizzle-orm";
+import { db, campaigns, worldItems, worldMembers, worlds } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { ITEMS, MONSTERS, SPELLS } from "@/lib/srd-data";
 import { SiteHeader } from "@/components/SiteHeader";
 import { IconBook, IconChest, IconClaw } from "@/components/Icons";
-import { Card } from "@/components/ui";
+import { Card, SectionTitle } from "@/components/ui";
 
 export async function generateMetadata() {
   const { t } = await getT();
   return { title: t("compendium.title") };
 }
 
+/**
+ * The worlds this reader belongs to, each with the number of library items
+ * they are actually allowed to see. Three queries, none of them dependent on
+ * another: the worlds, the campaigns this reader runs (which is what "DM
+ * powers" means outside of owning the place), and one grouped count over the
+ * libraries membership already grants — so a hidden item is counted only for
+ * the DM it is hidden for.
+ */
+async function myWorldLibraries(userId: string) {
+  const [memberships, dmCampaigns, tallies] = await Promise.all([
+    db
+      .select({ world: worlds })
+      .from(worldMembers)
+      .innerJoin(worlds, eq(worldMembers.worldId, worlds.id))
+      .where(eq(worldMembers.userId, userId)),
+    db
+      .selectDistinct({ worldId: campaigns.worldId })
+      .from(campaigns)
+      .where(eq(campaigns.dmUserId, userId)),
+    db
+      .select({
+        worldId: worldItems.worldId,
+        visibility: worldItems.visibility,
+        n: count(),
+      })
+      .from(worldItems)
+      .innerJoin(
+        worldMembers,
+        and(eq(worldMembers.worldId, worldItems.worldId), eq(worldMembers.userId, userId))
+      )
+      .groupBy(worldItems.worldId, worldItems.visibility),
+  ]);
+
+  const dmWorlds = new Set(dmCampaigns.map((row) => row.worldId));
+  return memberships
+    .map(({ world }) => {
+      const dmPowers = world.ownerId === userId || dmWorlds.has(world.id);
+      const visible = tallies
+        .filter(
+          (row) => row.worldId === world.id && (dmPowers || row.visibility === "everyone")
+        )
+        .reduce((sum, row) => sum + row.n, 0);
+      return { world, visible };
+    })
+    .sort((a, b) => a.world.name.localeCompare(b.world.name));
+}
+
 export default async function CompendiumPage() {
   const user = await getCurrentUser();
   const { t } = await getT();
+  // Signed out there is no library but the SRD's, and no query to pay for.
+  const myWorlds = user ? await myWorldLibraries(user.id) : [];
   return (
     <>
       <SiteHeader user={user} />
@@ -57,6 +108,25 @@ export default async function CompendiumPage() {
             </Card>
           </Link>
         </div>
+
+        {myWorlds.length > 0 && (
+          <section className="mt-10 space-y-4">
+            <SectionTitle>{t("compendium.worlds.heading")}</SectionTitle>
+            <p className="-mt-2 text-xs text-parchment-500">{t("compendium.worlds.hint")}</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {myWorlds.map(({ world, visible }) => (
+                <Link key={world.id} href={`/compendium/worlds/${world.id}`} className="block">
+                  <Card className="transition hover:border-gold-500">
+                    <h3 className="font-display text-lg text-parchment-100">{world.name}</h3>
+                    <p className="mt-1 text-sm text-parchment-500">
+                      {t("compendium.worlds.itemCount", { n: visible })}
+                    </p>
+                  </Card>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </>
   );

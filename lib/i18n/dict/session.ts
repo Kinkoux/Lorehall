@@ -39,6 +39,19 @@ export const session = {
       conditionsPlaceholder: "conditions: poisoned, prone…",
       set: "Set",
       removeTitle: "Remove from initiative",
+      // What the party is told instead of a monster's hit points (lib/dnd.ts).
+      condition: {
+        unscathed: "Unscathed",
+        wounded: "Wounded",
+        badlyWounded: "Badly wounded",
+        down: "Down",
+      },
+    },
+    monsterHp: {
+      label: "Monster HP",
+      hidden: "Hidden",
+      shown: "Visible",
+      toggleTitle: "Whether the players see monster hit point numbers",
     },
     add: {
       title: "Add combatant",
@@ -139,6 +152,18 @@ export const session = {
       conditionsPlaceholder: "durumlar: zehirlenmiş, yerde…",
       set: "Uygula",
       removeTitle: "İnisiyatiften çıkar",
+      condition: {
+        unscathed: "Sağlam",
+        wounded: "Yaralı",
+        badlyWounded: "Ağır yaralı",
+        down: "Yerde",
+      },
+    },
+    monsterHp: {
+      label: "Canavar HP'si",
+      hidden: "Gizli",
+      shown: "Görünür",
+      toggleTitle: "Oyuncular canavar HP sayılarını görsün mü",
     },
     add: {
       title: "Dövüşçü ekle",

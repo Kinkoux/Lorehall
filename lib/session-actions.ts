@@ -250,7 +250,9 @@ export async function joinInitiative(sessionId: string, formData: FormData) {
       name,
       initiative: roll,
       maxHp: character?.maxHp ?? null,
-      hp: character?.maxHp ?? null,
+      // Walk in at the health the sheet actually carries. `currentHp` is NULL
+      // for a character nobody has damaged yet, which reads as full.
+      hp: character ? (character.currentHp ?? character.maxHp ?? null) : null,
       userId: user.id,
       // Remembering the sheet lets the initiative row show its portrait.
       characterId: character?.id ?? null,
@@ -316,7 +318,7 @@ export async function removeCombatant(sessionId: string, combatantId: string) {
 export async function adjustHp(sessionId: string, combatantId: string, formData: FormData) {
   const user = await requireUser();
   const ctx = await requireLiveSession(sessionId, user.id);
-  if (!ctx?.access.isDm || ctx.session.status !== "live") return;
+  if (!ctx || ctx.session.status !== "live") return;
 
   // Scoped to this session: a combatantId from another table is not the DM's
   // to touch just because they run this one.
@@ -325,9 +327,26 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
   });
   if (!combatant || combatant.hp === null) return;
 
+  // At this table a player notes their own damage; the DM notes everyone
+  // else's. So: the DM may touch any row, and a player only the row their own
+  // character is standing in. A monster (character_id NULL) is the DM's alone,
+  // and so is another player's row.
+  if (!ctx.access.isDm) {
+    if (!combatant.characterId) return;
+    const sheet = await db.query.characters.findFirst({
+      where: eq(characters.id, combatant.characterId),
+    });
+    if (!sheet || sheet.userId !== user.id) return;
+  }
+
   const amount = int(formData, "amount");
   if (amount === null || amount < 0) return;
   const op = str(formData, "op");
+  // Read out of the row so the narrowing survives into the transaction
+  // callbacks below, and so "before" and "after" are named the same way in
+  // both the write and the line the log ends up printing.
+  const wasHp = combatant.hp;
+  const sheetId = combatant.characterId;
   // The arithmetic runs inside the UPDATE, so two hits landing at the same
   // moment both count instead of the second overwriting the first. The clamps
   // are the same ones the JS used: floor at zero, ceiling at max HP (no
@@ -342,43 +361,57 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
     }
   } else if (op === "heal") {
     const healed = sql`GREATEST(0, LEAST(COALESCE(${combatants.maxHp}, ${combatants.hp} + ${amount}), ${combatants.hp} + ${amount}))`;
-    const [row] = await db
-      .update(combatants)
-      .set({
-        hp: healed,
-        // Coming back from zero clears the death save pips.
-        deathSuccesses: sql`CASE WHEN ${combatants.hp} = 0 AND ${healed} > 0 THEN 0 ELSE ${combatants.deathSuccesses} END`,
-        deathFailures: sql`CASE WHEN ${combatants.hp} = 0 AND ${healed} > 0 THEN 0 ELSE ${combatants.deathFailures} END`,
-      })
-      .where(scope)
-      .returning({ hp: combatants.hp });
-    const hp = row?.hp ?? combatant.hp;
-    if (hp !== combatant.hp) {
+    const hp = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(combatants)
+        .set({
+          hp: healed,
+          // Coming back from zero clears the death save pips.
+          deathSuccesses: sql`CASE WHEN ${combatants.hp} = 0 AND ${healed} > 0 THEN 0 ELSE ${combatants.deathSuccesses} END`,
+          deathFailures: sql`CASE WHEN ${combatants.hp} = 0 AND ${healed} > 0 THEN 0 ELSE ${combatants.deathFailures} END`,
+        })
+        .where(scope)
+        .returning({ hp: combatants.hp });
+      const next = row?.hp ?? wasHp;
+      // The row the database just settled on is the one the sheet keeps: a
+      // second source of truth would drift the first time two hits raced.
+      if (row && sheetId) {
+        await tx.update(characters).set({ currentHp: next }).where(eq(characters.id, sheetId));
+      }
+      return next;
+    });
+    if (hp !== wasHp) {
       await logEvent(
         sessionId,
         "system",
-        logMessage("heals", { name: combatant.name, n: hp - combatant.hp, from: combatant.hp, to: hp })
+        logMessage("heals", { name: combatant.name, n: hp - wasHp, from: wasHp, to: hp })
       );
     }
   } else {
     // Damage chews through temp HP first, then spills into HP.
-    const [row] = await db
-      .update(combatants)
-      .set({
-        hp: sql`GREATEST(0, ${combatants.hp} - GREATEST(0, ${amount} - ${combatants.tempHp}))`,
-        tempHp: sql`GREATEST(0, ${combatants.tempHp} - ${amount})`,
-      })
-      .where(scope)
-      .returning({ hp: combatants.hp });
-    const hp = row?.hp ?? combatant.hp;
+    const hp = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(combatants)
+        .set({
+          hp: sql`GREATEST(0, ${combatants.hp} - GREATEST(0, ${amount} - ${combatants.tempHp}))`,
+          tempHp: sql`GREATEST(0, ${combatants.tempHp} - ${amount})`,
+        })
+        .where(scope)
+        .returning({ hp: combatants.hp });
+      const next = row?.hp ?? wasHp;
+      if (row && sheetId) {
+        await tx.update(characters).set({ currentHp: next }).where(eq(characters.id, sheetId));
+      }
+      return next;
+    });
     if (amount > 0) {
       await logEvent(
         sessionId,
         "system",
-        logMessage("takesDamage", { name: combatant.name, n: amount, from: combatant.hp, to: hp })
+        logMessage("takesDamage", { name: combatant.name, n: amount, from: wasHp, to: hp })
       );
     }
-    if (hp === 0 && combatant.hp > 0) {
+    if (hp === 0 && wasHp > 0) {
       await logEvent(sessionId, "system", logMessage("dropsToZero", { name: combatant.name }));
     }
   }
@@ -438,6 +471,25 @@ export async function setConditions(sessionId: string, combatantId: string, form
     .update(combatants)
     .set({ conditions: cap(str(formData, "conditions"), 200) || null })
     .where(and(eq(combatants.id, combatantId), eq(combatants.sessionId, sessionId)));
+  revalidatePath(`/s/${sessionId}`);
+}
+
+/**
+ * Whether the party reads a monster's hit points or hears what it looks like.
+ * Off by default, because at the table the DM describes the ogre's state and
+ * the players guess; the switch is there for the fights where the maths is
+ * meant to be public. One statement, so a double-click cannot land on the
+ * state neither click asked for.
+ */
+export async function setMonsterHpVisibility(sessionId: string, formData: FormData) {
+  const user = await requireUser();
+  const ctx = await requireLiveSession(sessionId, user.id);
+  if (!ctx?.access.isDm || ctx.session.status !== "live") return;
+
+  await db
+    .update(gameSessions)
+    .set({ showMonsterHp: str(formData, "show") === "1" ? 1 : 0 })
+    .where(eq(gameSessions.id, sessionId));
   revalidatePath(`/s/${sessionId}`);
 }
 

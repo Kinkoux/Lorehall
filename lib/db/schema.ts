@@ -213,6 +213,12 @@ export const worldItems = pgTable("world_items", {
   // Written only through the validated writer in lib/world-item-actions.ts and
   // read back through lib/world-items.ts, which distrusts it either way.
   statBonuses: text("stat_bonuses"),
+  // Who may see the entry, exactly as a map is seen: 'everyone' is the whole
+  // world, 'dm' is the DM alone — a piece forged for an encounter the party
+  // has not met yet. Every player-facing read filters on it.
+  visibility: text("visibility", { enum: ["everyone", "dm"] })
+    .notNull()
+    .default("everyone"),
   // Uploaded illustration: storage key + MIME, like a character portrait.
   imageFile: text("image_file"),
   imageMime: text("image_mime"),
@@ -239,6 +245,11 @@ export const gameSessions = pgTable("sessions", {
   // A session is "live" long before anyone rolls initiative — combat is an
   // explicit phase the DM opens and closes; rounds only tick while it is on.
   combatActive: integer("combat_active").notNull().default(0),
+  // At this table the DM never reads a monster's hit points out loud — the
+  // party is told what the thing *looks* like. 0 (the default) means players
+  // see a condition word instead of the number; the DM flips it to 1 when the
+  // fight is one where the maths is public. The DM always sees the numbers.
+  showMonsterHp: integer("show_monster_hp").notNull().default(0),
   recap: text("recap"),
   startedAt: ms("started_at").notNull(),
   endedAt: ms("ended_at"),
@@ -289,6 +300,12 @@ export const characters = pgTable("characters", {
   race: text("race"),
   level: integer("level").notNull().default(1),
   maxHp: integer("max_hp"),
+  // Hit points that survive the session they were lost in. NULL means nobody
+  // has touched this character's HP yet and reads as `maxHp` everywhere — a
+  // sheet written before the column existed is at full health, not at zero.
+  // Kept in step with the live screen: joining initiative seeds the combatant
+  // from here, and damage on that combatant writes back (lib/session-actions).
+  currentHp: integer("current_hp"),
   armorClass: integer("armor_class"),
   str: integer("str"),
   dex: integer("dex"),

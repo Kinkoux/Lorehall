@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { campaignMembers, type Character, type User } from "@/lib/db";
-import { kickMember, leaveCampaign } from "@/lib/actions";
+import { kickMember, leaveCampaign, readdMember } from "@/lib/actions";
 import { approveCharacter, rejectCharacter } from "@/lib/character-actions";
 import { hasScores, statBlock } from "@/lib/dnd";
 import type { StatBonuses } from "@/lib/world-items";
@@ -12,9 +12,13 @@ import { SmallButton } from "./shared";
 
 type MemberRow = { member: typeof campaignMembers.$inferSelect; user: User };
 
+/** The base of SmallButton, for the one knob that is a `<summary>`, not a button. */
+const KNOB = "rounded border px-2 py-1 text-xs font-bold transition cursor-pointer";
+
 export function PartySection({
   members,
   campaignCharacters,
+  formerUsers = [],
   wornBonuses,
   campaignId,
   dmUserId,
@@ -24,6 +28,12 @@ export function PartySection({
 }: {
   members: MemberRow[];
   campaignCharacters: Character[];
+  /**
+   * People with a sheet at this table but no membership row — removed, or
+   * gone of their own accord. The page works them out from the two lists it
+   * already loads; only the DM is ever handed any.
+   */
+  formerUsers?: User[];
   /**
    * What each sheet's equipped gear adds, keyed by character id — loaded once
    * for the whole party by the page. A passive Perception that ignored the
@@ -63,15 +73,36 @@ export function PartySection({
       );
     }
     if (!isDm) return null;
+    /*
+      A stray tap used to be the whole ceremony. Now the knob only unfolds:
+      inside is what removal does and does not touch, and a second, separate
+      press is the one that lands. Closing the fold is the way out, so there
+      is nothing to cancel and no script behind any of it — the same
+      `<details>` the inventory squares use, sharing a name so opening one
+      confirmation closes the last.
+    */
     return (
-      <form action={kickMember.bind(null, campaignId)} className="shrink-0">
-        <input type="hidden" name="userId" value={memberId} />
-        <SmallButton
-          label={t("campaign.party.remove")}
-          danger
-          ariaLabel={t("campaign.party.removeTitle", { name })}
-        />
-      </form>
+      <details name="party-remove" className="relative shrink-0">
+        <summary
+          title={t("campaign.party.removeTitle", { name })}
+          className={`${KNOB} inline-block list-none border-ink-600 text-parchment-500 hover:border-blood-500 hover:text-blood-400 [&::-webkit-details-marker]:hidden`}
+        >
+          {t("campaign.party.remove")}
+        </summary>
+        <div className="absolute top-full right-0 z-20 mt-1 w-56 rounded-sm border border-blood-500/40 bg-ink-950 p-2.5 shadow-lg">
+          <p className="text-xs leading-relaxed text-parchment-500">
+            {t("campaign.party.removeWarn")}
+          </p>
+          <form action={kickMember.bind(null, campaignId)} className="mt-2">
+            <input type="hidden" name="userId" value={memberId} />
+            <SmallButton
+              label={t("campaign.party.removeConfirm")}
+              danger
+              ariaLabel={t("campaign.party.removeTitle", { name })}
+            />
+          </form>
+        </div>
+      </details>
     );
   };
 
@@ -181,6 +212,37 @@ export function PartySection({
             );
           })}
         </ul>
+        {isDm && formerUsers.length > 0 && (
+          <div className="mt-4 border-t border-ink-700 pt-3">
+            <p className="font-display text-xs font-bold uppercase tracking-wide text-parchment-300">
+              {t("campaign.party.formerTitle")}
+            </p>
+            <ul className="mt-2 space-y-1.5">
+              {formerUsers.map((formerUser) => {
+                const formerName = formerUser.displayName ?? formerUser.username;
+                const sheets = charactersOf(formerUser.id)
+                  .map((c) => c.name)
+                  .join(", ");
+                return (
+                  <li key={formerUser.id} className="flex items-center justify-between gap-3">
+                    <span className="min-w-0 flex-1 text-xs text-parchment-500">
+                      <span className="font-semibold text-parchment-300">{formerName}</span>
+                      {sheets && ` · ${sheets}`}
+                    </span>
+                    <form action={readdMember.bind(null, campaignId)} className="shrink-0">
+                      <input type="hidden" name="userId" value={formerUser.id} />
+                      <SmallButton
+                        label={t("campaign.party.readd")}
+                        ariaLabel={t("campaign.party.readdTitle", { name: formerName })}
+                      />
+                    </form>
+                  </li>
+                );
+              })}
+            </ul>
+            <p className="mt-2 text-xs text-parchment-500">{t("campaign.party.formerHint")}</p>
+          </div>
+        )}
         <p className="mt-4 border-t border-ink-700 pt-3 text-xs text-parchment-500">
           {t("campaign.party.hint")}
         </p>

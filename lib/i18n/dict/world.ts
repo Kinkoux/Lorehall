@@ -30,7 +30,8 @@ export const world = {
     },
     items: {
       title: "Item library",
-      hintDm: "Gear you forged for this world. Everyone at its tables can browse it.",
+      hintDm:
+        "Gear you forged for this world. Everyone at its tables can browse it — unless you keep a piece to yourself.",
       empty: "Nothing in the library yet — the DM hasn't forged anything.",
       emptyDm: "The library is empty. Forge the first piece of gear.",
       addHeading: "Forge an item",
@@ -50,6 +51,10 @@ export const world = {
       saving: "Forging…",
       saveChanges: "Save changes",
       edit: "Edit item",
+      visibilityLabel: "Who can see it",
+      visEveryone: "Everyone",
+      visDm: "Only me (DM)",
+      dmOnly: "DM only",
       categories: {
         weapon: "Weapon",
         armor: "Armor",
@@ -124,7 +129,8 @@ export const world = {
     },
     items: {
       title: "Eşya kütüphanesi",
-      hintDm: "Bu dünya için dövdüğün teçhizat. Masalarındaki herkes göz atabilir.",
+      hintDm:
+        "Bu dünya için dövdüğün teçhizat. Kendine sakladıkların dışında masalarındaki herkes göz atabilir.",
       empty: "Kütüphanede henüz bir şey yok — DM henüz bir şey dövmedi.",
       emptyDm: "Kütüphane boş. İlk teçhizatı döv.",
       addHeading: "Eşya döv",
@@ -144,6 +150,10 @@ export const world = {
       saving: "Dövülüyor…",
       saveChanges: "Değişiklikleri kaydet",
       edit: "Eşyayı düzenle",
+      visibilityLabel: "Kim görebilir",
+      visEveryone: "Herkes",
+      visDm: "Yalnız ben (DM)",
+      dmOnly: "Yalnız DM",
       categories: {
         weapon: "Silah",
         armor: "Zırh",

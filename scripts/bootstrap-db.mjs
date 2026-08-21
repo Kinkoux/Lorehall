@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS world_items (
   category TEXT NOT NULL DEFAULT 'gear',
   slot TEXT,
   stat_bonuses TEXT,
+  visibility TEXT NOT NULL DEFAULT 'everyone',
   image_file TEXT,
   image_mime TEXT,
   created_by TEXT NOT NULL REFERENCES users(id),
@@ -413,6 +414,19 @@ ALTER TABLE character_abilities ADD COLUMN IF NOT EXISTS srd_index TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email CITEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email) WHERE email IS NOT NULL;
+-- persistent hit points (2026-08-21): a character's HP used to exist only
+-- inside the session it was spent in. current_hp carries it between sessions;
+-- NULL means "nobody has touched it", which reads as max_hp everywhere, so
+-- every sheet written before this column is at full health rather than at 0.
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS current_hp INTEGER;
+-- monster HP privacy (2026-08-21): at this table the DM describes a monster's
+-- state instead of reading its hit points out. 0 (the default) shows players a
+-- condition word in place of the number; the DM sees the numbers regardless.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS show_monster_hp INTEGER NOT NULL DEFAULT 0;
+-- item library privacy (2026-08-21): the same two answers a map has. Every
+-- entry written before this column is 'everyone' — the library was public to
+-- the world by construction, so the default preserves what people already saw.
+ALTER TABLE world_items ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'everyone';
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

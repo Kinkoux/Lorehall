@@ -1,6 +1,6 @@
 "use server";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db, characters, worldItems } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
@@ -95,10 +95,20 @@ export async function searchItemsForCharacter(
   const open = await openSheet(characterId, user.id);
   if (!open) return [];
 
+  // A DM-only entry is not among the names this sheet could be typing: the
+  // lookahead is a read of the library, so it reads the same slice of it the
+  // reader would see on the world page.
   const library = await db
     .select()
     .from(worldItems)
-    .where(eq(worldItems.worldId, open.access.world.id));
+    .where(
+      open.access.isDm
+        ? eq(worldItems.worldId, open.access.world.id)
+        : and(
+            eq(worldItems.worldId, open.access.world.id),
+            eq(worldItems.visibility, "everyone")
+          )
+    );
   const fromWorld: ItemSuggestion[] = library
     .filter((item) => matches(item.name, needle))
     .map((item) => ({

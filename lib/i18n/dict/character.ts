@@ -96,6 +96,15 @@ export const character = {
       slotLabel: "Slot",
       bonusTitle: "From equipment",
     },
+    // Hit points the sheet carries between sessions, and the two buttons that
+    // move them. Sibling of `equipment` — it belongs to the header, not the doll.
+    hp: {
+      label: "HP",
+      title: "Current hit points",
+      amount: "Amount",
+      damage: "Damage",
+      heal: "Heal",
+    },
     // The per-line editor inside an inventory square. Sibling of `equipment`
     // for the same reason: it is the backpack's business, not the doll's.
     itemStats: {
@@ -229,6 +238,13 @@ export const character = {
       worn: "Kuşanılı",
       slotLabel: "Yuva",
       bonusTitle: "Ekipmandan",
+    },
+    hp: {
+      label: "HP",
+      title: "Mevcut can puanı",
+      amount: "Miktar",
+      damage: "Hasar",
+      heal: "İyileş",
     },
     itemStats: {
       title: "Statlar",

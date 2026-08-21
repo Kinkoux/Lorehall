@@ -23,7 +23,7 @@ const MAX_BYTES = 4 * 1024 * 1024;
 
 export type EditableWorldItem = Pick<
   WorldItem,
-  "id" | "name" | "description" | "category" | "slot" | "statBonuses"
+  "id" | "name" | "description" | "category" | "slot" | "statBonuses" | "visibility"
 >;
 
 /**
@@ -73,7 +73,7 @@ export function WorldItemForm({
         />
       </label>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <label className="block">
           <Label>{t("world.items.categoryLabel")}</Label>
           <Select name="category" defaultValue={item?.category ?? "gear"}>
@@ -93,6 +93,15 @@ export function WorldItemForm({
                 {t(`world.items.slots.${slot}`)}
               </option>
             ))}
+          </Select>
+        </label>
+        <label className="block">
+          <Label>{t("world.items.visibilityLabel")}</Label>
+          {/* The same two answers a map has: shared with the table, or kept
+              for the encounter it was forged for. */}
+          <Select name="visibility" defaultValue={item?.visibility ?? "everyone"}>
+            <option value="everyone">{t("world.items.visEveryone")}</option>
+            <option value="dm">{t("world.items.visDm")}</option>
           </Select>
         </label>
       </div>

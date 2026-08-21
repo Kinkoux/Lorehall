@@ -445,7 +445,15 @@ async function resolveItemSource(
     ]);
     // The id is forgeable, and a library belongs to exactly one world: a table
     // running elsewhere cannot draw from it however the ids were paired up.
-    if (access && item && item.worldId === access.world.id) {
+    // A DM-only entry is invisible to a player here too — the suggestion list
+    // never offered it, so a line naming it is a forged one and reads as free
+    // text instead of carrying the hidden piece's slot and bonuses across.
+    if (
+      access &&
+      item &&
+      item.worldId === access.world.id &&
+      (item.visibility === "everyone" || access.isDm)
+    ) {
       return {
         worldItemId: item.id,
         srdIndex: null,
@@ -827,7 +835,58 @@ export async function useAbility(abilityId: string) {
   revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
 }
 
-/** Long rest: refill all limited-use abilities and every spent spell slot. */
+// ---------- hit points ----------
+
+/**
+ * The ceiling for a sheet that has never been given a maximum: the same
+ * 0..9999 range the max HP field itself accepts, so a number typed here can
+ * never be one the sheet form would refuse.
+ */
+const HP_CEILING = 9999;
+
+/**
+ * Damage and healing from the sheet itself, for the wounds that are taken
+ * between sessions (a trap in the corridor, a night that went badly) and for
+ * the table that tracks HP without opening the live screen at all.
+ *
+ * Owner or DM, like every other write on this sheet. The arithmetic runs
+ * inside the UPDATE so two clicks in the same instant both count: the base is
+ * the stored value, or the sheet's maximum for a character nobody has damaged
+ * yet (`current_hp` NULL), or zero for a sheet that has no maximum either.
+ *
+ * Deliberately *not* wired to a combatant: during a live session the row on
+ * the initiative list is the table's working copy, and the one place the
+ * number is being argued over should stay the one place it is edited. A change
+ * made here mid-combat is harmless — both writes are atomic — it simply does
+ * not travel to the live screen until the character joins initiative again.
+ */
+export async function adjustCharacterHp(characterId: string, formData: FormData) {
+  const user = await requireUser();
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character) return;
+
+  const amount = int(formData, "amount");
+  if (amount === null || amount < 0) return;
+  const delta = str(formData, "op") === "heal" ? amount : -amount;
+
+  const base = sql`COALESCE(${characters.currentHp}, ${characters.maxHp}, 0)`;
+  await db
+    .update(characters)
+    .set({
+      currentHp: sql`GREATEST(0, LEAST(COALESCE(${characters.maxHp}, ${HP_CEILING}), ${base} + ${delta}))`,
+    })
+    .where(eq(characters.id, characterId));
+
+  // No feed entry: the session log already narrates the blows that land at the
+  // table, and a line per point of healing is noise the DM did not ask for.
+  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidatePath(`/c/${character.campaignId}`);
+}
+
+/**
+ * Long rest: refill all limited-use abilities, every spent spell slot, and the
+ * character's hit points.
+ */
 export async function longRest(characterId: string) {
   const user = await requireUser();
   const character = await getEditableCharacter(characterId, user.id);
@@ -853,6 +912,12 @@ export async function longRest(characterId: string) {
       .update(characterSpellSlots)
       .set({ used: 0 })
       .where(eq(characterSpellSlots.characterId, characterId));
+    // A night's sleep is also what puts the hit points back. A sheet with no
+    // maximum lands on NULL, which is the same "untouched" it started from.
+    await tx
+      .update(characters)
+      .set({ currentHp: sql`${characters.maxHp}` })
+      .where(eq(characters.id, characterId));
     return rows;
   });
   await campaignLog(character.campaignId, user.id, "longRest", {

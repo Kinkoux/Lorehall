@@ -14,8 +14,10 @@ import {
   removeCombatant,
   saveRecap,
   setConditions,
+  setMonsterHpVisibility,
   startCombat,
 } from "@/lib/session-actions";
+import { hpCondition } from "@/lib/dnd";
 import { deployEncounter } from "@/lib/compendium-actions";
 import { encounters as encountersTable } from "@/lib/db";
 import { asc } from "drizzle-orm";
@@ -268,6 +270,31 @@ export default async function SessionPage({
               <SectionTitle>{t("session.initiative.title")}</SectionTitle>
               {live && access.isDm && (
                 <div className="flex shrink-0 items-center gap-2">
+                  {/* The party hears what the ogre looks like, not what it has
+                      left — unless this DM would rather they saw the number. */}
+                  <form action={setMonsterHpVisibility.bind(null, sessionId)}>
+                    <input
+                      type="hidden"
+                      name="show"
+                      value={session.showMonsterHp === 1 ? "0" : "1"}
+                    />
+                    <button
+                      type="submit"
+                      title={t("session.monsterHp.toggleTitle")}
+                      className="rounded border border-ink-600 px-2 py-1 text-[11px] font-bold text-parchment-500 transition hover:border-gold-500 hover:text-gold-300 cursor-pointer"
+                    >
+                      {t("session.monsterHp.label")}:{" "}
+                      <span
+                        className={
+                          session.showMonsterHp === 1 ? "text-gold-300" : "text-parchment-300"
+                        }
+                      >
+                        {session.showMonsterHp === 1
+                          ? t("session.monsterHp.shown")
+                          : t("session.monsterHp.hidden")}
+                      </span>
+                    </button>
+                  </form>
                   {combatActive ? (
                     <>
                       {order.length > 0 && (
@@ -307,6 +334,13 @@ export default async function SessionPage({
                 isDm={access.isDm}
                 isMe={combatant.userId === user.id}
                 live={live}
+                // A monster (no sheet behind it) keeps its numbers to itself
+                // while the DM has the switch off. The DM always sees them.
+                hideHp={
+                  !access.isDm &&
+                  combatant.characterId === null &&
+                  session.showMonsterHp === 0
+                }
                 sessionId={sessionId}
                 portrait={
                   combatant.characterId
@@ -606,12 +640,21 @@ function formatLogTime(createdAt: number, live: boolean, locale: Locale, t: T) {
   return t("session.log.timeHour", { n: Math.floor(mins / 60) });
 }
 
+/** The colour each spoken condition wears — the bar's palette, in words. */
+const CONDITION_COLORS: Record<string, string> = {
+  unscathed: "text-emerald-700",
+  wounded: "text-amber-700",
+  badlyWounded: "text-blood-400",
+  down: "text-blood-400",
+};
+
 function CombatantRow({
   combatant,
   isTurn,
   isDm,
   isMe,
   live,
+  hideHp,
   sessionId,
   portrait,
   t,
@@ -621,13 +664,19 @@ function CombatantRow({
   isDm: boolean;
   isMe: boolean;
   live: boolean;
+  /** Show this viewer a condition word instead of the numbers and the bar. */
+  hideHp: boolean;
   sessionId: string;
   /** Portrait URL, or null for a player character without one. */
   portrait: string | null;
   t: T;
 }) {
+  // With the numbers hidden, the bar would give them straight back — so the
+  // ratio itself is only computed for the people allowed to read it.
   const hpRatio =
-    combatant.hp !== null && combatant.maxHp ? combatant.hp / combatant.maxHp : null;
+    !hideHp && combatant.hp !== null && combatant.maxHp
+      ? combatant.hp / combatant.maxHp
+      : null;
   const hpColor =
     hpRatio === null
       ? ""
@@ -636,6 +685,10 @@ function CombatantRow({
         : hpRatio > 0.2
           ? "text-amber-700"
           : "text-blood-400";
+  const condition = hideHp ? hpCondition(combatant.hp, combatant.maxHp) : null;
+  // The DM adjusts anyone; a player adjusts the row their own sheet stands in.
+  const canAdjustHp =
+    live && combatant.hp !== null && (isDm || (isMe && combatant.characterId !== null));
 
   return (
     <Card
@@ -659,15 +712,24 @@ function CombatantRow({
             <p className="text-xs font-semibold text-amber-800">{combatant.conditions}</p>
           )}
         </div>
-        {combatant.hp !== null && (
-          <span className={`font-mono text-sm font-bold ${hpColor}`}>
-            {combatant.hp}
-            {combatant.tempHp > 0 && (
-              <span className="text-sky-700">+{combatant.tempHp}</span>
-            )}
-            {combatant.maxHp ? ` / ${combatant.maxHp}` : ""} HP
-          </span>
-        )}
+        {combatant.hp !== null &&
+          (hideHp ? (
+            condition && (
+              <span
+                className={`text-xs font-bold uppercase tracking-wide ${CONDITION_COLORS[condition]}`}
+              >
+                {t(`session.combatant.condition.${condition}`)}
+              </span>
+            )
+          ) : (
+            <span className={`font-mono text-sm font-bold ${hpColor}`}>
+              {combatant.hp}
+              {combatant.tempHp > 0 && (
+                <span className="text-sky-700">+{combatant.tempHp}</span>
+              )}
+              {combatant.maxHp ? ` / ${combatant.maxHp}` : ""} HP
+            </span>
+          ))}
       </div>
 
       {hpRatio !== null && (
@@ -734,9 +796,9 @@ function CombatantRow({
         </div>
       )}
 
-      {isDm && live && (
+      {((isDm && live) || canAdjustHp) && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-ink-700 pt-3">
-          {combatant.hp !== null && (
+          {canAdjustHp && (
             <form
               action={adjustHp.bind(null, sessionId, combatant.id)}
               className="flex items-center gap-1"
@@ -776,33 +838,38 @@ function CombatantRow({
               </button>
             </form>
           )}
-          <form
-            action={setConditions.bind(null, sessionId, combatant.id)}
-            className="flex flex-1 items-center gap-1"
-          >
-            <Input
-              name="conditions"
-              defaultValue={combatant.conditions ?? ""}
-              placeholder={t("session.combatant.conditionsPlaceholder")}
-              className="!py-1 min-w-32"
-            />
-            <button
-              type="submit"
-              className="rounded border border-ink-600 px-2 py-1 text-xs font-bold text-parchment-300 transition hover:border-gold-500 cursor-pointer"
-            >
-              {t("session.combatant.set")}
-            </button>
-          </form>
-          <form action={removeCombatant.bind(null, sessionId, combatant.id)}>
-            <button
-              type="submit"
-              className="rounded border border-ink-600 px-2 py-1 text-xs text-parchment-500 transition hover:border-blood-500 hover:text-blood-400 cursor-pointer"
-              title={t("session.combatant.removeTitle")}
-              aria-label={t("session.combatant.removeTitle")}
-            >
-              <IconX size={12} />
-            </button>
-          </form>
+          {/* Conditions and the boot off the list stay the DM's alone. */}
+          {isDm && live && (
+            <>
+              <form
+                action={setConditions.bind(null, sessionId, combatant.id)}
+                className="flex flex-1 items-center gap-1"
+              >
+                <Input
+                  name="conditions"
+                  defaultValue={combatant.conditions ?? ""}
+                  placeholder={t("session.combatant.conditionsPlaceholder")}
+                  className="!py-1 min-w-32"
+                />
+                <button
+                  type="submit"
+                  className="rounded border border-ink-600 px-2 py-1 text-xs font-bold text-parchment-300 transition hover:border-gold-500 cursor-pointer"
+                >
+                  {t("session.combatant.set")}
+                </button>
+              </form>
+              <form action={removeCombatant.bind(null, sessionId, combatant.id)}>
+                <button
+                  type="submit"
+                  className="rounded border border-ink-600 px-2 py-1 text-xs text-parchment-500 transition hover:border-blood-500 hover:text-blood-400 cursor-pointer"
+                  title={t("session.combatant.removeTitle")}
+                  aria-label={t("session.combatant.removeTitle")}
+                >
+                  <IconX size={12} />
+                </button>
+              </form>
+            </>
+          )}
         </div>
       )}
     </Card>

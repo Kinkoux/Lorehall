@@ -130,11 +130,23 @@ export default async function CampaignPage({
   const liveSession = sessions.find((s) => s.status === "live");
   const pastSessions = sessions.filter((s) => s.status === "ended");
 
+  // A sheet at this table whose owner has no membership row means someone
+  // left or was removed: kickMember keeps the characters on purpose, so the
+  // party list can offer them a seat again. Worked out from the two lists
+  // already in hand — the only thing missing is what those people are called,
+  // and that lookup rides along in the batch below, for the DM alone.
+  const memberIds = new Set(members.map((row) => row.member.userId));
+  const formerIds = isDm
+    ? [...new Set(campaignCharacters.map((c) => c.userId))].filter(
+        (id) => !memberIds.has(id) && id !== campaign.dmUserId
+      )
+    : [];
+
   // Both depend on the batch above, so they go out together rather than one
   // after the other. The worn gear is one query for the whole party — the
   // party list shows numbers the equipped lines move, and asking per character
   // would turn a two-query section into a dozen.
-  const [encounterRows, worn] = await Promise.all([
+  const [encounterRows, worn, formerUsers] = await Promise.all([
     encounterList.length
       ? db
           .select()
@@ -143,6 +155,9 @@ export default async function CampaignPage({
           .orderBy(asc(encounterMonsters.createdAt))
       : Promise.resolve([]),
     loadWornFor(campaignCharacters.map((c) => c.id)),
+    formerIds.length
+      ? db.select().from(users).where(inArray(users.id, formerIds)).orderBy(asc(users.username))
+      : Promise.resolve([]),
   ]);
   const wornBonuses = new Map(
     campaignCharacters.map((c) => [c.id, wornSetFor(worn, c.id).bonuses] as const)
@@ -175,6 +190,7 @@ export default async function CampaignPage({
             <PartySection
               members={members}
               campaignCharacters={campaignCharacters}
+              formerUsers={formerUsers}
               wornBonuses={wornBonuses}
               campaignId={campaignId}
               dmUserId={campaign.dmUserId}

@@ -42,6 +42,7 @@ const KIND_BY_EVENT = {
   // Roster changes ride the "character" lane: it is the one the party filter
   // chip already shows, and the schema's kind set is fixed.
   memberKicked: "character",
+  memberReadded: "character",
   memberLeft: "character",
   joinCodeRotated: "character",
 } as const;
