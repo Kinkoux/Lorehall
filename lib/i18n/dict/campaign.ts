@@ -232,7 +232,7 @@ export const campaign = {
       remove: "Çıkar",
       removeTitle: "{name} oyuncusunu partiden çıkar",
       leave: "Ayrıl",
-      leaveTitle: "Bu kampanyadan ayrıl",
+      leaveTitle: "Bu maceradan ayrıl",
       hint: "Adına tıklayıp karakter sayfanı, envanterini ve büyülerini yönet.",
     },
     quests: {
@@ -270,8 +270,8 @@ export const campaign = {
       itemPh: "Eşya",
     },
     journal: {
-      title: "Günce",
-      empty: "Henüz oturum oynanmadı — günce ilk oturumla başlar.",
+      title: "Günlük",
+      empty: "Henüz oturum oynanmadı — günlük ilk oturumla başlar.",
       noRecap: "Henüz özet yazılmamış.",
     },
     encounters: {

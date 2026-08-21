@@ -72,7 +72,7 @@ export const errors = {
     },
     join: {
       emptyCode: "Katılım kodu gir.",
-      notFound: "Bu koda ait kampanya bulunamadı.",
+      notFound: "Bu koda ait macera bulunamadı.",
     },
     codex: {
       notMember: "Bu dünyanın üyesi değilsin.",

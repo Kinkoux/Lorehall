@@ -142,7 +142,7 @@ export const compendium = {
       count: "Adet",
       throwIntoSession: "Canlı oturuma sür (inisiyatif atar)",
       deploy: "Sahaya sür",
-      encounterHint: "Canavar gruplarını önceden hazırlamak için kampanya sayfanda karşılaşma oluştur.",
+      encounterHint: "Canavar gruplarını önceden hazırlamak için macera sayfanda karşılaşma oluştur.",
     },
     items: {
       title: "Eşyalar",

@@ -36,8 +36,8 @@ export const landing = {
     srdNote: "Game content from the 5e System Reference Document 5.1 (CC-BY-4.0). Lorehall is an unofficial fan-made companion.",
   },
   tr: {
-    tagline: "Tek dünya · çok kampanya",
-    lede: "Masanın ortak defteri. Dünyanın tarihi, partinin karakterleri, inisiyatif sırası ve oturum güncesi — zarlar masada kalırken hepsi tek yerde.",
+    tagline: "Tek dünya · çok macera",
+    lede: "Masanın ortak defteri. Dünyanın tarihi, partinin karakterleri, inisiyatif sırası ve oturum günlüğü — zarlar masada kalırken hepsi tek yerde.",
     ctaCreate: "Dünyanı kur",
     ctaSignIn: "Giriş yap",
     features: {

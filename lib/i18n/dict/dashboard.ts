@@ -50,7 +50,7 @@ export const dashboard = {
     welcome: "Tekrar hoş geldin, {name}",
     worlds: {
       heading: "Dünyaların",
-      empty: "Henüz dünyan yok — aşağıdan bir tane kur ya da elindeki kodla arkadaşının kampanyasına katıl.",
+      empty: "Henüz dünyan yok — aşağıdan bir tane kur ya da elindeki kodla arkadaşının macerasına katıl.",
       forge: "Yeni bir dünya kur",
       name: "Dünya adı",
       namePh: "örn. Kırık Diyarlar",
@@ -59,10 +59,10 @@ export const dashboard = {
       create: "Dünyayı kur",
     },
     campaigns: {
-      heading: "Kampanyaların",
-      empty: "Henüz bir kampanyada değilsin. DM'inden kod aldın mı? Aşağıya gir.",
+      heading: "Maceraların",
+      empty: "Henüz bir macerada değilsin. DM'inden kod aldın mı? Aşağıya gir.",
       inWorld: "{world} dünyasında",
-      join: "Kampanyaya katıl",
+      join: "Maceraya katıl",
       rolePlayer: "Oyuncu",
     },
     roleOwner: "Kurucu",
