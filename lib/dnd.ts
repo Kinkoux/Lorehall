@@ -1,6 +1,6 @@
 import type { Character } from "@/lib/db";
 import { SKILLS } from "@/lib/srd";
-import { STAT_LABELS, type StatBonuses } from "@/lib/world-items";
+import { STAT_LABELS, type AbilityFloors, type StatBonuses } from "@/lib/world-items";
 
 export const ABILITIES = ["str", "dex", "con", "intel", "wis", "cha"] as const;
 export type AbilityKey = (typeof ABILITIES)[number];
@@ -37,6 +37,23 @@ const SKILL_ABILITY_KEY: Record<string, AbilityKey> = {
 };
 
 export const mod = (score: number) => Math.floor((score - 10) / 2);
+
+/**
+ * The score a character is actually playing with: what the sheet stores, plus
+ * what the gear adds, floored by what the gear *sets*.
+ *
+ * The max is the whole rule. "Your Strength score is 19 … it has no effect if
+ * your Strength is already 19 or higher" and "changes to 21 … no effect if
+ * already equal or greater" are the same sentence, and both are satisfied by
+ * taking the larger of the two numbers. A raised score wins on its own merits:
+ * a STR 20 barbarian in gauntlets of ogre power stays at 20, and adding a ring
+ * of +2 STR on top of a belt that sets 21 gives 22 rather than 23 — the belt's
+ * statement is a floor, not a base to pile onto.
+ */
+export function abilityScore(base: number, bonus = 0, floor?: number): number {
+  const raised = base + bonus;
+  return floor !== undefined && floor > raised ? floor : raised;
+}
 export const fmt = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 export const profBonus = (level: number) => 2 + Math.floor((level - 1) / 4);
 
@@ -117,22 +134,34 @@ const csv = (value: string | null) =>
  * together instead of quietly moving only the number on the tile. Nothing here
  * is written back — the stored scores stay the character's own, and taking the
  * ring off restores them by arithmetic rather than by an undo.
+ *
+ * `floors` is the other half of the same sentence: the scores worn gear *sets*
+ * (amulet of health, a belt of giant strength). It defaults to the ones the
+ * bonuses arrived carrying, so every existing caller folds them in without
+ * knowing they exist; passing it explicitly is for a caller holding the two
+ * apart. Either way `bonus` on each ability is the difference the gear made —
+ * a STR 8 wizard in gauntlets of ogre power reads 19 (+11), which is what the
+ * tile's highlight is for.
  */
-export function statBlock(character: Character, bonuses: StatBonuses = {}) {
+export function statBlock(
+  character: Character,
+  bonuses: StatBonuses = {},
+  floors: AbilityFloors = bonuses.floors ?? {}
+) {
   const pb = profBonus(character.level);
   const profSkills = new Set(csv(character.profSkills));
   const profSaves = new Set(csv(character.profSaves));
 
   const abilities = ABILITIES.map((key) => {
     const base = character[key] as number;
-    const bonus = bonuses[BONUS_KEY[key]] ?? 0;
+    const score = abilityScore(base, bonuses[BONUS_KEY[key]] ?? 0, floors[BONUS_KEY[key]]);
     return {
       key,
       label: ABILITY_LABELS[key],
       base,
-      bonus,
-      score: base + bonus,
-      mod: mod(base + bonus),
+      bonus: score - base,
+      score,
+      mod: mod(score),
     };
   });
 

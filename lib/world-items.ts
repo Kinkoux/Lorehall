@@ -19,7 +19,49 @@ export const STAT_BONUS_MAX = 10;
 export const AC_BASE_MIN = 0;
 export const AC_BASE_MAX = 30;
 
-export type StatBonuses = Partial<Record<WorldItemStat, number>>;
+/**
+ * The six keys a *floor* may name. AC and HP are totals, not scores: nothing
+ * in the SRD says "your armour class is 19 while you wear this", so a floor on
+ * either would be a rule we invented rather than one we read.
+ */
+export const ABILITY_STATS = [
+  "str",
+  "dex",
+  "con",
+  "int",
+  "wis",
+  "cha",
+] as const satisfies readonly WorldItemStat[];
+export type AbilityStat = (typeof ABILITY_STATS)[number];
+
+/** The span a stated score may fall in — 5e's own 1–30. */
+export const ABILITY_FLOOR_MIN = 1;
+export const ABILITY_FLOOR_MAX = 30;
+
+/**
+ * Scores an item *sets* rather than adds to: "Your Strength score is 19 while
+ * you wear these gauntlets", "…changes to 21. If your Strength is already
+ * equal to or greater, the item has no effect."
+ *
+ * Both sentences are one rule — a floor under the score — which is why they
+ * are stored as one: the wearer keeps whatever they had if it was already
+ * higher. A flat bonus cannot express this (it would stack on a STR 20 fighter
+ * the belt is supposed to do nothing for) and neither can an override (it
+ * would *lower* them), so floors are their own term.
+ */
+export type AbilityFloors = Partial<Record<AbilityStat, number>>;
+
+/**
+ * What a piece grants: flat integers, plus — optionally — the scores it sets.
+ *
+ * The floors ride inside the same object (and the same stored JSON) rather
+ * than in a column of their own, so every path that already carries bonuses
+ * from an item to a stat block carries the floors with them and no caller has
+ * to learn about a second value it might drop.
+ */
+export type StatBonuses = Partial<Record<WorldItemStat, number>> & {
+  floors?: AbilityFloors;
+};
 
 /** Abbreviations, not prose — the sheet spells scores this way in both locales. */
 export const STAT_LABELS: Record<WorldItemStat, string> = {
@@ -40,15 +82,8 @@ export const STAT_LABELS: Record<WorldItemStat, string> = {
  * Zeroes are dropped — "+0 STR" is not a bonus.
  */
 export function parseStatBonuses(raw: string | null | undefined): StatBonuses {
-  if (!raw) return {};
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return {};
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-  const source = parsed as Record<string, unknown>;
+  const source = readObject(raw);
+  if (!source) return {};
   const out: StatBonuses = {};
   for (const stat of WORLD_ITEM_STATS) {
     const value = source[stat];
@@ -56,7 +91,73 @@ export function parseStatBonuses(raw: string | null | undefined): StatBonuses {
     if (value < STAT_BONUS_MIN || value > STAT_BONUS_MAX) continue;
     out[stat] = value;
   }
+  const floors = readFloors(source.floors);
+  if (floors) out.floors = floors;
   return out;
+}
+
+/** JSON that is an object, or nothing. A string, an array, junk: nothing. */
+function readObject(raw: string | null | undefined): Record<string, unknown> | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return null;
+  return parsed as Record<string, unknown>;
+}
+
+/**
+ * The `floors` half of a stored bonus object, read as distrustingly as the
+ * flat half above: only the six ability keys, only whole numbers, and only
+ * inside 1–30 — a value outside that is clamped rather than dropped, because a
+ * floor is a *statement about a score* and the nearest legal score is a truer
+ * reading of it than silence. Returns null when nothing survives, so the
+ * caller can leave the key off entirely.
+ */
+function readFloors(raw: unknown): AbilityFloors | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const source = raw as Record<string, unknown>;
+  const out: AbilityFloors = {};
+  let any = false;
+  for (const stat of ABILITY_STATS) {
+    const value = source[stat];
+    if (typeof value !== "number" || !Number.isInteger(value)) continue;
+    out[stat] = Math.min(Math.max(value, ABILITY_FLOOR_MIN), ABILITY_FLOOR_MAX);
+    any = true;
+  }
+  return any ? out : null;
+}
+
+/** The floors alone, for a caller that has no use for the flat bonuses. */
+export function parseStatFloors(raw: string | null | undefined): AbilityFloors {
+  return parseStatBonuses(raw).floors ?? {};
+}
+
+/**
+ * The stored shape, built from parts: the writer's side of the reader above.
+ *
+ * Everything is put through the same limits the reader enforces, so a curated
+ * data file cannot state a bonus a hand-edited form would have been stopped
+ * from stating. Nothing left after that is NULL rather than `{}` — a piece
+ * that grants nothing is a plain item, not an item granting nothing.
+ */
+export function stringifyStatBonuses(
+  bonuses: StatBonuses | null | undefined,
+  floors?: AbilityFloors | null
+): string | null {
+  const out: StatBonuses = {};
+  for (const stat of WORLD_ITEM_STATS) {
+    const value = bonuses?.[stat];
+    if (typeof value !== "number" || !Number.isInteger(value) || value === 0) continue;
+    out[stat] = Math.min(Math.max(value, STAT_BONUS_MIN), STAT_BONUS_MAX);
+  }
+  const stated = floors ?? bonuses?.floors;
+  const kept = readFloors(stated);
+  if (kept) out.floors = kept;
+  return Object.keys(out).length > 0 ? JSON.stringify(out) : null;
 }
 
 /** The same bonuses in WORLD_ITEM_STATS order, ready to render. */
@@ -79,19 +180,34 @@ export function statBonusEntries(
  *
  * Zeroes are dropped again at the end, so a +1 and a −1 cancel out of the
  * display entirely rather than showing as "+0".
+ *
+ * Floors do not add: two items that each set STR to a score state the *same
+ * kind* of fact twice, and the higher statement wins (the belt of storm giant
+ * strength does not become 48 because gauntlets are also worn). The key is
+ * left off entirely when no worn piece states one.
  */
 export function sumStatBonuses(sources: Array<string | null | undefined>): StatBonuses {
   const total: StatBonuses = {};
+  const floors: AbilityFloors = {};
+  let floored = false;
   for (const source of sources) {
-    for (const [stat, value] of Object.entries(parseStatBonuses(source)) as Array<
-      [WorldItemStat, number]
-    >) {
+    const parsed = parseStatBonuses(source);
+    for (const stat of WORLD_ITEM_STATS) {
+      const value = parsed[stat];
+      if (value === undefined) continue;
       total[stat] = (total[stat] ?? 0) + value;
+    }
+    for (const stat of ABILITY_STATS) {
+      const value = parsed.floors?.[stat];
+      if (value === undefined) continue;
+      floors[stat] = Math.max(floors[stat] ?? value, value);
+      floored = true;
     }
   }
   for (const stat of WORLD_ITEM_STATS) {
     if (total[stat] === 0) delete total[stat];
   }
+  if (floored) total.floors = floors;
   return total;
 }
 

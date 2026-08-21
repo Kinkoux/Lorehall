@@ -200,7 +200,17 @@ export function AutocompleteInput({
                   i === active ? "bg-gold-500/15 text-gold-300" : "text-parchment-100"
                 }`}
               >
-                <span className="min-w-0 flex-1 truncate">{suggestion.value.name}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {label(suggestion)}
+                  {/* Beside a translated name, the one the row will actually
+                      carry: the compendium, the campaign log and the table's
+                      own conversation all use this one. */}
+                  {label(suggestion) !== suggestion.value.name && (
+                    <span className="ml-1.5 text-[11px] text-parchment-500">
+                      {suggestion.value.name}
+                    </span>
+                  )}
+                </span>
                 <span className="shrink-0 text-[11px] text-parchment-500">
                   {meta(suggestion, t)}
                 </span>
@@ -211,6 +221,19 @@ export function AutocompleteInput({
       )}
     </div>
   );
+}
+
+/**
+ * What the row reads as. An SRD item in a locale that has its own word for it
+ * arrives with that word in `display`; everything else — every library entry,
+ * every spell — is named by the one name it has. Only the *display* moves:
+ * `choose()` still writes `value.name`, because the name is what the server
+ * resolves the row against when the hidden reference goes missing.
+ */
+function label(suggestion: Suggestion) {
+  return suggestion.kind === "item"
+    ? (suggestion.value.display ?? suggestion.value.name)
+    : suggestion.value.name;
 }
 
 /** The dim right-hand line: where it comes from and what it does. */

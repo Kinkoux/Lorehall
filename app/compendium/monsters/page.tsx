@@ -6,6 +6,7 @@ import {
   MONSTER_SIZES,
   MONSTER_TYPES,
   getMonsterArt,
+  localizedMonsterName,
   searchMonsters,
 } from "@/lib/srd-data";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -33,7 +34,7 @@ export default async function MonstersPage({
   }>;
 }) {
   const user = await getCurrentUser();
-  const { t } = await getT();
+  const { t, locale } = await getT();
   const {
     q = "",
     cr = "",
@@ -139,6 +140,7 @@ export default async function MonstersPage({
         <ul className="divide-y divide-ink-700 rounded-sm border border-ink-700 bg-ink-900/85">
           {shown.map((monster) => {
             const image = getMonsterArt(monster.index);
+            const name = localizedMonsterName(monster, locale);
             return (
               <li key={monster.index}>
                 <Link
@@ -162,8 +164,16 @@ export default async function MonstersPage({
                   <span className="w-14 shrink-0 text-xs font-bold text-blood-400">
                     CR {monster.crLabel}
                   </span>
-                  <span className="flex-1 font-semibold text-parchment-100 transition group-hover:text-gold-400">
-                    {monster.name}
+                  <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                      {name}
+                    </span>
+                    {/* The stat block's own name, which is what the rest of
+                        the entry — and the encounter it is thrown into — will
+                        call the thing. */}
+                    {name !== monster.name && (
+                      <span className="text-xs text-parchment-500">{monster.name}</span>
+                    )}
                   </span>
                   <span className="hidden text-xs text-parchment-500 sm:block">
                     {monster.size} {monster.type} · AC {monster.ac} · {monster.hp} HP

@@ -1,10 +1,19 @@
 import type { WorldItemSlot } from "@/lib/db/schema";
-import { categorySlot } from "@/lib/world-items";
+import type { Locale } from "@/lib/i18n";
+import {
+  categorySlot,
+  stringifyStatBonuses,
+  type AbilityFloors,
+  type StatBonuses,
+} from "@/lib/world-items";
 import spellsJson from "@/lib/data/spells.json";
 import monstersJson from "@/lib/data/monsters.json";
 import monsterImagesJson from "@/lib/data/monster-images.json";
 import monsterArtJson from "@/lib/data/monster-art.json";
 import itemsJson from "@/lib/data/items.json";
+import itemsTrJson from "@/lib/data/items-tr.json";
+import monstersTrJson from "@/lib/data/monsters-tr.json";
+import itemEffectsJson from "@/lib/data/item-effects.json";
 
 export type SrdSpell = {
   index: string;
@@ -215,6 +224,105 @@ export const getSpell = (index: string) => SPELLS.find((s) => s.index === index)
 export const getMonster = (index: string) => MONSTERS.find((m) => m.index === index);
 export const getItem = (index: string) => ITEMS.find((i) => i.index === index);
 
+/**
+ * Turkish *names* for the SRD's own entries, keyed by index — and names only.
+ *
+ * The rest of an entry (its description, its stat block, the prose its
+ * mechanics live in) stays in the English the SRD publishes it in, because
+ * that is the text the licence covers and the text every table already reads
+ * off a phone. What a Turkish player actually needs translated is the label
+ * they hunt by: the thing is called a hançer, and the list should say so.
+ *
+ * The English name remains canonical everywhere it is *stored* — an inventory
+ * row, a combatant, a campaign log line — so the name-resolution in
+ * `character-actions` keeps working off one spelling. These maps are for
+ * rendering and for searching, never for writing.
+ *
+ * Spells have no such map: none was translated, and half a list in Turkish
+ * would read worse than all of it in English.
+ */
+const ITEM_NAMES_TR = itemsTrJson as Record<string, string>;
+const MONSTER_NAMES_TR = monstersTrJson as Record<string, string>;
+
+/** The Turkish name held for an index, or undefined where we have none. */
+export const itemNameTr = (index: string): string | undefined => ITEM_NAMES_TR[index];
+export const monsterNameTr = (index: string): string | undefined => MONSTER_NAMES_TR[index];
+
+/**
+ * What to call an entry on screen: the Turkish name in the Turkish locale
+ * whenever one exists, and the SRD's own name in every other case — including
+ * a Turkish reader looking at one of the entries no one has translated yet.
+ *
+ * Takes the entry or just its index, because half the callers are holding a
+ * row that remembers only the index.
+ */
+export function localizedItemName(item: SrdItem | string, locale: Locale): string {
+  const index = typeof item === "string" ? item : item.index;
+  if (locale === "tr") {
+    const turkish = ITEM_NAMES_TR[index];
+    if (turkish) return turkish;
+  }
+  return (typeof item === "string" ? getItem(index)?.name : item.name) ?? index;
+}
+
+export function localizedMonsterName(monster: SrdMonster | string, locale: Locale): string {
+  const index = typeof monster === "string" ? monster : monster.index;
+  if (locale === "tr") {
+    const turkish = MONSTER_NAMES_TR[index];
+    if (turkish) return turkish;
+  }
+  return (typeof monster === "string" ? getMonster(index)?.name : monster.name) ?? index;
+}
+
+/**
+ * Case folding for the name search.
+ *
+ * `toLowerCase()` on a Turkish dotted capital — "İksir" — leaves the dot
+ * behind as a combining mark ("i̇ksir"), so a plain `includes` would refuse
+ * the "iksir" a keyboard actually produces. Dropping U+0307 costs nothing in
+ * English (no English word carries one) and repairs 63 of the item names.
+ * Deliberately *not* a full diacritic fold: "hancer" still does not find the
+ * hançer, which is the same bargain the English side already makes.
+ */
+const COMBINING_DOT = /\u0307/g;
+const fold = (text: string) => text.toLowerCase().replace(COMBINING_DOT, "");
+
+/**
+ * Does this entry answer to what was typed, in either language? Both names are
+ * always searched, whatever the locale: an English name is no burden to a
+ * Turkish reader, and a Turkish one is how a Turkish reader finds the entry
+ * even when the interface around it is in English.
+ */
+function matchesEither(needle: string, english: string, turkish: string | undefined) {
+  const q = fold(needle);
+  return fold(english).includes(q) || (turkish !== undefined && fold(turkish).includes(q));
+}
+
+export const itemMatchesName = (item: SrdItem, needle: string) =>
+  matchesEither(needle, item.name, ITEM_NAMES_TR[item.index]);
+
+/**
+ * An exact whole-name lookup in either language, for stocking a line from a
+ * hand-typed name. Built once; the Turkish side is duplicate-free by data
+ * validation, so a fold can only ever name one entry.
+ */
+let ITEM_BY_ANY_NAME: Map<string, SrdItem> | null = null;
+
+export function findItemByAnyName(raw: string): SrdItem | undefined {
+  if (!ITEM_BY_ANY_NAME) {
+    ITEM_BY_ANY_NAME = new Map();
+    for (const item of ITEMS) {
+      ITEM_BY_ANY_NAME.set(fold(item.name.trim()), item);
+      const tr = ITEM_NAMES_TR[item.index];
+      if (tr) ITEM_BY_ANY_NAME.set(fold(tr.trim()), item);
+    }
+  }
+  return ITEM_BY_ANY_NAME.get(fold(raw.trim()));
+}
+
+export const monsterMatchesName = (monster: SrdMonster, needle: string) =>
+  matchesEither(needle, monster.name, MONSTER_NAMES_TR[monster.index]);
+
 export function searchSpells(
   q: string,
   level: string,
@@ -235,11 +343,9 @@ export function searchSpells(
 }
 
 export function searchItems(q: string, category: string) {
-  const needle = q.trim().toLowerCase();
+  const needle = q.trim();
   return ITEMS.filter(
-    (i) =>
-      (!needle || i.name.toLowerCase().includes(needle)) &&
-      (!category || i.category === category)
+    (i) => (!needle || itemMatchesName(i, needle)) && (!category || i.category === category)
   );
 }
 
@@ -249,12 +355,12 @@ export function searchItems(q: string, category: string) {
  * URL may carry either "Medium" or "medium".
  */
 export function searchMonsters(q: string, cr: string, type = "", size = "") {
-  const needle = q.trim().toLowerCase();
+  const needle = q.trim();
   const wantedType = type.trim().toLowerCase();
   const wantedSize = size.trim().toLowerCase();
   return MONSTERS.filter(
     (m) =>
-      (!needle || m.name.toLowerCase().includes(needle)) &&
+      (!needle || monsterMatchesName(m, needle)) &&
       (!cr || m.crLabel === cr) &&
       (!wantedType || monsterBaseType(m.type) === wantedType) &&
       (!wantedSize || m.size.toLowerCase() === wantedSize)
@@ -370,12 +476,61 @@ export function armorAcFor(index: string | null | undefined): ArmorAc | null {
  * Magic items keep their mechanics in prose. The one pattern that is both
  * common and unambiguous — "+N bonus to AC" — is read out so protective gear
  * actually protects; everything else stays prose.
+ *
+ * This is the *fallback* now, not the rule: it cannot see the words around the
+ * number, so it reads "a +2 bonus to AC against ranged attacks" as flatly as
+ * it reads "+2 bonus to AC". Any entry the curated table below has an opinion
+ * about is answered by that opinion instead — including the entries it
+ * deliberately grants nothing for.
  */
 const MAGIC_AC = /\+([123])\s+bonus\s+to\s+(?:AC|Armor\s*Class)/i;
 
 export function magicAcBonus(item: SrdItem): number | null {
   const m = MAGIC_AC.exec(item.desc || "");
   return m ? Number(m[1]) : null;
+}
+
+/**
+ * What one SRD entry's prose grants, read once by hand and written down.
+ *
+ * `lib/data/item-effects.json` is the whole of it: all 599 descriptions were
+ * swept for mechanics this model can actually hold — flat bonuses and the
+ * scores an item sets — and only the *unconditional* ones were kept. An entry
+ * with no `bonuses` and no `floors` is not an oversight: it is the record of a
+ * description that was read and found to state something conditional ("while
+ * you are wearing no armor"), momentary ("for 1 hour"), or outside the model
+ * (resistances, saving throws, advantage), and it stands as an explicit "this
+ * grants nothing" so the prose parser above cannot answer for it.
+ *
+ * `note` is a maintainer's line, not UI copy — it says which sentence the
+ * numbers came from, or why there are none.
+ */
+export type ItemEffect = {
+  bonuses?: StatBonuses;
+  floors?: AbilityFloors;
+  note?: string;
+};
+
+export const ITEM_EFFECTS = itemEffectsJson as Record<string, ItemEffect>;
+
+export const itemEffect = (index: string | null | undefined): ItemEffect | undefined =>
+  index ? ITEM_EFFECTS[index] : undefined;
+
+/**
+ * The `stat_bonuses` snapshot an SRD line is stocked with — the single answer
+ * every write path takes, so the sheet, the compendium button and the backfill
+ * script cannot disagree about what a longsword or an amulet of health grants.
+ *
+ * The curated table wins wherever it has an entry, and NULL is a real answer
+ * from it; only an entry it says nothing at all about falls through to the
+ * prose parser. That ordering is what keeps a ring of protection at +1 rather
+ * than +2: the table states the bonus, and the regex never gets a turn.
+ */
+export function srdItemBonuses(item: SrdItem): string | null {
+  const effect = ITEM_EFFECTS[item.index];
+  if (effect) return stringifyStatBonuses(effect.bonuses, effect.floors);
+  const ac = magicAcBonus(item);
+  return ac ? stringifyStatBonuses({ ac }) : null;
 }
 
 /**

@@ -2,7 +2,14 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { getMonsterArt, searchItems, searchMonsters, searchSpells } from "@/lib/srd-data";
+import {
+  getMonsterArt,
+  localizedItemName,
+  localizedMonsterName,
+  searchItems,
+  searchMonsters,
+  searchSpells,
+} from "@/lib/srd-data";
 import { categoryArt, schoolArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { IconClaw } from "@/components/Icons";
@@ -22,12 +29,15 @@ function ResultRow({
   art,
   badge,
   name,
+  original,
   meta,
 }: {
   href: string;
   art: ReactNode;
   badge?: ReactNode;
   name: string;
+  /** The SRD's own name, when `name` above it is a translation of it. */
+  original?: string | null;
   meta: string;
 }) {
   return (
@@ -35,8 +45,13 @@ function ResultRow({
       <Link href={href as never} className="group flex items-center gap-3 px-4 py-2.5">
         {art}
         {badge && <span className="w-14 shrink-0 text-xs font-bold">{badge}</span>}
-        <span className="flex-1 font-semibold text-parchment-100 transition group-hover:text-gold-400">
-          {name}
+        <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+            {name}
+          </span>
+          {original && original !== name && (
+            <span className="text-xs text-parchment-500">{original}</span>
+          )}
         </span>
         <span className="hidden text-xs text-parchment-500 sm:block">{meta}</span>
       </Link>
@@ -104,7 +119,7 @@ export default async function CompendiumSearchPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const user = await getCurrentUser();
-  const { t } = await getT();
+  const { t, locale } = await getT();
   const { q = "" } = await searchParams;
   const needle = q.trim();
 
@@ -192,7 +207,8 @@ export default async function CompendiumSearchPage({
                       )
                     }
                     badge={<span className="text-blood-400">CR {monster.crLabel}</span>}
-                    name={monster.name}
+                    name={localizedMonsterName(monster, locale)}
+                    original={monster.name}
                     meta={`${monster.size} ${monster.type} · ${monster.hp} HP`}
                   />
                 );
@@ -210,7 +226,8 @@ export default async function CompendiumSearchPage({
                   key={item.index}
                   href={`/compendium/items/${item.index}`}
                   art={<Thumb src={categoryArt(item.category)} />}
-                  name={item.name}
+                  name={localizedItemName(item, locale)}
+                  original={item.name}
                   meta={[item.sub, item.rarity, item.cost].filter(Boolean).join(" · ")}
                 />
               ))}

@@ -29,7 +29,14 @@ import {
 } from "@/lib/dnd";
 import { effectiveAc } from "@/lib/armor";
 import { SKILLS } from "@/lib/srd";
-import { getItem, getSpell, itemSummary, requiredSlot, spellSummary } from "@/lib/srd-data";
+import {
+  getItem,
+  getSpell,
+  itemNameTr,
+  itemSummary,
+  requiredSlot,
+  spellSummary,
+} from "@/lib/srd-data";
 import {
   AC_BASE_MAX,
   AC_BASE_MIN,
@@ -61,7 +68,7 @@ import {
 } from "@/lib/character-actions";
 import Link from "next/link";
 import { getT } from "@/lib/locale";
-import type { T } from "@/lib/i18n";
+import type { Locale, T } from "@/lib/i18n";
 import { categoryArt, classArtFor, EMPTY_ART } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ConfirmButton } from "@/components/ConfirmButton";
@@ -495,7 +502,7 @@ export default async function CharacterPage({
                     </>
                   )}
                   {items.length > 0 && (
-                    <InventoryGrid items={items} editable={editable} t={t} />
+                    <InventoryGrid items={items} editable={editable} t={t} locale={locale} />
                   )}
                   {editable && (
                     <form action={addItem.bind(null, character.id)} className="mt-4 space-y-2 border-t border-ink-700 pt-4">
@@ -702,10 +709,12 @@ function InventoryGrid({
   items,
   editable,
   t,
+  locale,
 }: {
   items: InventoryLineShape[];
   editable: boolean;
   t: T;
+  locale: Locale;
 }) {
   return (
     <InventoryDrop enabled={editable} className="grid grid-cols-4 gap-2 sm:grid-cols-6">
@@ -771,7 +780,7 @@ function InventoryGrid({
 
           <div className="mt-3 space-y-2">
             <p className="font-semibold text-parchment-100">
-              <ItemName item={item} t={t} />
+              <ItemName item={item} t={t} locale={locale} />
               {item.qty > 1 && (
                 <span className="ml-1.5 text-sm text-parchment-500">×{item.qty}</span>
               )}
@@ -842,10 +851,26 @@ function InventoryGrid({
  * jumps to the card in the world's own forge. A hand-typed line is just a
  * name, and stays plain text rather than pretending to lead somewhere.
  */
-function ItemName({ item, t }: { item: InventoryLineShape; t: T }) {
+function ItemName({
+  item,
+  t,
+  locale,
+}: {
+  item: InventoryLineShape;
+  t: T;
+  locale: Locale;
+}) {
   const linkClass = "text-parchment-100 underline decoration-ink-600 underline-offset-2 transition hover:text-gold-300 hover:decoration-gold-500";
   if (item.srdIndex) {
     const srd = getItem(item.srdIndex);
+    /**
+     * The row's name is the one that was written down — the English the whole
+     * of this app resolves names against — and it stays that way in the
+     * database. A locale with its own word for the thing gets to *say* that
+     * word here, and only where we actually have one: an untranslated entry
+     * keeps the player's own spelling rather than being tidied into the SRD's.
+     */
+    const shown = (locale === "tr" && itemNameTr(item.srdIndex)) || item.name;
     return (
       <Link
         href={`/compendium/items/${item.srdIndex}`}
@@ -855,7 +880,7 @@ function ItemName({ item, t }: { item: InventoryLineShape; t: T }) {
         )}
         className={linkClass}
       >
-        {item.name}
+        {shown}
       </Link>
     );
   }

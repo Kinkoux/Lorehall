@@ -73,6 +73,15 @@ describe("addItem resolves the name when no reference arrives", () => {
     expect(row.notes).toBeTruthy();
   });
 
+  it("reaches the same entry through its Turkish name", async () => {
+    await addItem(sheet, formData({ name: "Hançer", qty: "1" }));
+    const [row] = await rowsOf(sheet);
+    expect(row.srdIndex).toBe("dagger");
+    expect(row.slot).toBe("weapon");
+    // The line keeps the Turkish spelling the player typed.
+    expect(row.name).toBe("Hançer");
+  });
+
   it("does not care about case or the spaces around it", async () => {
     await addItem(sheet, formData({ name: "  lEaTHeR aRMoR  " }));
     const [row] = await rowsOf(sheet);

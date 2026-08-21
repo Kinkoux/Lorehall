@@ -32,9 +32,11 @@ import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
 import {
   AC_BASE_MAX,
   AC_BASE_MIN,
+  parseStatFloors,
   readSlotName,
   STAT_BONUS_MAX,
   STAT_BONUS_MIN,
+  stringifyStatBonuses,
   type StatBonuses,
 } from "@/lib/world-items";
 import type { FormState } from "@/lib/actions";
@@ -403,8 +405,14 @@ function readAcDex(formData: FormData): AcDexRule | null {
  * rebuilds its own: only the allowed keys, each clamped to ±10, blanks and
  * zeroes left out, and an all-blank form storing NULL rather than `{}` — so a
  * line the player cleared is a plain item again, not an item granting nothing.
+ *
+ * A score the item *sets* survives the rebuild untouched. The editor has eight
+ * number fields and no ninth for floors, so a form submission is silent about
+ * them rather than saying they are gone — and reading that silence as a
+ * deletion would quietly turn an amulet of health into a necklace the first
+ * time somebody typed an armour class onto its line.
  */
-function readItemBonuses(formData: FormData): string | null {
+function readItemBonuses(formData: FormData, stored: string | null): string | null {
   const bonuses: StatBonuses = {};
   for (const stat of WORLD_ITEM_STATS) {
     const raw = str(formData, `bonus_${stat}`);
@@ -413,7 +421,7 @@ function readItemBonuses(formData: FormData): string | null {
     if (!Number.isFinite(n) || n === 0) continue;
     bonuses[stat] = Math.min(Math.max(n, STAT_BONUS_MIN), STAT_BONUS_MAX);
   }
-  return Object.keys(bonuses).length > 0 ? JSON.stringify(bonuses) : null;
+  return stringifyStatBonuses(bonuses, parseStatFloors(stored));
 }
 
 /**
@@ -486,17 +494,20 @@ async function resolveItemSource(
 
   const srdIndex = str(formData, "srdIndex");
   if (srdIndex) {
-    // Lazy import keeps the SRD JSON out of the sheet's chunk. Nothing in the
-    // SRD carries a machine-readable bonus, so an SRD line brings a slot and a
-    // summary and nothing else.
-    const { getItem, itemSummary, srdItemSlot } = await import("@/lib/srd-data");
+    // Lazy import keeps the SRD JSON out of the sheet's chunk. The SRD keeps
+    // its mechanics in prose, so what an entry grants is whatever the curated
+    // table read out of that prose (srdItemBonuses) — snapshotted onto the
+    // line, exactly as a library entry's bonuses are.
+    const { getItem, itemSummary, srdItemSlot, srdItemBonuses } = await import(
+      "@/lib/srd-data"
+    );
     const item = getItem(srdIndex);
     if (item) {
       return {
         worldItemId: null,
         srdIndex: item.index,
         slot: srdItemSlot(item),
-        statBonuses: null,
+        statBonuses: srdItemBonuses(item),
         summary: itemSummary(item),
       };
     }
@@ -542,14 +553,18 @@ async function resolveItemSource(
     };
   }
 
-  const { ITEMS, itemSummary, srdItemSlot } = await import("@/lib/srd-data");
-  const srdItem = ITEMS.find((entry) => foldName(entry.name) === name);
+  // Either language reaches the entry: a table that plays in Turkish types
+  // "Hançer" as readily as "Dagger", and both are whole names for one item.
+  const { findItemByAnyName, itemSummary, srdItemSlot, srdItemBonuses } = await import(
+    "@/lib/srd-data"
+  );
+  const srdItem = findItemByAnyName(str(formData, "name"));
   if (srdItem) {
     return {
       worldItemId: null,
       srdIndex: srdItem.index,
       slot: srdItemSlot(srdItem),
-      statBonuses: null,
+      statBonuses: srdItemBonuses(srdItem),
       summary: itemSummary(srdItem),
     };
   }
@@ -779,7 +794,7 @@ export async function setItemStats(itemId: string, formData: FormData) {
       equipped: item.equipped === 1 && slot === item.slot ? 1 : 0,
       acBase: clampOpt(int(formData, "acBase"), AC_BASE_MIN, AC_BASE_MAX),
       acDex: readAcDex(formData),
-      statBonuses: readItemBonuses(formData),
+      statBonuses: readItemBonuses(formData, item.statBonuses),
     })
     .where(eq(characterItems.id, itemId));
 

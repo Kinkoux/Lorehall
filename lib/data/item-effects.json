@@ -1,0 +1,302 @@
+{
+  "amulet-of-health": {
+    "floors": {
+      "con": 19
+    },
+    "note": "CON becomes 19 while worn, if not already higher."
+  },
+  "armor": {
+    "note": "The catalog entry for +1/+2/+3 armor; the numbered entries carry the mechanics."
+  },
+  "armor-1": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while wearing this armor."
+  },
+  "armor-2": {
+    "bonuses": {
+      "ac": 2
+    },
+    "note": "+2 AC while wearing this armor."
+  },
+  "armor-3": {
+    "bonuses": {
+      "ac": 3
+    },
+    "note": "+3 AC while wearing this armor."
+  },
+  "arrow-catching-shield": {
+    "note": "Its +2 AC applies only against ranged attacks — a condition this model has no room for."
+  },
+  "belt-of-dwarvenkind": {
+    "bonuses": {
+      "con": 2
+    },
+    "note": "+2 CON while worn (cap of 20 not modelled). Persuasion advantage is not modelled."
+  },
+  "belt-of-giant-strength": {
+    "note": "The catalog entry for all six belts; the per-giant entries carry the scores."
+  },
+  "belt-of-giant-strength-cloud": {
+    "floors": {
+      "str": 27
+    },
+    "note": "STR becomes 27 while worn, if not already higher."
+  },
+  "belt-of-giant-strength-fire": {
+    "floors": {
+      "str": 25
+    },
+    "note": "STR becomes 25 while worn, if not already higher."
+  },
+  "belt-of-giant-strength-frost": {
+    "floors": {
+      "str": 23
+    },
+    "note": "STR becomes 23 while worn, if not already higher."
+  },
+  "belt-of-giant-strength-hill": {
+    "floors": {
+      "str": 21
+    },
+    "note": "STR becomes 21 while worn, if not already higher."
+  },
+  "belt-of-giant-strength-stone": {
+    "floors": {
+      "str": 23
+    },
+    "note": "STR becomes 23 while worn, if not already higher."
+  },
+  "belt-of-giant-strength-storm": {
+    "floors": {
+      "str": 29
+    },
+    "note": "STR becomes 29 while worn, if not already higher."
+  },
+  "berserker-axe": {
+    "note": "Its hit point maximum rises by 1 per level attained, which no flat bonus can state."
+  },
+  "bracers-of-defense": {
+    "note": "Its +2 AC applies only while wearing no armor and using no shield."
+  },
+  "cloak-of-protection": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Its +1 to saving throws is not modelled."
+  },
+  "defender": {
+    "note": "Its +2 AC is one way to spend a bonus the wielder allocates each turn."
+  },
+  "demon-armor": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. The curse and Abyssal speech are not modelled."
+  },
+  "dragon-scale-mail": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-black": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-blue": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-brass": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-bronze": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-copper": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-gold": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-green": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-red": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-silver": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dragon-scale-mail-white": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Dragon-breath advantage and damage resistance are not modelled."
+  },
+  "dwarven-plate": {
+    "bonuses": {
+      "ac": 2
+    },
+    "note": "+2 AC while worn."
+  },
+  "elven-chain": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn."
+  },
+  "gauntlets-of-ogre-power": {
+    "floors": {
+      "str": 19
+    },
+    "note": "STR becomes 19 while worn, if not already higher."
+  },
+  "glamoured-studded-leather-armor": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. The disguise is cosmetic."
+  },
+  "hammer-of-thunderbolts": {
+    "bonuses": {
+      "str": 4
+    },
+    "note": "+4 STR while attuned and holding it (may exceed 20, cap of 30 not modelled)."
+  },
+  "headband-of-intellect": {
+    "floors": {
+      "int": 19
+    },
+    "note": "INT becomes 19 while worn, if not already higher."
+  },
+  "ioun-stone": {
+    "note": "The catalog entry for every variety at once; the individual stones carry the mechanics."
+  },
+  "ioun-stone-of-agility": {
+    "bonuses": {
+      "dex": 2
+    },
+    "note": "+2 DEX while the stone orbits your head. Its cap of 20 is not modelled."
+  },
+  "ioun-stone-of-fortitude": {
+    "bonuses": {
+      "con": 2
+    },
+    "note": "+2 CON while the stone orbits your head. Its cap of 20 is not modelled."
+  },
+  "ioun-stone-of-insight": {
+    "bonuses": {
+      "wis": 2
+    },
+    "note": "+2 WIS while the stone orbits your head. Its cap of 20 is not modelled."
+  },
+  "ioun-stone-of-intellect": {
+    "bonuses": {
+      "int": 2
+    },
+    "note": "+2 INT while the stone orbits your head. Its cap of 20 is not modelled."
+  },
+  "ioun-stone-of-leadership": {
+    "bonuses": {
+      "cha": 2
+    },
+    "note": "+2 CHA while the stone orbits your head. Its cap of 20 is not modelled."
+  },
+  "ioun-stone-of-protection": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while the stone orbits your head."
+  },
+  "ioun-stone-of-strength": {
+    "bonuses": {
+      "str": 2
+    },
+    "note": "+2 STR while the stone orbits your head. Its cap of 20 is not modelled."
+  },
+  "manual-of-bodily-health": {
+    "note": "Studying it raises CON by 2 permanently — an edit to the sheet's own score, not gear."
+  },
+  "manual-of-gainful-exercise": {
+    "note": "Studying it raises STR by 2 permanently — an edit to the sheet's own score, not gear."
+  },
+  "manual-of-quickness-of-action": {
+    "note": "Studying it raises DEX by 2 permanently — an edit to the sheet's own score, not gear."
+  },
+  "potion-of-giant-strength": {
+    "note": "Drunk, not worn: the score lasts 1 hour, which this model has no duration for."
+  },
+  "potion-of-giant-strength-cloud": {
+    "note": "Drunk, not worn: STR 27 for 1 hour, which this model has no duration for."
+  },
+  "potion-of-giant-strength-fire": {
+    "note": "Drunk, not worn: STR 25 for 1 hour, which this model has no duration for."
+  },
+  "potion-of-giant-strength-frost": {
+    "note": "Drunk, not worn: STR 23 for 1 hour, which this model has no duration for."
+  },
+  "potion-of-giant-strength-hill": {
+    "note": "Drunk, not worn: STR 21 for 1 hour, which this model has no duration for."
+  },
+  "potion-of-giant-strength-stone": {
+    "note": "Drunk, not worn: STR 23 for 1 hour, which this model has no duration for."
+  },
+  "potion-of-giant-strength-storm": {
+    "note": "Drunk, not worn: STR 29 for 1 hour, which this model has no duration for."
+  },
+  "ring-of-protection": {
+    "bonuses": {
+      "ac": 1
+    },
+    "note": "+1 AC while worn. Its +1 to saving throws is not modelled."
+  },
+  "rod-of-alertness": {
+    "note": "Its +1 AC applies only inside the light the rod's flange sheds."
+  },
+  "staff-of-power": {
+    "bonuses": {
+      "ac": 2
+    },
+    "note": "+2 AC while held. Its +2 to saving throws and spell attacks is not modelled."
+  },
+  "stone-of-good-luck-luckstone": {
+    "note": "+1 to ability checks and saving throws — neither is a term this model carries."
+  },
+  "tome-of-clear-thought": {
+    "note": "Studying it raises INT by 2 permanently — an edit to the sheet's own score, not gear."
+  },
+  "tome-of-leadership-and-influence": {
+    "note": "Studying it raises CHA by 2 permanently — an edit to the sheet's own score, not gear."
+  },
+  "tome-of-understanding": {
+    "note": "Studying it raises WIS by 2 permanently — an edit to the sheet's own score, not gear."
+  }
+}

@@ -3,7 +3,12 @@ import { eq, inArray } from "drizzle-orm";
 import { db, campaigns, encounters, gameSessions } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { getMonster, getMonsterArt, type SrdMonsterAction } from "@/lib/srd-data";
+import {
+  getMonster,
+  getMonsterArt,
+  localizedMonsterName,
+  type SrdMonsterAction,
+} from "@/lib/srd-data";
 import { addMonsterToEncounter, addMonsterToLiveSession } from "@/lib/compendium-actions";
 import { fmt, mod } from "@/lib/dnd";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -16,10 +21,11 @@ export default async function MonsterPage({
   params: Promise<{ index: string }>;
 }) {
   const user = await getCurrentUser();
-  const { t } = await getT();
+  const { t, locale } = await getT();
   const { index } = await params;
   const monster = getMonster(index);
   if (!monster) notFound();
+  const name = localizedMonsterName(monster, locale);
   const image = getMonsterArt(index);
 
   const myCampaigns = user
@@ -68,9 +74,13 @@ export default async function MonsterPage({
         <div className="mt-2 mb-6 flex items-start justify-between gap-6">
           <div>
             <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
-              {monster.name}
+              {name}
             </h1>
+            {/* The stat block below is in the SRD's own English, and so is the
+                combatant this page can throw into a session — so the name it
+                answers to there stays in sight under the heading. */}
             <p className="mt-1 text-sm italic text-parchment-500">
+              {name !== monster.name && `${monster.name} · `}
               {monster.size} {monster.type}, {monster.alignment} · CR {monster.crLabel} (
               {monster.xp} XP)
             </p>
@@ -80,7 +90,7 @@ export default async function MonsterPage({
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={image.src}
-                alt={monster.name}
+                alt={name}
                 referrerPolicy="no-referrer"
                 className="w-full rounded-sm border border-ink-600 object-cover"
               />

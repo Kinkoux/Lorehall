@@ -3,6 +3,7 @@
 import { and, eq } from "drizzle-orm";
 import { db, characters, worldItems } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
+import { getLocale } from "@/lib/locale";
 import { getCampaignAccess } from "@/lib/perms";
 import { fmt } from "@/lib/dnd";
 import { statBonusEntries, STAT_LABELS } from "@/lib/world-items";
@@ -28,7 +29,19 @@ export type ItemSuggestion = {
   source: "srd" | "world";
   /** The world item's id, or the SRD index. Goes back as a hidden field. */
   ref: string;
+  /**
+   * The canonical name — English for an SRD entry, whatever its author typed
+   * for a library one. This is what the field writes into the form, and it is
+   * what the server resolves a nameless submission against, so it stays the
+   * same string in every locale.
+   */
   name: string;
+  /**
+   * What to *show* instead, when the reader's locale has its own word for the
+   * thing. Absent whenever it would only repeat `name`, so a caller can render
+   * `display ?? name` and get the plain case for free.
+   */
+  display?: string;
   /** Dictionary key under `world.items.categories`. */
   category: string;
   /** Dictionary key under `world.items.slots`, or null for "carried". */
@@ -124,15 +137,23 @@ export async function searchItemsForCharacter(
   if (room === 0) return fromWorld.slice(0, MAX_RESULTS);
 
   // Lazy import keeps the SRD JSON out of the sheet's own chunk.
-  const { ITEMS, srdItemSlot } = await import("@/lib/srd-data");
+  const { itemMatchesName, localizedItemName, srdItemSlot, ITEMS } = await import(
+    "@/lib/srd-data"
+  );
+  // The compendium answers to both names whatever the interface language, so a
+  // player typing "hançer" and one typing "dagger" reach the same entry — and
+  // both walk away with the same English name written into the row.
+  const locale = await getLocale();
   const fromSrd: ItemSuggestion[] = [];
   for (const item of ITEMS) {
     if (fromSrd.length === room) break;
-    if (!matches(item.name, needle)) continue;
+    if (!itemMatchesName(item, needle)) continue;
+    const display = localizedItemName(item, locale);
     fromSrd.push({
       source: "srd",
       ref: item.index,
       name: item.name,
+      display: display === item.name ? undefined : display,
       category: item.category,
       slot: srdItemSlot(item),
       // Nothing in the SRD carries a machine-readable bonus.

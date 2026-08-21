@@ -284,6 +284,43 @@ describe("addItem takes a reference, never the numbers", () => {
     expect(row.statBonuses).toBeNull();
   });
 
+  it("stamps an SRD line with what the curated reading of its prose grants", async () => {
+    await addItem(sheet, formData({ name: "Amulet of Health", srdIndex: "amulet-of-health" }));
+    await addItem(sheet, formData({ name: "Ring of Protection", srdIndex: "ring-of-protection" }));
+    // Read by name rather than by reference — the phone-shaped path — lands
+    // the same numbers.
+    await addItem(sheet, formData({ name: "gauntlets of ogre power" }));
+
+    const rows = await rowsOf(sheet);
+    // The amulet states a score rather than adding to one.
+    expect(sumStatBonuses([rows[0].statBonuses])).toEqual({ floors: { con: 19 } });
+    // The ring's +1 is counted once: the curated entry answers, and the prose
+    // parser behind it never gets a turn.
+    expect(sumStatBonuses([rows[1].statBonuses])).toEqual({ ac: 1 });
+    expect(sumStatBonuses([rows[2].statBonuses])).toEqual({ floors: { str: 19 } });
+  });
+
+  it("stamps nothing for a bonus that comes with a condition attached", async () => {
+    // "+2 bonus to AC if you are wearing no armor and using no shield" — a
+    // sentence the model cannot hold, so the line carries no numbers at all.
+    await addItem(sheet, formData({ name: "Bracers of Defense", srdIndex: "bracers-of-defense" }));
+    await addItem(sheet, formData({ name: "Longsword", srdIndex: "longsword" }));
+    const rows = await rowsOf(sheet);
+    expect(rows[0].statBonuses).toBeNull();
+    expect(rows[1].statBonuses).toBeNull();
+  });
+
+  it("keeps a stated score when the line editor rewrites the flat bonuses", async () => {
+    await addItem(sheet, formData({ name: "Amulet of Health", srdIndex: "amulet-of-health" }));
+    const [row] = await rowsOf(sheet);
+    await setItemStats(row.id, formData({ slot: "neck", bonus_ac: "1" }));
+    // The editor has no field for a floor, so its silence is not a deletion.
+    expect(sumStatBonuses([(await rowOf(row.id))?.statBonuses])).toEqual({
+      ac: 1,
+      floors: { con: 19 },
+    });
+  });
+
   it("resolves an SRD index to its own slot, and a bad one to nothing", async () => {
     await addItem(sheet, formData({ name: "Shield", srdIndex: "shield" }));
     await addItem(sheet, formData({ name: "Nonsense", srdIndex: "not-a-real-item" }));

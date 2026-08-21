@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { ITEM_CATEGORIES, searchItems } from "@/lib/srd-data";
+import { ITEM_CATEGORIES, localizedItemName, searchItems } from "@/lib/srd-data";
 import { categoryArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Pagination } from "@/components/Pagination";
@@ -21,7 +21,7 @@ export default async function ItemsPage({
   searchParams: Promise<{ q?: string; cat?: string; page?: string }>;
 }) {
   const user = await getCurrentUser();
-  const { t } = await getT();
+  const { t, locale } = await getT();
   const { q = "", cat = "", page: pageRaw = "1" } = await searchParams;
   const category = ITEM_CATEGORIES.some((c) => c === cat) ? cat : "";
   const results = searchItems(q, category);
@@ -101,39 +101,48 @@ export default async function ItemsPage({
         </p>
 
         <ul className="divide-y divide-ink-700 rounded-sm border border-ink-700 bg-ink-900/85">
-          {shown.map((item) => (
-            <li key={item.index}>
-              <Link
-                href={`/compendium/items/${item.index}`}
-                className="group flex items-center gap-3 px-4 py-2.5"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={categoryArt(item.category)}
-                  alt=""
-                  loading="lazy"
-                  className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
-                />
-                {/* Same treatment as the spell list: the rarity is a chip, so
-                    it never runs into the name as one word. */}
-                <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
-                    {item.name}
-                  </span>
-                  {item.rarity && (
-                    <span className="rounded-sm border border-amber-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
-                      {item.rarity}
+          {shown.map((item) => {
+            const name = localizedItemName(item, locale);
+            return (
+              <li key={item.index}>
+                <Link
+                  href={`/compendium/items/${item.index}`}
+                  className="group flex items-center gap-3 px-4 py-2.5"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={categoryArt(item.category)}
+                    alt=""
+                    loading="lazy"
+                    className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
+                  />
+                  {/* Same treatment as the spell list: the rarity is a chip, so
+                      it never runs into the name as one word. */}
+                  <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                      {name}
                     </span>
-                  )}
-                </span>
-                <span className="hidden text-xs text-parchment-500 sm:block">
-                  {[item.sub, item.damage, item.ac && `AC ${item.ac}`, item.cost]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              </Link>
-            </li>
-          ))}
+                    {/* The SRD's own name, kept in sight: it is the one the
+                        description below speaks, and the one every other table
+                        at the game will say out loud. */}
+                    {name !== item.name && (
+                      <span className="text-xs text-parchment-500">{item.name}</span>
+                    )}
+                    {item.rarity && (
+                      <span className="rounded-sm border border-amber-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                        {item.rarity}
+                      </span>
+                    )}
+                  </span>
+                  <span className="hidden text-xs text-parchment-500 sm:block">
+                    {[item.sub, item.damage, item.ac && `AC ${item.ac}`, item.cost]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
           {shown.length === 0 && (
             <li className="px-4 py-6 text-sm text-parchment-500">{t("compendium.noResults")}</li>
           )}

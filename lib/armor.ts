@@ -1,9 +1,14 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { characterItems, db, worldItems } from "@/lib/db";
 import type { AcDexRule, Character, WorldItemSlot } from "@/lib/db/schema";
-import { AC_DEX_LABEL, mod, type AcBreakdown, type AcPart } from "@/lib/dnd";
+import { AC_DEX_LABEL, abilityScore, mod, type AcBreakdown, type AcPart } from "@/lib/dnd";
 import { armorAcFor } from "@/lib/srd-data";
-import { parseStatBonuses, sumStatBonuses, type StatBonuses } from "@/lib/world-items";
+import {
+  parseStatBonuses,
+  sumStatBonuses,
+  type AbilityFloors,
+  type StatBonuses,
+} from "@/lib/world-items";
 
 /**
  * What the sheet is actually protected by.
@@ -36,9 +41,10 @@ import { parseStatBonuses, sumStatBonuses, type StatBonuses } from "@/lib/world-
  * additions to an armour class rather than competing statements of one.
  *
  * The DEX modifier is the *worn* one: `bonuses` is what the pieces add to the
- * ability scores, so a ring of +2 DEX moves the armour class the same way it
- * moves Stealth. Nothing is written back — take the ring off and the number
- * returns by arithmetic.
+ * ability scores — and, in its `floors`, the scores they set outright — so a
+ * ring of +2 DEX moves the armour class the same way it moves Stealth, and so
+ * does an ioun stone of agility. Nothing is written back: take the ring off
+ * and the number returns by arithmetic.
  */
 
 /** An equipped line, as much of it as the armour rules care about. */
@@ -81,12 +87,17 @@ function handBonus(piece: WornForAc): number | null {
 export function effectiveAc(
   character: Pick<Character, "armorClass" | "dex">,
   worn: readonly WornForAc[],
-  bonuses: StatBonuses = {}
+  bonuses: StatBonuses = {},
+  floors: AbilityFloors = bonuses.floors ?? {}
 ): AcBreakdown {
   const equipped = worn.filter((piece) => piece.slot !== null);
-  // The score the character is *wearing*, not the one stored on the sheet.
+  // The score the character is *wearing*, not the one stored on the sheet —
+  // raised by what the gear adds and floored by what it sets, so a piece that
+  // states a DEX score moves the armour class the same way it moves Stealth.
   const dexMod =
-    character.dex === null ? null : mod(character.dex + (bonuses.dex ?? 0));
+    character.dex === null
+      ? null
+      : mod(abilityScore(character.dex, bonuses.dex ?? 0, floors.dex));
 
   const parts: AcPart[] = [];
   // One line per slot is the database's guarantee, so these are lookups

@@ -3,7 +3,8 @@ import { and, asc, eq, or } from "drizzle-orm";
 import { db, characters, campaigns, users } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { getItem, magicAcBonus } from "@/lib/srd-data";
+import { getItem, localizedItemName, srdItemBonuses } from "@/lib/srd-data";
+import { parseStatBonuses } from "@/lib/world-items";
 import { addItemToCharacter } from "@/lib/compendium-actions";
 import { categoryArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -16,10 +17,11 @@ export default async function ItemPage({
   params: Promise<{ index: string }>;
 }) {
   const user = await getCurrentUser();
-  const { t } = await getT();
+  const { t, locale } = await getT();
   const { index } = await params;
   const item = getItem(index);
   if (!item) notFound();
+  const name = localizedItemName(item, locale);
 
   /**
    * Where this item could go: my own sheets, plus every sheet at a table I
@@ -44,7 +46,12 @@ export default async function ItemPage({
         .orderBy(asc(campaigns.name), asc(characters.name))
     : [];
 
-  const acBonus = magicAcBonus(item);
+  // The bonus this page advertises is the one the sheet will actually count —
+  // read off the same snapshot the "add to a character" button writes, rather
+  // than off the prose a second time. A conditional bonus (bracers of defense,
+  // an arrow-catching shield) therefore states itself in the description only,
+  // instead of promising a number no character ever receives.
+  const acBonus = parseStatBonuses(srdItemBonuses(item)).ac ?? null;
   const facts: Array<[string, string | null]> = [
     [t("compendium.items.cost"), item.cost],
     [t("compendium.items.weight"), item.weight != null ? `${item.weight} lb.` : null],
@@ -76,11 +83,15 @@ export default async function ItemPage({
             <div className="flex items-center gap-3">
               <ItemIcon category={item.category} size={30} className="shrink-0 text-blood-400" />
               <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
-                {item.name}
+                {name}
               </h1>
             </div>
+            {/* The subtitle carries the SRD's own name when the heading is a
+                translation: the description below is in that language, and so
+                is every other book on the table. */}
             <p className="mt-1 text-sm italic text-parchment-500">
               {[
+                name !== item.name ? item.name : null,
                 t(`compendium.items.categories.${item.category}`),
                 item.sub,
                 item.attunement ? t("compendium.items.attunement") : null,
