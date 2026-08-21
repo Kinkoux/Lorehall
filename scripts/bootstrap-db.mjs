@@ -418,6 +418,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS users_email_unique ON users (email) WHERE emai
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });
 try {
   await sql.unsafe(DDL);
+  // Row-level security as a lockout, not a policy set. The app reaches this
+  // database over its own server-side connection as the table owner, which
+  // RLS does not bind; Supabase's Data API roles (anon/authenticated) hold no
+  // policies here, so with RLS enabled that whole surface reads and writes
+  // nothing. Runs over pg_tables so tables added above are always covered.
+  const bare = await sql`
+    select tablename from pg_tables
+    where schemaname = 'public' and rowsecurity = false`;
+  for (const { tablename } of bare) {
+    await sql.unsafe(`ALTER TABLE "${tablename}" ENABLE ROW LEVEL SECURITY`);
+  }
+  if (bare.length > 0) console.log(`RLS açıldı: ${bare.length} tablo.`);
   const tables = await sql`
     select count(*)::int as n from information_schema.tables
     where table_schema = 'public'`;
