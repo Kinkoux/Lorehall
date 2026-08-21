@@ -9,6 +9,13 @@ export const common = {
       signOut: "Sign out",
       join: "Create account",
       language: "Language",
+      menu: "Menu",
+    },
+    /** Shared wording for the two-press <details> confirmations. */
+    confirm: {
+      areYouSure: "This cannot be undone.",
+      yesDelete: "Yes, delete",
+      cancelHint: "Fold this back up to keep it.",
     },
     back: "Back",
     save: "Save",
@@ -29,6 +36,12 @@ export const common = {
       signOut: "Çıkış",
       join: "Hesap aç",
       language: "Dil",
+      menu: "Menü",
+    },
+    confirm: {
+      areYouSure: "Bu geri alınamaz.",
+      yesDelete: "Evet, sil",
+      cancelHint: "Vazgeçmek için kapağı geri kapat.",
     },
     back: "Geri",
     save: "Kaydet",

@@ -4,6 +4,7 @@ import { deleteMap, setActiveMap, setMapVisibility } from "@/lib/map-actions";
 import type { Locale, T } from "@/lib/i18n";
 import { EMPTY_ART } from "@/lib/ui-art";
 import { IconX } from "@/components/Icons";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { MapUploadForm } from "@/components/MapUploadForm";
 import { Card, DmBadge, SectionTitle } from "@/components/ui";
 import { SmallButton } from "./shared";
@@ -24,7 +25,7 @@ export function MapsSection({
   const visibleMaps = isDm ? maps : maps.filter((m) => m.visibility === "everyone");
 
   return (
-    <section className="mt-10 space-y-4">
+    <section id="maps" className="mt-10 scroll-mt-28 space-y-4">
       <SectionTitle>{t("campaign.maps.title")}</SectionTitle>
       {isDm && <p className="-mt-2 text-xs text-parchment-500">{t("campaign.maps.hint")}</p>}
       {visibleMaps.length === 0 && (
@@ -96,9 +97,15 @@ export function MapsSection({
                       }
                     />
                   </form>
-                  <form action={deleteMap.bind(null, map.id)}>
-                    <SmallButton label={<IconX size={12} />} danger ariaLabel={t("common.delete")} />
-                  </form>
+                  <ConfirmButton
+                    label={<IconX size={12} />}
+                    confirmLabel={t("common.confirm.yesDelete")}
+                    warnText={t("common.confirm.areYouSure")}
+                    action={deleteMap.bind(null, map.id)}
+                    danger
+                    group="map-delete"
+                    ariaLabel={t("common.delete")}
+                  />
                 </div>
               )}
             </Card>

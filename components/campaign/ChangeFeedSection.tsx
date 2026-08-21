@@ -63,7 +63,7 @@ export function ChangeFeedSection({
       // grow — but a filtered view always opens, or the chip you just
       // clicked would answer into a closed drawer.
       open={feedEvents.length < FEED_OPEN_UNDER || Boolean(activeFeed)}
-      className="group mt-10"
+      className="group mt-10 scroll-mt-28"
     >
       <summary className="flex cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
         <IconChevron

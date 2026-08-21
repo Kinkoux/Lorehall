@@ -3,6 +3,7 @@ import { addQuest, deleteQuest, setQuestStatus } from "@/lib/quest-actions";
 import type { Locale, T } from "@/lib/i18n";
 import { EMPTY_ART } from "@/lib/ui-art";
 import { IconScroll, IconX } from "@/components/Icons";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import {
   Button,
   Card,
@@ -75,13 +76,15 @@ export function QuestsSection({
                 <form action={setQuestStatus.bind(null, quest.id, "failed")}>
                   <SmallButton label={t("campaign.quests.failed")} danger />
                 </form>
-                <form action={deleteQuest.bind(null, quest.id)}>
-                  <SmallButton
-                    label={<IconX size={12} />}
-                    danger
-                    ariaLabel={t("campaign.quests.delete")}
-                  />
-                </form>
+                <ConfirmButton
+                  label={<IconX size={12} />}
+                  confirmLabel={t("common.confirm.yesDelete")}
+                  warnText={t("common.confirm.areYouSure")}
+                  action={deleteQuest.bind(null, quest.id)}
+                  danger
+                  group="quest-delete"
+                  ariaLabel={t("campaign.quests.delete")}
+                />
               </span>
             )}
           </div>

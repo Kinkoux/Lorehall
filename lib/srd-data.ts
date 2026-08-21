@@ -177,6 +177,32 @@ export const CR_LABELS = [...new Set(MONSTERS.map((m) => m.crLabel))].sort(
   (a, b) => crValue(a) - crValue(b)
 );
 
+/**
+ * The creature type an SRD line reduces to, for filtering. The data writes its
+ * types out in full — "fiend (devil)", "humanoid (any race)", "swarm of Tiny
+ * beasts" — which is thirty-three distinct strings, far more than a dropdown
+ * can usefully hold. The parenthetical is the sub-race, so it comes off; a
+ * swarm files under one bucket of its own rather than under the beast it is
+ * made of, because "show me the swarms" is the question people actually ask.
+ */
+export function monsterBaseType(type: string): string {
+  const text = type.trim().toLowerCase();
+  if (text.startsWith("swarm")) return "swarm";
+  const paren = text.indexOf("(");
+  return (paren === -1 ? text : text.slice(0, paren)).trim();
+}
+
+/** The buckets the rule above leaves, alphabetically: the type dropdown. */
+export const MONSTER_TYPES = [
+  ...new Set(MONSTERS.map((m) => monsterBaseType(m.type))),
+].sort();
+
+/** Sizes in the order the game lists them, narrowed to those in the data. */
+const SIZE_ORDER = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
+export const MONSTER_SIZES = SIZE_ORDER.filter((size) =>
+  MONSTERS.some((m) => m.size === size)
+);
+
 function crValue(label: string) {
   if (label.includes("/")) {
     const [n, d] = label.split("/").map(Number);
@@ -217,12 +243,21 @@ export function searchItems(q: string, category: string) {
   );
 }
 
-export function searchMonsters(q: string, cr: string) {
+/**
+ * `type` matches the base type (see monsterBaseType), so "fiend" catches the
+ * devils and the demons; `size` matches the SRD word, case-insensitively, so a
+ * URL may carry either "Medium" or "medium".
+ */
+export function searchMonsters(q: string, cr: string, type = "", size = "") {
   const needle = q.trim().toLowerCase();
+  const wantedType = type.trim().toLowerCase();
+  const wantedSize = size.trim().toLowerCase();
   return MONSTERS.filter(
     (m) =>
       (!needle || m.name.toLowerCase().includes(needle)) &&
-      (!cr || m.crLabel === cr)
+      (!cr || m.crLabel === cr) &&
+      (!wantedType || monsterBaseType(m.type) === wantedType) &&
+      (!wantedSize || m.size.toLowerCase() === wantedSize)
   );
 }
 

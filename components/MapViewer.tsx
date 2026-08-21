@@ -1,10 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { IconExpand } from "@/components/Icons";
+import { makeT, type Locale } from "@/lib/i18n";
 
 type Transform = { x: number; y: number; scale: number };
-type Labels = { zoomIn: string; zoomOut: string; reset: string; fullscreen: string };
+type Labels = {
+  zoomIn: string;
+  zoomOut: string;
+  reset: string;
+  fullscreen: string;
+  /** Optional — falls back to `campaign.maps.viewer.wheelHint` in the page's language. */
+  wheelHint?: string;
+  /** Optional — falls back to `campaign.maps.viewer.label` in the page's language. */
+  viewerLabel?: string;
+};
 /** Square grid in pixels of the ORIGINAL image, aligned by the DM. */
 export type MapGrid = { size: number; offsetX: number; offsetY: number };
 
@@ -13,12 +23,48 @@ const MAX_SCALE = 10;
 const KEEP_VISIBLE = 0.18;
 /** Softens button/double-click zoom only — drag and pinch stay direct. */
 const SMOOTH_MS = 180;
+/** Arrow-key pan, in screen pixels; Shift takes a page-sized stride instead. */
+const PAN_STEP = 40;
+const PAN_STEP_FAST = 200;
+/** One press of the +/− keys or the toolbar buttons. */
+const KEY_ZOOM = 1.3;
+/** <html lang> is fixed for the life of the document — nothing to subscribe to. */
+const NEVER_CHANGES = () => () => {};
+
+/**
+ * Wheel delta → zoom factor. Trackpads emit a stream of small deltas, so the
+ * factor follows the delta magnitude instead of jumping a fixed step per tick.
+ * `viewportHeight` only matters for page-mode (deltaMode 2) wheels.
+ */
+export function wheelZoomFactor(deltaY: number, deltaMode: number, viewportHeight: number) {
+  const unit = deltaMode === 1 ? 16 : deltaMode === 2 ? viewportHeight : 1;
+  return Math.min(1.6, Math.max(1 / 1.6, Math.exp(-deltaY * unit * 0.0015)));
+}
+
+/**
+ * Arrow key → transform delta, or null for a key the viewer does not pan with.
+ * The keys move the *view*, so the image translates the other way: pressing
+ * ArrowRight reveals what lies to the right by sliding the map left.
+ */
+export function keyboardPan(key: string, shift: boolean): { dx: number; dy: number } | null {
+  const step = shift ? PAN_STEP_FAST : PAN_STEP;
+  if (key === "ArrowLeft") return { dx: step, dy: 0 };
+  if (key === "ArrowRight") return { dx: -step, dy: 0 };
+  if (key === "ArrowUp") return { dx: 0, dy: step };
+  if (key === "ArrowDown") return { dx: 0, dy: -step };
+  return null;
+}
 
 /**
  * Pan/zoom image viewer for uploaded maps: drag to pan, wheel or pinch to
- * zoom, double-click to refit, fullscreen for the table TV. Pure CSS
- * transform with origin 0 0 — screen = translate + scale * imagePoint.
+ * zoom, arrow keys to pan, double-click to refit, fullscreen for the table TV.
+ * Pure CSS transform with origin 0 0 — screen = translate + scale * imagePoint.
  * The optional grid is drawn in image space so it pans and zooms with the map.
+ *
+ * Embedded in a page the viewer is a good neighbour and never eats the page's
+ * own scroll: the wheel zooms only with Ctrl/Cmd held, and a lone finger scrolls
+ * the page (`touch-pan-y`) while two fingers pinch and pan the map. Fullscreen
+ * is the map's own screen, so there every gesture goes straight to the map.
  */
 export function MapViewer({
   src,
@@ -51,6 +97,33 @@ export function MapViewer({
   const smoothTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const patternId = `mapgrid-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+
+  // Gesture rules differ inside fullscreen, so the viewer has to know it is
+  // there. Both of these read the DOM rather than React state, and both must
+  // start out false/"en" on the server to hydrate without a mismatch.
+  const subscribeFullscreen = useCallback((onChange: () => void) => {
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const isFull = useSyncExternalStore(
+    subscribeFullscreen,
+    // The ref is still empty on the first render, and an unset fullscreenElement
+    // is null too — without the guard `null === null` would claim fullscreen.
+    () => containerRef.current !== null && document.fullscreenElement === containerRef.current,
+    () => false
+  );
+
+  // The page's language lives on <html lang>, and the two call sites pass their
+  // own strings in `labels`; this is the fallback when they do not.
+  const locale = useSyncExternalStore<Locale>(
+    NEVER_CHANGES,
+    () => (document.documentElement.lang === "tr" ? "tr" : "en"),
+    () => "en"
+  );
+
+  const t9n = makeT(locale);
+  const wheelHint = labels.wheelHint ?? t9n("campaign.maps.viewer.wheelHint");
+  const viewerLabel = labels.viewerLabel ?? t9n("campaign.maps.viewer.label");
 
   const clampScale = useCallback((s: number) => {
     const fitS = fitScale.current;
@@ -136,23 +209,23 @@ export function MapViewer({
   );
 
   // React's onWheel is passive — attach manually so preventDefault works.
-  // Trackpads emit a stream of small deltas, so the factor follows the delta
-  // magnitude instead of jumping a fixed step per tick.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
+      // In the page, a plain wheel belongs to the page: let it through untouched
+      // so scrolling past a tall map still works. Ctrl/Cmd asks for zoom, and a
+      // trackpad pinch arrives as a ctrlKey wheel, so that lands here too.
+      if (!isFull && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
       stopSmooth();
-      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
-      const dy = e.deltaY * unit;
-      const factor = Math.min(1.6, Math.max(1 / 1.6, Math.exp(-dy * 0.0015)));
       const rect = el.getBoundingClientRect();
+      const factor = wheelZoomFactor(e.deltaY, e.deltaMode, el.clientHeight);
       zoomAt(e.clientX - rect.left, e.clientY - rect.top, factor);
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [stopSmooth, zoomAt]);
+  }, [isFull, stopSmooth, zoomAt]);
 
   const handleLoaded = useCallback(() => {
     const img = imgRef.current;
@@ -194,11 +267,20 @@ export function MapViewer({
     dragging.current = false;
   }
 
+  /**
+   * One finger on an embedded map scrolls the page (see `touch-pan-y`), so only
+   * two-finger gestures reach the map there. A mouse or pen has no such duty and
+   * drags with one pointer everywhere, as does a finger in fullscreen.
+   */
+  function canDragWithOne(pointerType: string) {
+    return isFull || pointerType !== "touch";
+  }
+
   function onPointerDown(e: React.PointerEvent) {
     stopSmooth();
     containerRef.current?.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.current.size === 1) dragging.current = true;
+    if (pointers.current.size === 1 && canDragWithOne(e.pointerType)) dragging.current = true;
     startPinchIfTwo();
   }
 
@@ -237,6 +319,31 @@ export function MapViewer({
     fit();
   }
 
+  /**
+   * Keyboard driving for the focused viewer. Only the container's own key
+   * presses count — while a toolbar button has focus its keys stay its own.
+   */
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.target !== e.currentTarget) return;
+    const pan = keyboardPan(e.key, e.shiftKey);
+    if (pan) {
+      e.preventDefault();
+      stopSmooth();
+      setT((p) => clampT({ ...p, x: p.x + pan.dx, y: p.y + pan.dy }));
+      return;
+    }
+    if (e.key === "+" || e.key === "=") {
+      e.preventDefault();
+      zoomCenter(KEY_ZOOM);
+    } else if (e.key === "-" || e.key === "_") {
+      e.preventDefault();
+      zoomCenter(1 / KEY_ZOOM);
+    } else if (e.key === "0") {
+      e.preventDefault();
+      refit();
+    }
+  }
+
   function toggleFullscreen() {
     const el = containerRef.current;
     if (!el) return;
@@ -256,12 +363,20 @@ export function MapViewer({
   return (
     <div
       ref={containerRef}
-      className={`relative touch-none select-none overflow-hidden rounded-sm border border-ink-600 bg-ink-950 cursor-grab active:cursor-grabbing ${className}`}
+      role="group"
+      aria-label={viewerLabel}
+      tabIndex={0}
+      className={
+        "relative select-none overflow-hidden rounded-sm border border-ink-600 bg-ink-950 " +
+        "cursor-grab active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 " +
+        `focus-visible:outline-gold-400 ${isFull ? "touch-none" : "touch-pan-y"} ${className}`
+      }
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerEnd}
       onPointerCancel={onPointerEnd}
       onDoubleClick={refit}
+      onKeyDown={onKeyDown}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -320,6 +435,16 @@ export function MapViewer({
           <IconExpand size={15} />
         </button>
       </div>
+      {/* Says why a plain wheel scrolls past the map. Fullscreen zooms freely, so
+          there the badge would be a lie — and clutter on the table screen. */}
+      {!isFull && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute bottom-2 left-2 rounded-sm border border-ink-700/60 bg-ink-950/70 px-2 py-1 text-[11px] leading-none text-parchment-500/80"
+        >
+          {wheelHint}
+        </div>
+      )}
     </div>
   );
 }

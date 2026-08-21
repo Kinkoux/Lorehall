@@ -32,6 +32,7 @@ import { AutoRefresh } from "@/components/AutoRefresh";
 import { DiceRoller } from "@/components/DiceRoller";
 import { AddCombatantForm } from "@/components/AddCombatantForm";
 import { MapViewer } from "@/components/MapViewer";
+import { PlayBar } from "@/components/session/PlayBar";
 import {
   IconBookmark,
   IconDie,
@@ -140,7 +141,21 @@ export default async function SessionPage({
     <>
       {live && <AutoRefresh intervalMs={3000} />}
       <SiteHeader user={user} />
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-8 pt-3">
+        {/* Round, turn and the way back to the three landmarks — pinned, so
+            none of it depends on where the page is parked. */}
+        <PlayBar
+          title={session.title}
+          live={live}
+          combatActive={combatActive}
+          round={session.round}
+          turnIndex={session.turnIndex}
+          order={order}
+          isDm={access.isDm}
+          sessionId={sessionId}
+          t={t}
+        />
+
         <BackLink href={`/c/${session.campaignId}`}>{access.campaign.name}</BackLink>
 
         <div className="mt-2 mb-6 flex flex-wrap items-center gap-3">
@@ -207,7 +222,7 @@ export default async function SessionPage({
                     ))}
                   </Select>
                 </label>
-                <Button type="submit" className="shrink-0">
+                <Button type="submit" className="min-h-11 shrink-0">
                   {t("session.map.set")}
                 </Button>
               </form>
@@ -236,7 +251,7 @@ export default async function SessionPage({
                   ))}
                 </Select>
               </label>
-              <Button type="submit" className="shrink-0">
+              <Button type="submit" className="min-h-11 shrink-0">
                 {t("session.map.set")}
               </Button>
             </form>
@@ -254,7 +269,7 @@ export default async function SessionPage({
                   defaultValue={session.recap ?? ""}
                   placeholder={t("session.recap.placeholder")}
                 />
-                <Button type="submit">{t("session.recap.save")}</Button>
+                <Button type="submit" className="min-h-11">{t("session.recap.save")}</Button>
               </form>
             ) : (
               <p className="mt-3 whitespace-pre-wrap leading-relaxed text-parchment-100">
@@ -266,7 +281,8 @@ export default async function SessionPage({
 
         <div className="grid gap-8 lg:grid-cols-[2fr_1fr]">
           <section className="space-y-4">
-            <div className="flex items-center justify-between gap-3">
+            {/* scroll-mt keeps the play bar off the heading it just jumped to. */}
+            <div id="initiative" className="flex scroll-mt-28 flex-wrap items-center justify-between gap-3">
               <SectionTitle>{t("session.initiative.title")}</SectionTitle>
               {live && access.isDm && (
                 <div className="flex shrink-0 items-center gap-2">
@@ -281,7 +297,7 @@ export default async function SessionPage({
                     <button
                       type="submit"
                       title={t("session.monsterHp.toggleTitle")}
-                      className="rounded border border-ink-600 px-2 py-1 text-[11px] font-bold text-parchment-500 transition hover:border-gold-500 hover:text-gold-300 cursor-pointer"
+                      className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-ink-600 px-2 py-1 text-[11px] font-bold text-parchment-500 transition hover:border-gold-500 hover:text-gold-300 cursor-pointer"
                     >
                       {t("session.monsterHp.label")}:{" "}
                       <span
@@ -299,11 +315,13 @@ export default async function SessionPage({
                     <>
                       {order.length > 0 && (
                         <form action={nextTurn.bind(null, sessionId)}>
-                          <Button type="submit">{t("session.initiative.nextTurn")}</Button>
+                          <Button type="submit" className="min-h-11">
+                            {t("session.initiative.nextTurn")}
+                          </Button>
                         </form>
                       )}
                       <form action={endCombat.bind(null, sessionId)}>
-                        <GhostButton type="submit" className="!px-3 !py-1.5 text-xs">
+                        <GhostButton type="submit" className="min-h-11 !px-3 !py-1.5 text-xs">
                           {t("session.initiative.endCombat")}
                         </GhostButton>
                       </form>
@@ -311,7 +329,7 @@ export default async function SessionPage({
                   ) : (
                     order.length > 0 && (
                       <form action={startCombat.bind(null, sessionId)}>
-                        <Button type="submit">
+                        <Button type="submit" className="min-h-11">
                           <IconSwords size={16} /> {t("session.initiative.startCombat")}
                         </Button>
                       </form>
@@ -377,9 +395,10 @@ export default async function SessionPage({
                       min={-10}
                       max={50}
                       placeholder="d20"
+                      className="min-h-11"
                     />
                   </label>
-                  <Button type="submit" className="min-w-32 flex-1">
+                  <Button type="submit" className="min-h-11 min-w-32 flex-1">
                     {t("session.initiative.join")}
                   </Button>
                 </form>
@@ -408,7 +427,7 @@ export default async function SessionPage({
                         ))}
                       </Select>
                     </label>
-                    <Button type="submit" className="shrink-0">
+                    <Button type="submit" className="min-h-11 shrink-0">
                       <IconSwords size={16} />
                       {t("session.add.deploy")}
                     </Button>
@@ -419,7 +438,7 @@ export default async function SessionPage({
 
             {live && access.isDm && (
               <details className="pt-4">
-                <summary className="cursor-pointer font-display text-sm uppercase tracking-wide text-blood-400 hover:underline">
+                <summary className="min-h-11 cursor-pointer py-3 font-display text-sm uppercase tracking-wide text-blood-400 hover:underline">
                   {t("session.end.title")}
                 </summary>
                 <Card className="mt-3">
@@ -428,7 +447,7 @@ export default async function SessionPage({
                       <Label>{t("session.recap.optional")}</Label>
                       <Textarea name="recap" rows={4} placeholder={t("session.recap.placeholder")} />
                     </label>
-                    <GhostButton type="submit" className="!border-blood-500 !text-blood-400">
+                    <GhostButton type="submit" className="min-h-11 !border-blood-500 !text-blood-400">
                       {t("session.end.title")}
                     </GhostButton>
                   </form>
@@ -502,7 +521,7 @@ export default async function SessionPage({
                               >
                                 <button
                                   type="submit"
-                                  className="rounded border border-ink-600 px-1.5 py-0.5 text-[11px] font-bold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300 cursor-pointer"
+                                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-ink-600 px-1.5 py-0.5 text-[11px] font-bold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300 cursor-pointer"
                                 >
                                   {beat.status === "current"
                                     ? t("session.script.done")
@@ -520,18 +539,18 @@ export default async function SessionPage({
             )}
 
             {live && (
-              <Card>
+              <Card id="dice" className="scroll-mt-28">
                 <h3 className="mb-3 font-display text-base text-gold-300">{t("session.dice.title")}</h3>
                 <DiceRoller sessionId={sessionId} locale={locale} />
               </Card>
             )}
 
-            <Card>
+            <Card id="log" className="scroll-mt-28">
               <h3 className="mb-3 font-display text-base text-gold-300">{t("session.log.title")}</h3>
               {live && (
                 <form action={addTableNote.bind(null, sessionId)} className="mb-4 flex gap-2">
-                  <Input name="note" placeholder={t("session.log.placeholder")} required />
-                  <Button type="submit" className="shrink-0">
+                  <Input name="note" placeholder={t("session.log.placeholder")} required className="min-h-11" />
+                  <Button type="submit" className="min-h-11 shrink-0">
                     {t("session.log.note")}
                   </Button>
                 </form>
@@ -706,7 +725,9 @@ function CombatantRow({
           <p className="font-semibold text-parchment-100">
             {isTurn && <span className="mr-1 text-gold-400">▶</span>}
             {combatant.name}
-            {isMe && <span className="ml-2 text-[11px] uppercase tracking-wide text-parchment-500">{t("session.combatant.you")}</span>}
+            {/* Reads on the gold active-turn row too: parchment-500 on ink-800
+                lands at 4.34:1, under the 4.5 this 11px label needs. */}
+            {isMe && <span className="ml-2 text-[11px] uppercase tracking-wide text-parchment-300">{t("session.combatant.you")}</span>}
           </p>
           {combatant.conditions && (
             <p className="text-xs font-semibold text-amber-800">{combatant.conditions}</p>
@@ -770,7 +791,7 @@ function CombatantRow({
               <form action={recordDeathSave.bind(null, sessionId, combatant.id, "success")}>
                 <button
                   type="submit"
-                  className="rounded border border-emerald-700/60 px-1.5 py-0.5 text-[11px] font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-emerald-700/60 px-1.5 py-0.5 text-[11px] font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
                 >
                   {t("session.combatant.plusSave")}
                 </button>
@@ -778,7 +799,7 @@ function CombatantRow({
               <form action={recordDeathSave.bind(null, sessionId, combatant.id, "fail")}>
                 <button
                   type="submit"
-                  className="rounded border border-blood-500 px-1.5 py-0.5 text-[11px] font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-blood-500 px-1.5 py-0.5 text-[11px] font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
                 >
                   {t("session.combatant.plusFail")}
                 </button>
@@ -786,7 +807,7 @@ function CombatantRow({
               <form action={recordDeathSave.bind(null, sessionId, combatant.id, "reset")}>
                 <button
                   type="submit"
-                  className="rounded border border-ink-600 px-1.5 py-0.5 text-[11px] text-parchment-500 transition hover:border-gold-500 cursor-pointer"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-ink-600 px-1.5 py-0.5 text-[11px] text-parchment-500 transition hover:border-gold-500 cursor-pointer"
                 >
                   {t("session.combatant.reset")}
                 </button>
@@ -809,13 +830,13 @@ function CombatantRow({
                 min={0}
                 max={999}
                 defaultValue={1}
-                className="!w-16 !py-1"
+                className="!w-16 min-h-11 !py-1"
               />
               <button
                 type="submit"
                 name="op"
                 value="damage"
-                className="rounded border border-blood-500 px-2 py-1 text-xs font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-blood-500 px-2 py-1 text-xs font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
               >
                 {t("session.combatant.damage")}
               </button>
@@ -823,7 +844,7 @@ function CombatantRow({
                 type="submit"
                 name="op"
                 value="heal"
-                className="rounded border border-emerald-700/60 px-2 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-emerald-700/60 px-2 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
               >
                 {t("session.combatant.heal")}
               </button>
@@ -832,7 +853,7 @@ function CombatantRow({
                 name="op"
                 value="temp"
                 title={t("session.combatant.tempTitle")}
-                className="rounded border border-sky-700/60 px-2 py-1 text-xs font-bold text-sky-800 transition hover:bg-sky-200/60 cursor-pointer"
+                className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-sky-700/60 px-2 py-1 text-xs font-bold text-sky-800 transition hover:bg-sky-200/60 cursor-pointer"
               >
                 {t("session.combatant.temp")}
               </button>
@@ -849,11 +870,11 @@ function CombatantRow({
                   name="conditions"
                   defaultValue={combatant.conditions ?? ""}
                   placeholder={t("session.combatant.conditionsPlaceholder")}
-                  className="!py-1 min-w-32"
+                  className="min-h-11 !py-1 min-w-32"
                 />
                 <button
                   type="submit"
-                  className="rounded border border-ink-600 px-2 py-1 text-xs font-bold text-parchment-300 transition hover:border-gold-500 cursor-pointer"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-ink-600 px-2 py-1 text-xs font-bold text-parchment-300 transition hover:border-gold-500 cursor-pointer"
                 >
                   {t("session.combatant.set")}
                 </button>
@@ -861,11 +882,11 @@ function CombatantRow({
               <form action={removeCombatant.bind(null, sessionId, combatant.id)}>
                 <button
                   type="submit"
-                  className="rounded border border-ink-600 px-2 py-1 text-xs text-parchment-500 transition hover:border-blood-500 hover:text-blood-400 cursor-pointer"
+                  className="inline-flex min-h-11 min-w-11 items-center justify-center rounded border border-ink-600 px-2 py-1 text-xs text-parchment-500 transition hover:border-blood-500 hover:text-blood-400 cursor-pointer"
                   title={t("session.combatant.removeTitle")}
                   aria-label={t("session.combatant.removeTitle")}
                 >
-                  <IconX size={12} />
+                  <IconX size={14} />
                 </button>
               </form>
             </>

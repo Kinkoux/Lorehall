@@ -93,9 +93,19 @@ export function Label({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * A form's complaint. It only exists once there is something to say — an
+ * empty live region that is later filled announces nothing in some readers,
+ * and an always-present `role="alert"` on an empty node is noise. Mounting
+ * the node with the message is what makes it speak.
+ */
 export function ErrorText({ children }: { children: ReactNode }) {
   if (!children) return null;
-  return <p className="text-sm text-blood-400">{children}</p>;
+  return (
+    <p role="alert" aria-live="polite" className="text-sm text-blood-400">
+      {children}
+    </p>
+  );
 }
 
 /**

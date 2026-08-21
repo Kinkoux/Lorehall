@@ -29,7 +29,7 @@ import {
 } from "@/lib/dnd";
 import { effectiveAc } from "@/lib/armor";
 import { SKILLS } from "@/lib/srd";
-import { getItem, requiredSlot } from "@/lib/srd-data";
+import { getItem, getSpell, itemSummary, requiredSlot, spellSummary } from "@/lib/srd-data";
 import {
   AC_BASE_MAX,
   AC_BASE_MIN,
@@ -64,6 +64,7 @@ import { getT } from "@/lib/locale";
 import type { T } from "@/lib/i18n";
 import { categoryArt, classArtFor, EMPTY_ART } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { PortraitUploadForm } from "@/components/PortraitUploadForm";
 import { AutocompleteInput } from "@/components/character/AutocompleteInput";
 import { EquipmentPanel, type EquippedPiece } from "@/components/character/EquipmentPanel";
@@ -104,6 +105,8 @@ type InventoryLineShape = CharacterItem & {
   category: string | null;
   /** Where its source insists it is worn, or null when nothing insists. */
   requiredSlot: WorldItemSlot | null;
+  /** The library entry's own prose, for the hover preview on its link. */
+  sourceDescription: string | null;
 };
 
 export default async function CharacterPage({
@@ -191,6 +194,8 @@ export default async function CharacterPage({
     // enforces, so the button the sheet offers cannot promise a slot the
     // action would refuse.
     requiredSlot: requiredSlot(item.srdIndex, source),
+    // Only wanted for the one-touch preview hanging off the line's link.
+    sourceDescription: source?.description ?? null,
   }));
   const equipped: EquippedPiece[] = items.flatMap((item) =>
     item.equipped === 1 && item.slot
@@ -375,13 +380,13 @@ export default async function CharacterPage({
                       max={999}
                       defaultValue={1}
                       aria-label={t("character.hp.amount")}
-                      className="!w-16 !py-1"
+                      className="!w-16 min-h-11 !py-1"
                     />
                     <button
                       type="submit"
                       name="op"
                       value="damage"
-                      className="rounded border border-blood-500 px-2 py-1 text-xs font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
+                      className="inline-flex min-h-11 items-center rounded border border-blood-500 px-3 py-1 text-xs font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
                     >
                       {t("character.hp.damage")}
                     </button>
@@ -389,7 +394,7 @@ export default async function CharacterPage({
                       type="submit"
                       name="op"
                       value="heal"
-                      className="rounded border border-emerald-700/60 px-2 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
+                      className="inline-flex min-h-11 items-center rounded border border-emerald-700/60 px-3 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
                     >
                       {t("character.hp.heal")}
                     </button>
@@ -509,12 +514,14 @@ export default async function CharacterPage({
                       {/* Ticked, the name is taken at face value and the line
                           starts with no source at all — the way to add a
                           heirloom that happens to be called "Shield". */}
-                      <label className="flex items-center gap-2 text-sm text-parchment-300">
+                      {/* The tick is 20px so it still reads as a tick; the label
+                          around it is the 44px a finger aims at. */}
+                      <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-parchment-300">
                         <input
                           type="checkbox"
                           name="custom"
                           value="1"
-                          className="accent-[#8a6516]"
+                          className="h-5 w-5 accent-[#8a6516]"
                         />
                         {t("character.custom")}
                       </label>
@@ -595,9 +602,26 @@ export default async function CharacterPage({
                                   </button>
                                 </form>
                               )}
-                              <form action={deleteAbility.bind(null, ability.id)}>
-                                <IconButton label="✕" danger />
-                              </form>
+                              {/* A line struck off a sheet is gone — the notes,
+                                  the uses counter, all of it — so it takes two
+                                  presses. The rows share a fold group, so the
+                                  one opened before folds itself away. */}
+                              <ConfirmButton
+                                label={<DeleteMark />}
+                                confirmLabel={
+                                  <span className="flex min-h-9 items-center">
+                                    {t("common.confirm.yesDelete")}
+                                  </span>
+                                }
+                                warnText={t("common.confirm.areYouSure")}
+                                action={deleteAbility.bind(null, ability.id)}
+                                danger
+                                size="sm"
+                                group="ability-delete"
+                                ariaLabel={t("character.sheet.deleteAbility", {
+                                  name: ability.name,
+                                })}
+                              />
                             </div>
                           )}
                         </div>
@@ -628,12 +652,12 @@ export default async function CharacterPage({
                       <Input name="notes" placeholder={t("character.sheet.abilityNotesPh")} />
                       {/* Same tick as the inventory form: a homebrew power
                           named after a book spell stays homebrew. */}
-                      <label className="flex items-center gap-2 text-sm text-parchment-300">
+                      <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-parchment-300">
                         <input
                           type="checkbox"
                           name="custom"
                           value="1"
-                          className="accent-[#8a6516]"
+                          className="h-5 w-5 accent-[#8a6516]"
                         />
                         {t("character.custom")}
                       </label>
@@ -771,16 +795,35 @@ function InventoryGrid({
                   </span>
                   {item.equipped === 1 ? (
                     <form action={unequipItem.bind(null, item.id)}>
-                      <GhostButton type="submit" className="!px-2 !py-1 text-xs">
+                      <GhostButton type="submit" className="min-h-11 !px-3 !py-1 text-xs">
                         {t("character.equipment.unequip")}
                       </GhostButton>
                     </form>
                   ) : (
                     <EquipControl item={item} t={t} />
                   )}
-                  <form action={deleteItem.bind(null, item.id)} className="ml-auto">
-                    <IconButton label="✕" danger />
-                  </form>
+                  {/*
+                    Taking a thing off is a mistake worth one press to undo;
+                    striking it out of the pack is not, so it takes two. The
+                    fold group is the inventory's, so a second square's
+                    confirmation folds the first one away.
+                  */}
+                  <span className="ml-auto">
+                    <ConfirmButton
+                      label={<DeleteMark />}
+                      confirmLabel={
+                        <span className="flex min-h-9 items-center">
+                          {t("common.confirm.yesDelete")}
+                        </span>
+                      }
+                      warnText={t("common.confirm.areYouSure")}
+                      action={deleteItem.bind(null, item.id)}
+                      danger
+                      size="sm"
+                      group="inventory-delete"
+                      ariaLabel={t("character.sheet.deleteItem", { name: item.name })}
+                    />
+                  </span>
                 </div>
                 {/* The numbers, folded away: most lines never need them. */}
                 <ItemStatsEditor item={item} t={t} />
@@ -802,10 +845,14 @@ function InventoryGrid({
 function ItemName({ item, t }: { item: InventoryLineShape; t: T }) {
   const linkClass = "text-parchment-100 underline decoration-ink-600 underline-offset-2 transition hover:text-gold-300 hover:decoration-gold-500";
   if (item.srdIndex) {
+    const srd = getItem(item.srdIndex);
     return (
       <Link
         href={`/compendium/items/${item.srdIndex}`}
-        title={t("character.sheet.openInCompendium")}
+        title={hoverText(
+          item.notes?.trim() || (srd ? itemSummary(srd) : null),
+          t("character.sheet.openInCompendium")
+        )}
         className={linkClass}
       >
         {item.name}
@@ -816,7 +863,7 @@ function ItemName({ item, t }: { item: InventoryLineShape; t: T }) {
     return (
       <Link
         href={`/w/${item.sourceWorldId}#wi-${item.worldItemId}`}
-        title={t("character.sheet.openInLibrary")}
+        title={hoverText(item.sourceDescription, t("character.sheet.openInLibrary"))}
         className={linkClass}
       >
         {item.name}
@@ -829,15 +876,42 @@ function ItemName({ item, t }: { item: InventoryLineShape; t: T }) {
 /** Same rule for a spell line — the SRD is the only source one can name. */
 function AbilityName({ ability, t }: { ability: CharacterAbility; t: T }) {
   if (!ability.srdIndex) return <>{ability.name}</>;
+  const spell = getSpell(ability.srdIndex);
   return (
     <Link
       href={`/compendium/spells/${ability.srdIndex}`}
-      title={t("character.sheet.openInCompendium")}
+      title={hoverText(
+        ability.notes?.trim() || (spell ? spellSummary(spell) : null),
+        t("character.sheet.openInCompendium")
+      )}
       className="text-parchment-100 underline decoration-ink-600 underline-offset-2 transition hover:text-gold-300 hover:decoration-gold-500"
     >
       {ability.name}
     </Link>
   );
+}
+
+/**
+ * The touch of information the link itself can give, without going anywhere.
+ *
+ * A line that came from the compendium already carries its one-line summary in
+ * its notes — that is what `itemSummary`/`spellSummary` wrote there when it was
+ * added — so the note is read first and the summary regenerated only when
+ * somebody has since typed over it or blanked it. A library piece answers with
+ * the opening of its own description instead.
+ *
+ * The hint about where the link leads keeps its place on a second line: the
+ * preview is the addition, not the replacement. Everything is one clipped
+ * paragraph, because a `title` is a tooltip, not a page.
+ */
+const PREVIEW_MAX = 120;
+
+function hoverText(preview: string | null | undefined, hint: string) {
+  const flat = preview?.replace(/\s+/g, " ").trim();
+  if (!flat) return hint;
+  const clipped =
+    flat.length <= PREVIEW_MAX ? flat : `${flat.slice(0, PREVIEW_MAX).trimEnd()}…`;
+  return `${clipped}\n${hint}`;
 }
 
 /**
@@ -856,7 +930,7 @@ function EquipControl({ item, t }: { item: InventoryLineShape; t: T }) {
   if (slot) {
     return (
       <form action={equipItem.bind(null, item.id)}>
-        <GhostButton type="submit" className="!px-2 !py-1 text-xs">
+        <GhostButton type="submit" className="min-h-11 !px-3 !py-1 text-xs">
           {t("character.equipment.equip")} · {t(`world.items.slots.${slot}`)}
         </GhostButton>
       </form>
@@ -864,14 +938,14 @@ function EquipControl({ item, t }: { item: InventoryLineShape; t: T }) {
   }
   return (
     <details>
-      <summary className="inline-block cursor-pointer text-xs font-bold text-parchment-500 transition hover:text-gold-300">
+      <summary className="inline-flex min-h-11 cursor-pointer items-center px-1 text-xs font-bold text-parchment-500 transition hover:text-gold-300">
         {t("character.equipment.equip")}
       </summary>
       <form action={equipItem.bind(null, item.id)} className="mt-1.5 flex items-center gap-2">
         <Select
           name="slot"
           aria-label={t("character.equipment.slotLabel")}
-          className="!w-32 !py-1 text-xs"
+          className="!w-32 min-h-11 !py-1 text-xs"
         >
           {WORLD_ITEM_SLOTS.map((slot) => (
             <option key={slot} value={slot}>
@@ -879,7 +953,7 @@ function EquipControl({ item, t }: { item: InventoryLineShape; t: T }) {
             </option>
           ))}
         </Select>
-        <GhostButton type="submit" className="!px-2 !py-1 text-xs">
+        <GhostButton type="submit" className="min-h-11 !px-3 !py-1 text-xs">
           {t("character.equipment.equip")}
         </GhostButton>
       </form>
@@ -908,7 +982,7 @@ function ItemStatsEditor({ item, t }: { item: InventoryLineShape; t: T }) {
   const bonuses = parseStatBonuses(item.bonuses);
   return (
     <details className="mt-2 border-t border-ink-700 pt-2">
-      <summary className="inline-block cursor-pointer text-xs font-bold uppercase tracking-wide text-parchment-500 transition hover:text-gold-300">
+      <summary className="inline-flex min-h-11 cursor-pointer items-center px-1 text-xs font-bold uppercase tracking-wide text-parchment-500 transition hover:text-gold-300">
         {t("character.itemStats.title")}
       </summary>
       <form action={setItemStats.bind(null, item.id)} className="mt-2 space-y-2">
@@ -923,7 +997,7 @@ function ItemStatsEditor({ item, t }: { item: InventoryLineShape; t: T }) {
                 {t(`world.items.slots.${item.requiredSlot}`)}
               </p>
             ) : (
-              <Select name="slot" defaultValue={item.slot ?? ""} className="!py-1 text-xs">
+              <Select name="slot" defaultValue={item.slot ?? ""} className="min-h-11 !py-1 text-xs">
                 <option value="">{t("character.itemStats.carried")}</option>
                 {WORLD_ITEM_SLOTS.map((slot) => (
                   <option key={slot} value={slot}>
@@ -943,12 +1017,12 @@ function ItemStatsEditor({ item, t }: { item: InventoryLineShape; t: T }) {
               max={AC_BASE_MAX}
               step={1}
               defaultValue={item.acBase ?? ""}
-              className="!py-1 text-xs"
+              className="min-h-11 !py-1 text-xs"
             />
           </label>
           <label className="block">
             <Label>{t("character.itemStats.acDexLabel")}</Label>
-            <Select name="acDex" defaultValue={item.acDex ?? "none"} className="!py-1 text-xs">
+            <Select name="acDex" defaultValue={item.acDex ?? "none"} className="min-h-11 !py-1 text-xs">
               {AC_DEX_RULES.map((rule) => (
                 <option key={rule} value={rule}>
                   {t(`character.itemStats.dex.${rule}`)}
@@ -977,7 +1051,7 @@ function ItemStatsEditor({ item, t }: { item: InventoryLineShape; t: T }) {
                   max={STAT_BONUS_MAX}
                   step={1}
                   defaultValue={bonuses[stat] ?? ""}
-                  className="px-1 py-1 text-center text-xs"
+                  className="min-h-11 px-1 py-1 text-center text-xs"
                 />
               </label>
             ))}
@@ -985,7 +1059,7 @@ function ItemStatsEditor({ item, t }: { item: InventoryLineShape; t: T }) {
           <p className="mt-1 text-xs text-parchment-500">{t("character.itemStats.bonusesHint")}</p>
         </fieldset>
 
-        <GhostButton type="submit" className="!px-2 !py-1 text-xs">
+        <GhostButton type="submit" className="min-h-11 !px-3 !py-1 text-xs">
           {t("character.itemStats.save")}
         </GhostButton>
       </form>
@@ -1066,19 +1140,31 @@ function StatBlockCard({
   );
 }
 
-function IconButton({ label, danger = false }: { label: string; danger?: boolean }) {
+/**
+ * A one-glyph submit — the quantity knobs. Square, and square at the size a
+ * finger is: 44px is the smallest box a thumb reliably lands in, and these two
+ * sit close enough together that a miss costs an item rather than nothing.
+ */
+function IconButton({ label }: { label: string }) {
   return (
     <button
       type="submit"
-      className={`h-7 w-7 rounded border text-xs font-bold transition cursor-pointer ${
-        danger
-          ? "border-ink-600 text-parchment-500 hover:border-blood-500 hover:text-blood-400"
-          : "border-ink-600 text-parchment-300 hover:border-gold-500 hover:text-gold-300"
-      }`}
+      className="h-11 w-11 rounded border border-ink-600 text-xs font-bold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300 cursor-pointer"
     >
       {label}
     </button>
   );
+}
+
+/**
+ * The cross on a delete knob, padded out to a real target.
+ *
+ * ConfirmButton's own knob is a text button — right for a worded action, too
+ * small for a single glyph — so the glyph is handed in already boxed: the
+ * summary's own padding plus this box comes to 44px in both directions.
+ */
+function DeleteMark() {
+  return <span className="flex h-9 w-7 items-center justify-center">✕</span>;
 }
 
 function SheetForm({
@@ -1153,13 +1239,16 @@ function SheetForm({
         <Label>{t("character.sheet.form.saveProfs")}</Label>
         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
           {ABILITIES.map((key) => (
-            <label key={key} className="flex items-center gap-1.5 text-sm text-parchment-300">
+            <label
+              key={key}
+              className="flex min-h-11 cursor-pointer items-center gap-1.5 text-sm text-parchment-300"
+            >
               <input
                 type="checkbox"
                 name="profSaves"
                 value={key}
                 defaultChecked={profSaves.has(key)}
-                className="accent-[#8a6516]"
+                className="h-5 w-5 accent-[#8a6516]"
               />
               {ABILITY_LABELS[key]}
             </label>
@@ -1171,13 +1260,16 @@ function SheetForm({
         <Label>{t("character.sheet.form.skillProfs")}</Label>
         <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
           {SKILLS.map((skill) => (
-            <label key={skill.name} className="flex items-center gap-1.5 text-sm text-parchment-300">
+            <label
+              key={skill.name}
+              className="flex min-h-11 cursor-pointer items-center gap-1.5 text-sm text-parchment-300"
+            >
               <input
                 type="checkbox"
                 name="profSkills"
                 value={skill.name}
                 defaultChecked={profSkills.has(skill.name)}
-                className="accent-[#8a6516]"
+                className="h-5 w-5 accent-[#8a6516]"
               />
               {skill.name}
               <span className="text-[10px] text-parchment-500">{skill.ability}</span>

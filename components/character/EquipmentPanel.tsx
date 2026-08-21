@@ -245,12 +245,24 @@ function SlotCell({
             action={unequipItem.bind(null, piece.id)}
             className="absolute right-0 top-0"
           >
+            {/*
+              The mark stays the small corner tab it has always been; the
+              button around it is 44px square of transparent room, because a
+              20px target is one a finger misses. The square underneath is
+              still draggable — the pad sits on top of picture, not of any
+              other control.
+            */}
             <button
               type="submit"
               title={`${t("character.equipment.unequip")} — ${piece.name}`}
-              className="flex h-5 w-5 items-center justify-center rounded-bl-sm border-b border-l border-ink-600 bg-ink-900/90 text-parchment-500 transition hover:border-blood-500 hover:text-blood-400 cursor-pointer"
+              className="group flex h-11 w-11 items-start justify-end cursor-pointer"
             >
-              <IconX size={10} />
+              <span
+                aria-hidden
+                className="flex h-5 w-5 items-center justify-center rounded-bl-sm border-b border-l border-ink-600 bg-ink-900/90 text-parchment-500 transition group-hover:border-blood-500 group-hover:text-blood-400"
+              >
+                <IconX size={10} />
+              </span>
               <span className="sr-only">
                 {t("character.equipment.unequip")} — {piece.name}
               </span>

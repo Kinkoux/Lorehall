@@ -41,6 +41,9 @@ export const character = {
       addItem: "Add item",
       openInCompendium: "Open in the compendium",
       openInLibrary: "Open in the world's item library",
+      // Spoken names for the two-press delete knobs, whose face is a bare ✕.
+      deleteItem: "Delete {name} from the backpack",
+      deleteAbility: "Delete {name} from the sheet",
       spellsAbilities: "Spells & abilities",
       longRest: "Long rest",
       noAbilities: "Nothing here yet — spells, class features, homebrew powers all welcome.",
@@ -189,6 +192,8 @@ export const character = {
       addItem: "Eşya ekle",
       openInCompendium: "Kütüphanede aç",
       openInLibrary: "Dünyanın eşya kütüphanesinde aç",
+      deleteItem: "{name} eşyasını çantadan sil",
+      deleteAbility: "{name} satırını sayfadan sil",
       spellsAbilities: "Büyüler ve yetenekler",
       longRest: "Uzun dinlenme",
       noAbilities: "Henüz bir şey yok — büyü, sınıf özelliği, homebrew güç; ne varsa buraya.",

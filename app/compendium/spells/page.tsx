@@ -11,6 +11,7 @@ import { schoolArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Pagination } from "@/components/Pagination";
 import { BackLink, Button, Input, Select } from "@/components/ui";
+import { ActiveFilters, type FilterChip } from "../ActiveFilters";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -47,6 +48,23 @@ export default async function SpellsPage({
   const shown = results.slice((page - 1) * LIMIT, page * LIMIT);
   const activeSubclass = SUBCLASS_FILTERS.find((f) => f.key === subclass);
 
+  const chips: FilterChip[] = [
+    q && { key: "q", label: t("compendium.filters.query", { q }) },
+    level && {
+      key: "level",
+      label:
+        level === "0"
+          ? t("compendium.spells.cantrip")
+          : `${t("compendium.spells.level")}: ${level}`,
+    },
+    klass && { key: "klass", label: `${t("compendium.spells.class")}: ${klass}` },
+    school && { key: "school", label: `${t("compendium.spells.school")}: ${school}` },
+    activeSubclass && {
+      key: "subclass",
+      label: `${t("compendium.spells.subclass")}: ${activeSubclass.label}`,
+    },
+  ].filter(Boolean) as FilterChip[];
+
   return (
     <>
       <SiteHeader user={user} />
@@ -56,14 +74,20 @@ export default async function SpellsPage({
           {t("compendium.spells.title")}
         </h1>
 
-        <form className="mb-6 flex flex-wrap gap-2">
+        <form className="mb-4 flex flex-wrap gap-2">
           <Input
             name="q"
             defaultValue={q}
+            aria-label={t("compendium.searchLabel")}
             placeholder={t("compendium.searchByName")}
             className="!w-52"
           />
-          <Select name="level" defaultValue={level} className="!w-32">
+          <Select
+            name="level"
+            defaultValue={level}
+            aria-label={t("compendium.spells.level")}
+            className="!w-32"
+          >
             <option value="">{t("compendium.spells.anyLevel")}</option>
             <option value="0">{t("compendium.spells.cantrip")}</option>
             {Array.from({ length: 9 }, (_, i) => (
@@ -72,7 +96,12 @@ export default async function SpellsPage({
               </option>
             ))}
           </Select>
-          <Select name="klass" defaultValue={klass} className="!w-36">
+          <Select
+            name="klass"
+            defaultValue={klass}
+            aria-label={t("compendium.spells.class")}
+            className="!w-36"
+          >
             <option value="">{t("compendium.spells.anyClass")}</option>
             {SPELL_CLASSES.map((c) => (
               <option key={c} value={c}>
@@ -80,7 +109,12 @@ export default async function SpellsPage({
               </option>
             ))}
           </Select>
-          <Select name="school" defaultValue={school} className="!w-40">
+          <Select
+            name="school"
+            defaultValue={school}
+            aria-label={t("compendium.spells.school")}
+            className="!w-40"
+          >
             <option value="">{t("compendium.spells.anySchool")}</option>
             {SPELL_SCHOOLS.map((s) => (
               <option key={s} value={s}>
@@ -88,7 +122,12 @@ export default async function SpellsPage({
               </option>
             ))}
           </Select>
-          <Select name="subclass" defaultValue={subclass} className="!w-52">
+          <Select
+            name="subclass"
+            defaultValue={subclass}
+            aria-label={t("compendium.spells.subclass")}
+            className="!w-52"
+          >
             <option value="">{t("compendium.spells.anySubclass")}</option>
             {SUBCLASS_FILTERS.map((f) => (
               <option key={f.key} value={f.key}>
@@ -98,6 +137,15 @@ export default async function SpellsPage({
           </Select>
           <Button type="submit">{t("common.search")}</Button>
         </form>
+
+        <ActiveFilters
+          basePath="/compendium/spells"
+          params={{ q, level, klass, school, subclass }}
+          chips={chips}
+          heading={t("compendium.filters.active")}
+          removeLabel={(label) => t("compendium.filters.remove", { label })}
+          clearLabel={t("compendium.filters.clearAll")}
+        />
 
         <p className="mb-1 text-xs text-parchment-500">
           {t("compendium.results", { n: results.length })}
@@ -125,15 +173,25 @@ export default async function SpellsPage({
                 <span className="w-14 shrink-0 text-xs font-bold text-gold-300">
                   {spell.level === 0 ? t("compendium.spells.cantrip") : `${spell.level}`}
                 </span>
-                <span className="flex-1 font-semibold text-parchment-100 transition group-hover:text-gold-400">
-                  {spell.name}
+                {/* The marks are chips, not suffixes: run against the name they
+                    read as one word ("Dancing Lightsconc"). */}
+                <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                    {spell.name}
+                  </span>
                   {spell.concentration && (
-                    <span className="ml-2 text-[10px] font-bold uppercase text-amber-800">
+                    <span
+                      title={t("compendium.spells.concentration")}
+                      className="rounded-sm border border-amber-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800"
+                    >
                       {t("compendium.spells.concShort")}
                     </span>
                   )}
                   {spell.ritual && (
-                    <span className="ml-2 text-[10px] font-bold uppercase text-purple-800">
+                    <span
+                      title={t("compendium.spells.ritual")}
+                      className="rounded-sm border border-purple-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-800"
+                    >
                       {t("compendium.spells.ritualShort")}
                     </span>
                   )}

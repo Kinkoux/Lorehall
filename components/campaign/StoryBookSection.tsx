@@ -10,6 +10,7 @@ import {
 } from "@/lib/beat-actions";
 import type { T } from "@/lib/i18n";
 import { IconBookmark, IconDie, IconX } from "@/components/Icons";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import {
   Button,
   Card,
@@ -44,7 +45,7 @@ export function StoryBookSection({
   ];
 
   return (
-    <section className="mt-10 space-y-4">
+    <section id="story-book" className="mt-10 scroll-mt-28 space-y-4">
       <SectionTitle>{t("campaign.beats.title")}</SectionTitle>
       <p className="-mt-2 text-xs text-parchment-500">{t("campaign.beats.hint")}</p>
 
@@ -140,13 +141,15 @@ export function StoryBookSection({
                         <SmallButton label={t("campaign.beats.reset")} />
                       </form>
                     )}
-                    <form action={deleteBeat.bind(null, beat.id)}>
-                      <SmallButton
-                        label={<IconX size={12} />}
-                        danger
-                        ariaLabel={t("common.delete")}
-                      />
-                    </form>
+                    <ConfirmButton
+                      label={<IconX size={12} />}
+                      confirmLabel={t("common.confirm.yesDelete")}
+                      warnText={t("common.confirm.areYouSure")}
+                      action={deleteBeat.bind(null, beat.id)}
+                      danger
+                      group="story-delete"
+                      ariaLabel={t("common.delete")}
+                    />
                   </div>
                 </div>
 
@@ -191,9 +194,15 @@ export function StoryBookSection({
                 />
                 <SmallButton label={t("campaign.beats.renameChapter")} />
               </form>
-              <form action={deleteChapter.bind(null, group.chapter.id)}>
-                <SmallButton label={t("campaign.beats.deleteChapter")} danger />
-              </form>
+              <ConfirmButton
+                label={t("campaign.beats.deleteChapter")}
+                confirmLabel={t("common.confirm.yesDelete")}
+                warnText={t("common.confirm.areYouSure")}
+                action={deleteChapter.bind(null, group.chapter.id)}
+                danger
+                group="story-delete"
+                ariaLabel={t("campaign.beats.deleteChapter")}
+              />
             </div>
           )}
         </details>

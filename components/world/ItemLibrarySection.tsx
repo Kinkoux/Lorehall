@@ -3,7 +3,8 @@ import { deleteWorldItem } from "@/lib/world-item-actions";
 import type { Locale, T } from "@/lib/i18n";
 import { EMPTY_ART } from "@/lib/ui-art";
 import { IconX } from "@/components/Icons";
-import { Card, GhostButton, SectionTitle } from "@/components/ui";
+import { ConfirmButton } from "@/components/ConfirmButton";
+import { Card, SectionTitle } from "@/components/ui";
 import { WorldItemCardFace } from "./WorldItemCardFace";
 import { WorldItemForm } from "./WorldItemForm";
 
@@ -105,12 +106,20 @@ function ItemCard({
               <WorldItemForm worldId={worldId} item={item} locale={locale} />
             </div>
           </details>
-          <form action={deleteWorldItem.bind(null, item.id)}>
-            <GhostButton type="submit" className="!px-2 !py-1 text-xs">
-              <IconX size={12} />
-              {t("common.delete")}
-            </GhostButton>
-          </form>
+          <ConfirmButton
+            label={
+              <span className="inline-flex items-center gap-1.5">
+                <IconX size={12} />
+                {t("common.delete")}
+              </span>
+            }
+            confirmLabel={t("common.confirm.yesDelete")}
+            warnText={t("common.confirm.areYouSure")}
+            action={deleteWorldItem.bind(null, item.id)}
+            danger
+            group="world-item-delete"
+            ariaLabel={t("common.delete")}
+          />
         </div>
       )}
     </Card>

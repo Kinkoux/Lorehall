@@ -7,13 +7,11 @@ import type { StatBonuses } from "@/lib/world-items";
 import type { T } from "@/lib/i18n";
 import { classArtFor } from "@/lib/ui-art";
 import { IconSkull } from "@/components/Icons";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { Card, Portrait, portraitSrc, SectionTitle } from "@/components/ui";
 import { SmallButton } from "./shared";
 
 type MemberRow = { member: typeof campaignMembers.$inferSelect; user: User };
-
-/** The base of SmallButton, for the one knob that is a `<summary>`, not a button. */
-const KNOB = "rounded border px-2 py-1 text-xs font-bold transition cursor-pointer";
 
 export function PartySection({
   members,
@@ -77,32 +75,22 @@ export function PartySection({
       A stray tap used to be the whole ceremony. Now the knob only unfolds:
       inside is what removal does and does not touch, and a second, separate
       press is the one that lands. Closing the fold is the way out, so there
-      is nothing to cancel and no script behind any of it — the same
-      `<details>` the inventory squares use, sharing a name so opening one
-      confirmation closes the last.
+      is nothing to cancel and no script behind any of it — the shared
+      confirmation every destructive knob on this page now wears, sharing a
+      name so opening one closes the last.
     */
     return (
-      <details name="party-remove" className="relative shrink-0">
-        <summary
-          title={t("campaign.party.removeTitle", { name })}
-          className={`${KNOB} inline-block list-none border-ink-600 text-parchment-500 hover:border-blood-500 hover:text-blood-400 [&::-webkit-details-marker]:hidden`}
-        >
-          {t("campaign.party.remove")}
-        </summary>
-        <div className="absolute top-full right-0 z-20 mt-1 w-56 rounded-sm border border-blood-500/40 bg-ink-950 p-2.5 shadow-lg">
-          <p className="text-xs leading-relaxed text-parchment-500">
-            {t("campaign.party.removeWarn")}
-          </p>
-          <form action={kickMember.bind(null, campaignId)} className="mt-2">
-            <input type="hidden" name="userId" value={memberId} />
-            <SmallButton
-              label={t("campaign.party.removeConfirm")}
-              danger
-              ariaLabel={t("campaign.party.removeTitle", { name })}
-            />
-          </form>
-        </div>
-      </details>
+      <ConfirmButton
+        label={t("campaign.party.remove")}
+        confirmLabel={t("campaign.party.removeConfirm")}
+        warnText={t("campaign.party.removeWarn")}
+        action={kickMember.bind(null, campaignId)}
+        danger
+        group="party-remove"
+        ariaLabel={t("campaign.party.removeTitle", { name })}
+      >
+        <input type="hidden" name="userId" value={memberId} />
+      </ConfirmButton>
     );
   };
 

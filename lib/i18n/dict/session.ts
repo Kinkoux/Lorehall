@@ -5,6 +5,20 @@ export const session = {
     liveRound: "Live · Round {round}",
     live: "Live",
     ended: "Ended",
+    // The sticky strip at the top of a session: round, whose turn, jump marks.
+    playBar: {
+      round: "Round {n}",
+      turn: "Turn",
+      next: "Next",
+      participants: "{n} in the initiative",
+      advance: "Next turn",
+      jumpTo: "Jump to",
+      jump: {
+        initiative: "Initiative",
+        dice: "Dice",
+        log: "Table log",
+      },
+    },
     recap: {
       title: "Recap",
       placeholder: "What happened this session?",
@@ -118,6 +132,19 @@ export const session = {
     liveRound: "Canlı · Tur {round}",
     live: "Canlı",
     ended: "Bitti",
+    playBar: {
+      round: "Tur {n}",
+      turn: "Sıra",
+      next: "Sıradaki",
+      participants: "İnisiyatifte {n} kişi",
+      advance: "Sırayı ilerlet",
+      jumpTo: "Şuraya git",
+      jump: {
+        initiative: "İnisiyatif",
+        dice: "Zarlar",
+        log: "Masa kaydı",
+      },
+    },
     recap: {
       title: "Özet",
       placeholder: "Bu oturumda neler oldu?",

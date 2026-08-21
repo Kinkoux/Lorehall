@@ -15,6 +15,9 @@ import {
   IconClaw,
 } from "@/components/Icons";
 
+/** Three of the compendium's plates, shown as a sampler in the hero. */
+const HERO_PLATES = ["ancient-red-dragon", "lich", "owlbear"] as const;
+
 export default async function LandingPage() {
   const user = await getCurrentUser();
   if (user) redirect("/dashboard");
@@ -60,7 +63,10 @@ export default async function LandingPage() {
           <p className="mb-4 text-xs font-bold uppercase tracking-[0.35em] text-parchment-500">
             {t("landing.tagline")}
           </p>
-          <h1 className="font-display text-6xl font-bold tracking-[0.12em] text-gold-400 sm:text-7xl">
+          {/* Cinzel caps run wide, and letter-spacing multiplies with them:
+              at the full 60px the wordmark measured ~396px, wider than a
+              390px phone. It steps down instead of overflowing. */}
+          <h1 className="font-display text-4xl font-bold tracking-[0.15em] text-gold-400 sm:text-6xl sm:tracking-[0.12em] md:text-7xl">
             LOREHALL
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-relaxed text-parchment-300">
@@ -80,6 +86,30 @@ export default async function LandingPage() {
               {t("landing.ctaSignIn")}
             </Link>
           </div>
+
+          {/*
+            The engraved plates are the best thing the hall owns, and the
+            landing page used to show none of them. Three medallions, purely
+            decorative — the compendium shelf below names what they are, so
+            they carry no alt text and are hidden from the reading order.
+          */}
+          <ul aria-hidden className="mt-12 flex items-center justify-center gap-4 sm:gap-6">
+            {HERO_PLATES.map((plate) => (
+              <li
+                key={plate}
+                className="h-16 w-16 overflow-hidden rounded-full border border-ink-600 outline outline-1 outline-ink-700/50 outline-offset-2 sm:h-24 sm:w-24"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/monsters/${plate}.webp`}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  className="h-full w-full object-cover"
+                />
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section className="border-t-2 border-double border-ink-600/70 py-14">

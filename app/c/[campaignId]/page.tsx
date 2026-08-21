@@ -33,6 +33,30 @@ import { EncountersSection } from "@/components/campaign/EncountersSection";
 import { GiveItemSection } from "@/components/campaign/GiveItemSection";
 import { StoryBookSection } from "@/components/campaign/StoryBookSection";
 
+/**
+ * The jump bar's stops, in the order the page lays them out. Each label is
+ * the section's own heading, so a renamed section renames its chip; `dm`
+ * marks the half of the page only the person running the table is served.
+ */
+const SECTIONS = [
+  { id: "party", key: "campaign.party.title", dm: false },
+  { id: "quests", key: "campaign.quests.title", dm: false },
+  { id: "treasury", key: "campaign.treasury.title", dm: false },
+  { id: "journal", key: "campaign.journal.title", dm: false },
+  { id: "maps", key: "campaign.maps.title", dm: false },
+  { id: "changelog", key: "campaign.feed.title", dm: true },
+  { id: "encounters", key: "campaign.encounters.title", dm: true },
+  { id: "give-item", key: "campaign.giveItem.title", dm: true },
+  { id: "story-book", key: "campaign.beats.title", dm: true },
+] as const;
+
+/**
+ * A chip is the heading minus the "— only you see this" tail the DM-only
+ * headings carry: a one-line strip has no room to say it four times, and the
+ * sections it points at already say it themselves.
+ */
+const chipLabel = (heading: string) => heading.split("—")[0].trim();
+
 export default async function CampaignPage({
   params,
   searchParams,
@@ -163,6 +187,14 @@ export default async function CampaignPage({
     campaignCharacters.map((c) => [c.id, wornSetFor(worn, c.id).bonuses] as const)
   );
 
+  // The give-item panel does not render at a table with nobody to hand
+  // anything to — the same gate it applies to itself, so the strip never
+  // offers a chip that jumps nowhere.
+  const canGiveItems = campaignCharacters.some((c) => c.approval === "approved");
+  const chips = SECTIONS.filter(
+    (s) => (isDm || !s.dm) && (s.id !== "give-item" || canGiveItems)
+  );
+
   return (
     <>
       <SiteHeader user={user} />
@@ -177,6 +209,30 @@ export default async function CampaignPage({
         </div>
         {campaign.description && <p className="mb-6 text-parchment-500">{campaign.description}</p>}
 
+        {/*
+          Ten sections down one column is a long scroll to hunt through. The
+          strip parks under the navbar — sticky at 0, a single ~53-61px row at
+          every width since it folds into a hamburger below md — and carries
+          the page's stops the same way the reference page's does.
+        */}
+        <nav
+          aria-label={t("reference.sections")}
+          className="sticky top-14 z-30 -mx-4 mb-6 overflow-x-auto border-y border-ink-600/70 bg-ink-900/90 px-4 py-2 backdrop-blur"
+        >
+          <ul className="flex gap-1.5 whitespace-nowrap">
+            {chips.map((section) => (
+              <li key={section.id}>
+                <a
+                  href={`#${section.id}`}
+                  className="inline-block rounded-sm border border-ink-600 px-3 py-1.5 text-xs font-semibold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300"
+                >
+                  {chipLabel(t(section.key))}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
         <LiveSessionBanner
           liveSession={liveSession}
           pastSessionCount={pastSessions.length}
@@ -187,24 +243,33 @@ export default async function CampaignPage({
 
         <div className="grid gap-8 md:grid-cols-2">
           <section className="space-y-4">
-            <PartySection
-              members={members}
-              campaignCharacters={campaignCharacters}
-              formerUsers={formerUsers}
-              wornBonuses={wornBonuses}
-              campaignId={campaignId}
-              dmUserId={campaign.dmUserId}
-              currentUserId={user.id}
-              isDm={isDm}
-              t={t}
-            />
-            <QuestsSection
-              quests={quests}
-              campaignId={campaignId}
-              isDm={isDm}
-              locale={locale}
-              t={t}
-            />
+            {/*
+              These four render fragments, so the jump bar's anchor is a
+              wrapper. It repeats the column's own `space-y-4` to keep the
+              rhythm the flattened fragments had before it was here.
+            */}
+            <div id="party" className="scroll-mt-28 space-y-4">
+              <PartySection
+                members={members}
+                campaignCharacters={campaignCharacters}
+                formerUsers={formerUsers}
+                wornBonuses={wornBonuses}
+                campaignId={campaignId}
+                dmUserId={campaign.dmUserId}
+                currentUserId={user.id}
+                isDm={isDm}
+                t={t}
+              />
+            </div>
+            <div id="quests" className="scroll-mt-28 space-y-4">
+              <QuestsSection
+                quests={quests}
+                campaignId={campaignId}
+                isDm={isDm}
+                locale={locale}
+                t={t}
+              />
+            </div>
             <InviteSection
               joinCode={campaign.joinCode}
               campaignId={campaignId}
@@ -214,14 +279,18 @@ export default async function CampaignPage({
           </section>
 
           <section className="space-y-4">
-            <TreasurySection
-              ledger={ledger}
-              loot={loot}
-              campaignId={campaignId}
-              locale={locale}
-              t={t}
-            />
-            <JournalSection pastSessions={pastSessions} locale={locale} t={t} />
+            <div id="treasury" className="scroll-mt-28 space-y-4">
+              <TreasurySection
+                ledger={ledger}
+                loot={loot}
+                campaignId={campaignId}
+                locale={locale}
+                t={t}
+              />
+            </div>
+            <div id="journal" className="scroll-mt-28 space-y-4">
+              <JournalSection pastSessions={pastSessions} locale={locale} t={t} />
+            </div>
           </section>
         </div>
 

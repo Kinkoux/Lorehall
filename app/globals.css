@@ -17,7 +17,11 @@
 
   --color-parchment-100: #33261a;
   --color-parchment-300: #54422c;
-  --color-parchment-500: #7c6950;
+  /* Muted ink. #7c6950 measured 4.12:1 on the page ground (#eee3c8) — under
+     the 4.5:1 AA floor for body text. Every channel is scaled by 0.92, which
+     keeps the hue (34°) and the sepia cast and lands at 4.67:1 on the ground
+     and 5.16:1 on a card (#f6eedb). */
+  --color-parchment-500: #72614a;
 
   --color-gold-300: #8f6b16;
   --color-gold-400: #9c7418;

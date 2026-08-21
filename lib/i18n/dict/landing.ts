@@ -16,7 +16,7 @@ export const landing = {
       },
       characters: {
         title: "Character ledgers",
-        body: "Homebrew-friendly sheets with inventory, spell uses, and auto-computed modifiers. The DM sees the whole party's passive Perception.",
+        body: "Homebrew-friendly sheets with inventory, spell slots, and auto-computed modifiers. The DM sees the whole party's passive Perception.",
       },
       dm: {
         title: "The DM's screen",
@@ -52,7 +52,7 @@ export const landing = {
       },
       characters: {
         title: "Karakter defterleri",
-        body: "Homebrew dostu sayfalar: envanter, büyü hakları, otomatik hesaplanan bonuslar. DM bütün partinin pasif algısını tek bakışta görür.",
+        body: "Homebrew dostu sayfalar: envanter, büyü yuvaları, otomatik hesaplanan bonuslar. DM bütün partinin pasif algısını tek bakışta görür.",
       },
       dm: {
         title: "DM perdesi",

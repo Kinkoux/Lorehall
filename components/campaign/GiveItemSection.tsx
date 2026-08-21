@@ -44,7 +44,7 @@ export function GiveItemSection({
   if (targets.length === 0) return null;
 
   return (
-    <section className="mt-10 space-y-4">
+    <section id="give-item" className="mt-10 scroll-mt-28 space-y-4">
       <SectionTitle>{t("campaign.giveItem.title")}</SectionTitle>
       <p className="-mt-2 text-xs text-parchment-500">{t("campaign.giveItem.hint")}</p>
       <Card>

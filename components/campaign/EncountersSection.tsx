@@ -9,8 +9,8 @@ import {
 import type { T } from "@/lib/i18n";
 import { EMPTY_ART } from "@/lib/ui-art";
 import { IconX } from "@/components/Icons";
+import { ConfirmButton } from "@/components/ConfirmButton";
 import { Button, Card, Input, SectionTitle } from "@/components/ui";
-import { SmallButton } from "./shared";
 
 export function EncountersSection({
   encounters,
@@ -24,7 +24,7 @@ export function EncountersSection({
   t: T;
 }) {
   return (
-    <section className="mt-10 space-y-4">
+    <section id="encounters" className="mt-10 scroll-mt-28 space-y-4">
       <SectionTitle>{t("campaign.encounters.title")}</SectionTitle>
       <p className="-mt-2 text-xs text-parchment-500">
         {t("campaign.encounters.hintA")}{" "}
@@ -52,9 +52,15 @@ export function EncountersSection({
                 <h3 className="font-display text-base font-bold text-parchment-100">
                   {encounter.name}
                 </h3>
-                <form action={deleteEncounter.bind(null, encounter.id)}>
-                  <SmallButton label={<IconX size={12} />} danger ariaLabel={t("common.delete")} />
-                </form>
+                <ConfirmButton
+                  label={<IconX size={12} />}
+                  confirmLabel={t("common.confirm.yesDelete")}
+                  warnText={t("common.confirm.areYouSure")}
+                  action={deleteEncounter.bind(null, encounter.id)}
+                  danger
+                  group="encounter-delete"
+                  ariaLabel={t("common.delete")}
+                />
               </div>
               <ul className="mt-2 space-y-1">
                 {rows.length === 0 && (
@@ -85,9 +91,15 @@ export function EncountersSection({
                         {t("campaign.encounters.hp", { n: row.maxHp })}
                       </span>
                     )}
-                    <form action={removeEncounterMonster.bind(null, row.id)}>
-                      <SmallButton label={<IconX size={12} />} danger ariaLabel={t("common.delete")} />
-                    </form>
+                    <ConfirmButton
+                      label={<IconX size={12} />}
+                      confirmLabel={t("common.confirm.yesDelete")}
+                      warnText={t("common.confirm.areYouSure")}
+                      action={removeEncounterMonster.bind(null, row.id)}
+                      danger
+                      group="encounter-delete"
+                      ariaLabel={t("common.delete")}
+                    />
                   </li>
                 ))}
               </ul>

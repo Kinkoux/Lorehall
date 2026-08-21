@@ -17,9 +17,24 @@ const ABILITY_COLORS: Record<string, string> = {
   CHA: "bg-amber-100 text-amber-900 border-amber-700/50",
 };
 
+/** The jump bar's stops, in the order the page lays them out. */
+const SECTIONS = [
+  { id: "skills", key: "reference.skills" },
+  { id: "conditions", key: "reference.conditions" },
+  { id: "actions", key: "reference.combatActions" },
+];
+
 export default async function ReferencePage() {
   const user = await getCurrentUser();
   const { t, locale } = await getT();
+
+  /*
+   * The jump bar parks directly under the navbar, which is sticky at 0 and —
+   * since it folds into a hamburger below md — stays a single ~53-61px row at
+   * every width. A few pixels either way only slides the bar's top edge under
+   * the navbar, which its padding absorbs.
+   */
+  const stickyTop = "top-14";
 
   return (
     <>
@@ -28,11 +43,29 @@ export default async function ReferencePage() {
         <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
           {t("reference.title")}
         </h1>
-        <p className="mt-1 mb-8 text-sm text-parchment-500">
+        <p className="mt-1 mb-4 text-sm text-parchment-500">
           {t("reference.subtitle")}
         </p>
 
-        <section className="mb-10">
+        <nav
+          aria-label={t("reference.sections")}
+          className={`sticky ${stickyTop} z-30 -mx-4 mb-8 overflow-x-auto border-y border-ink-600/70 bg-ink-900/90 px-4 py-2 backdrop-blur`}
+        >
+          <ul className="flex gap-1.5 whitespace-nowrap">
+            {SECTIONS.map((section) => (
+              <li key={section.id}>
+                <a
+                  href={`#${section.id}`}
+                  className="inline-block rounded-sm border border-ink-600 px-3 py-1.5 text-xs font-semibold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300"
+                >
+                  {t(section.key)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <section id="skills" className="mb-10 scroll-mt-32">
           <SectionTitle>{t("reference.skills")}</SectionTitle>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {SKILLS.map((skill) => (
@@ -55,7 +88,7 @@ export default async function ReferencePage() {
           </div>
         </section>
 
-        <section className="mb-10">
+        <section id="conditions" className="mb-10 scroll-mt-32">
           <SectionTitle>{t("reference.conditions")}</SectionTitle>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {CONDITIONS.map((condition) => (
@@ -71,7 +104,7 @@ export default async function ReferencePage() {
           </div>
         </section>
 
-        <section>
+        <section id="actions" className="scroll-mt-32">
           <SectionTitle>{t("reference.combatActions")}</SectionTitle>
           <Card className="mt-4">
             <ul className="divide-y divide-ink-700">

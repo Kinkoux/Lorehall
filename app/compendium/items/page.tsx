@@ -6,6 +6,7 @@ import { categoryArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Pagination } from "@/components/Pagination";
 import { BackLink, Button, Input } from "@/components/ui";
+import { ActiveFilters, type FilterChip } from "../ActiveFilters";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -41,6 +42,16 @@ export default async function ItemsPage({
       ? "rounded-sm border border-gold-500 bg-gold-500/10 px-3 py-1.5 text-xs font-bold text-gold-300"
       : "rounded-sm border border-ink-600 px-3 py-1.5 text-xs font-semibold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300";
 
+  const chips: FilterChip[] = [
+    q && { key: "q", label: t("compendium.filters.query", { q }) },
+    category && {
+      key: "cat",
+      label: `${t("compendium.items.category")}: ${t(
+        `compendium.items.categories.${category}`
+      )}`,
+    },
+  ].filter(Boolean) as FilterChip[];
+
   return (
     <>
       <SiteHeader user={user} />
@@ -54,6 +65,7 @@ export default async function ItemsPage({
           <Input
             name="q"
             defaultValue={q}
+            aria-label={t("compendium.searchLabel")}
             placeholder={t("compendium.searchByName")}
             className="!w-56"
           />
@@ -61,7 +73,10 @@ export default async function ItemsPage({
           <Button type="submit">{t("common.search")}</Button>
         </form>
 
-        <nav className="mb-6 flex flex-wrap gap-1.5">
+        <nav
+          aria-label={t("compendium.items.category")}
+          className="mb-4 flex flex-wrap gap-1.5"
+        >
           <Link href={chipHref("") as never} className={chipClass("")}>
             {t("compendium.items.allCategories")}
           </Link>
@@ -71,6 +86,15 @@ export default async function ItemsPage({
             </Link>
           ))}
         </nav>
+
+        <ActiveFilters
+          basePath="/compendium/items"
+          params={{ q, cat: category }}
+          chips={chips}
+          heading={t("compendium.filters.active")}
+          removeLabel={(label) => t("compendium.filters.remove", { label })}
+          clearLabel={t("compendium.filters.clearAll")}
+        />
 
         <p className="mb-4 text-xs text-parchment-500">
           {t("compendium.results", { n: results.length })}
@@ -90,10 +114,14 @@ export default async function ItemsPage({
                   loading="lazy"
                   className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
                 />
-                <span className="flex-1 font-semibold text-parchment-100 transition group-hover:text-gold-400">
-                  {item.name}
+                {/* Same treatment as the spell list: the rarity is a chip, so
+                    it never runs into the name as one word. */}
+                <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                    {item.name}
+                  </span>
                   {item.rarity && (
-                    <span className="ml-2 text-[10px] font-bold uppercase text-amber-800">
+                    <span className="rounded-sm border border-amber-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
                       {item.rarity}
                     </span>
                   )}

@@ -261,6 +261,15 @@ export function IconX(props: IconProps) {
   );
 }
 
+/** Three ruled lines — the narrow-screen navigation fold. */
+export function IconMenu(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </Svg>
+  );
+}
+
 // ---------- spell school sigils ----------
 
 const SIGILS: Record<string, (props: IconProps) => React.ReactElement> = {

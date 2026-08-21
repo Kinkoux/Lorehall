@@ -87,7 +87,14 @@ function SlotRow({
       <span className="w-6 shrink-0 font-mono text-xs font-bold text-parchment-500">
         {t("character.spellSlots.levelShort", { n: row.level })}
       </span>
-      <span className="flex flex-wrap items-center gap-1">
+      {/*
+        A pip a finger can actually hit is 44px square, and a pip that reads as
+        a wax seal is 20px — so the button is the former and the mark inside it
+        the latter. The gap goes away when the pips are buttons: the boxes are
+        already spaced by the air around each mark, and adding more would push
+        a nine-slot row onto a second line for nothing.
+      */}
+      <span className={`flex flex-wrap items-center ${editable ? "" : "gap-1"}`}>
         {Array.from({ length: row.total }, (_, index) => index + 1).map((pip) => (
           <Pip
             key={pip}
@@ -143,8 +150,13 @@ function Pip({
         type="submit"
         title={label}
         aria-label={label}
-        className={`block h-5 w-5 rounded-full border transition hover:border-gold-400 hover:ring-2 hover:ring-gold-500/30 cursor-pointer ${face}`}
-      />
+        className="group flex h-11 w-11 items-center justify-center cursor-pointer"
+      >
+        <span
+          aria-hidden
+          className={`block h-5 w-5 rounded-full border transition group-hover:border-gold-400 group-hover:ring-2 group-hover:ring-gold-500/30 ${face}`}
+        />
+      </button>
     </form>
   );
 }

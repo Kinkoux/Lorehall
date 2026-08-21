@@ -123,6 +123,8 @@ export const campaign = {
         zoomOut: "Zoom out",
         reset: "Fit to screen",
         fullscreen: "Fullscreen",
+        label: "Map viewer — drag to pan, arrow keys to move, + and − to zoom, 0 to fit",
+        wheelHint: "Ctrl + wheel to zoom",
       },
       grid: {
         heading: "Square grid",
@@ -337,6 +339,8 @@ export const campaign = {
         zoomOut: "Uzaklaş",
         reset: "Ekrana sığdır",
         fullscreen: "Tam ekran",
+        label: "Harita görüntüleyici — sürükleyerek kaydır, ok tuşlarıyla gez, + ve − ile yakınlaş, 0 ile sığdır",
+        wheelHint: "Ctrl + tekerlek ile yakınlaş",
       },
       grid: {
         heading: "Kare ızgara",

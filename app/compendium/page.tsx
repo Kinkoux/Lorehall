@@ -6,7 +6,7 @@ import { getT } from "@/lib/locale";
 import { ITEMS, MONSTERS, SPELLS } from "@/lib/srd-data";
 import { SiteHeader } from "@/components/SiteHeader";
 import { IconBook, IconChest, IconClaw } from "@/components/Icons";
-import { Card, SectionTitle } from "@/components/ui";
+import { Button, Card, Input, SectionTitle } from "@/components/ui";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -72,7 +72,20 @@ export default async function CompendiumPage() {
         <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
           {t("compendium.title")}
         </h1>
-        <p className="mt-1 mb-8 text-sm text-parchment-500">{t("compendium.subtitle")}</p>
+        <p className="mt-1 mb-4 text-sm text-parchment-500">{t("compendium.subtitle")}</p>
+
+        {/* One box across all three collections, for when you know the name but
+            not which shelf it sits on. */}
+        <form action="/compendium/search" className="mb-8 flex flex-wrap gap-2">
+          <Input
+            name="q"
+            aria-label={t("compendium.search.label")}
+            placeholder={t("compendium.search.placeholder")}
+            className="!w-72 max-w-full"
+          />
+          <Button type="submit">{t("common.search")}</Button>
+        </form>
+
         <div className="grid gap-4 sm:grid-cols-2">
           <Link href="/compendium/spells" className="block">
             <Card className="transition hover:border-gold-500">

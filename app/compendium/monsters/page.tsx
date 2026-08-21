@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { CR_LABELS, getMonsterArt, searchMonsters } from "@/lib/srd-data";
+import {
+  CR_LABELS,
+  MONSTER_SIZES,
+  MONSTER_TYPES,
+  getMonsterArt,
+  searchMonsters,
+} from "@/lib/srd-data";
 import { SiteHeader } from "@/components/SiteHeader";
 import { IconClaw } from "@/components/Icons";
 import { Pagination } from "@/components/Pagination";
 import { BackLink, Button, Input, Select } from "@/components/ui";
+import { ActiveFilters, type FilterChip } from "../ActiveFilters";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -17,15 +24,45 @@ const LIMIT = 60;
 export default async function MonstersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; cr?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    cr?: string;
+    type?: string;
+    size?: string;
+    page?: string;
+  }>;
 }) {
   const user = await getCurrentUser();
   const { t } = await getT();
-  const { q = "", cr = "", page: pageRaw = "1" } = await searchParams;
-  const results = searchMonsters(q, cr);
+  const {
+    q = "",
+    cr = "",
+    type: typeRaw = "",
+    size: sizeRaw = "",
+    page: pageRaw = "1",
+  } = await searchParams;
+  // A hand-typed facet that names nothing filters nothing, and shows no chip.
+  const type = MONSTER_TYPES.includes(typeRaw) ? typeRaw : "";
+  const size = MONSTER_SIZES.find((s) => s.toLowerCase() === sizeRaw.toLowerCase()) ?? "";
+  const results = searchMonsters(q, cr, type, size);
   const totalPages = Math.max(1, Math.ceil(results.length / LIMIT));
   const page = Math.min(Math.max(Number.parseInt(pageRaw, 10) || 1, 1), totalPages);
   const shown = results.slice((page - 1) * LIMIT, page * LIMIT);
+
+  const chips: FilterChip[] = [
+    q && { key: "q", label: t("compendium.filters.query", { q }) },
+    cr && { key: "cr", label: `CR ${cr}` },
+    type && {
+      key: "type",
+      label: `${t("compendium.monsters.type")}: ${t(`compendium.monsters.types.${type}`)}`,
+    },
+    size && {
+      key: "size",
+      label: `${t("compendium.monsters.size")}: ${t(
+        `compendium.monsters.sizes.${size.toLowerCase()}`
+      )}`,
+    },
+  ].filter(Boolean) as FilterChip[];
 
   return (
     <>
@@ -36,14 +73,20 @@ export default async function MonstersPage({
           {t("compendium.monsters.title")}
         </h1>
 
-        <form className="mb-6 flex flex-wrap gap-2">
+        <form className="mb-4 flex flex-wrap gap-2">
           <Input
             name="q"
             defaultValue={q}
+            aria-label={t("compendium.searchLabel")}
             placeholder={t("compendium.searchByName")}
             className="!w-56"
           />
-          <Select name="cr" defaultValue={cr} className="!w-32">
+          <Select
+            name="cr"
+            defaultValue={cr}
+            aria-label={t("compendium.monsters.crLabel")}
+            className="!w-32"
+          >
             <option value="">{t("compendium.monsters.anyCr")}</option>
             {CR_LABELS.map((label) => (
               <option key={label} value={label}>
@@ -51,8 +94,43 @@ export default async function MonstersPage({
               </option>
             ))}
           </Select>
+          <Select
+            name="type"
+            defaultValue={type}
+            aria-label={t("compendium.monsters.type")}
+            className="!w-40"
+          >
+            <option value="">{t("compendium.monsters.anyType")}</option>
+            {MONSTER_TYPES.map((value) => (
+              <option key={value} value={value}>
+                {t(`compendium.monsters.types.${value}`)}
+              </option>
+            ))}
+          </Select>
+          <Select
+            name="size"
+            defaultValue={size}
+            aria-label={t("compendium.monsters.size")}
+            className="!w-36"
+          >
+            <option value="">{t("compendium.monsters.anySize")}</option>
+            {MONSTER_SIZES.map((value) => (
+              <option key={value} value={value}>
+                {t(`compendium.monsters.sizes.${value.toLowerCase()}`)}
+              </option>
+            ))}
+          </Select>
           <Button type="submit">{t("common.search")}</Button>
         </form>
+
+        <ActiveFilters
+          basePath="/compendium/monsters"
+          params={{ q, cr, type, size }}
+          chips={chips}
+          heading={t("compendium.filters.active")}
+          removeLabel={(label) => t("compendium.filters.remove", { label })}
+          clearLabel={t("compendium.filters.clearAll")}
+        />
 
         <p className="mb-4 text-xs text-parchment-500">
           {t("compendium.results", { n: results.length })}
@@ -102,7 +180,7 @@ export default async function MonstersPage({
           page={page}
           totalPages={totalPages}
           basePath="/compendium/monsters"
-          params={{ q, cr }}
+          params={{ q, cr, type, size }}
         />
       </main>
     </>
