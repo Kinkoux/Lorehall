@@ -1,5 +1,6 @@
 export const auth = {
   en: {
+    backHome: "Back to the main page",
     login: {
       title: "SIGN IN",
       username: "Username",
@@ -75,6 +76,7 @@ export const auth = {
     },
   },
   tr: {
+    backHome: "Ana sayfaya dön",
     login: {
       title: "GİRİŞ YAP",
       username: "Kullanıcı adı",

@@ -6,13 +6,15 @@ import { register, type FormState } from "@/lib/actions";
 import { makeT, type Locale } from "@/lib/i18n";
 import { Button, Card, ErrorText, Input, Label } from "@/components/ui";
 import { PasswordInput } from "@/components/PasswordInput";
+import { AuthMasthead } from "@/components/AuthMasthead";
 
 export function RegisterForm({ locale }: { locale: Locale }) {
   const t = makeT(locale);
   const [state, action, pending] = useActionState<FormState, FormData>(register, {});
 
   return (
-    <main className="flex flex-1 items-center justify-center px-4 py-16">
+    <main className="flex flex-1 flex-col items-center justify-center px-4 py-16">
+      <AuthMasthead locale={locale} />
       <Card className="w-full max-w-sm">
         <h1 className="mb-6 text-center font-display text-2xl font-bold tracking-widest text-gold-400">
           {t("auth.register.title")}
