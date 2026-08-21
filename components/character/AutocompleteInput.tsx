@@ -18,6 +18,13 @@ import { Input } from "@/components/ui";
  * source. Typing something the list has never heard of is still a complete
  * answer — the reference simply stays empty.
  *
+ * The reference is no longer the *only* thing that attaches a source, though,
+ * and deliberately so: the actions behind these forms resolve the name too
+ * when no reference arrives, because at a table full of phones there are
+ * several ordinary ways for a hidden field to be left behind. What follows is
+ * belt to that braces — it keeps the picked reference from being lost, rather
+ * than being the only thing standing between a sword and a plain line.
+ *
  * Every field here is uncontrolled on purpose: React clears an uncontrolled
  * form after a server action resolves, so the name and the hidden references
  * empty themselves together. A controlled value would survive the reset and
@@ -116,11 +123,15 @@ export function AutocompleteInput({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setActive((i) => (i <= 0 ? items.length - 1 : i - 1));
-    } else if (event.key === "Enter" && active >= 0) {
-      // Only steals the Enter that is choosing something; otherwise the form
-      // submits exactly as it would without this field.
+    } else if (event.key === "Enter") {
+      // An open list makes Enter a choice, never a submit: with a row
+      // highlighted it takes that row, and with none it takes the first, which
+      // is the row the typist was looking at. Submitting here was how a
+      // half-typed "Leath" used to become a hand-typed line — and it is only
+      // ever an Enter *while suggestions are showing* that is stolen; a closed
+      // list (Escape, no matches, nothing typed) submits as it always did.
       event.preventDefault();
-      choose(items[active]);
+      choose(active >= 0 ? items[active] : items[0]);
     }
   }
 
@@ -174,9 +185,13 @@ export function AutocompleteInput({
             <li key={`${suggestion.kind}-${suggestion.value.ref}`} role="option" aria-selected={i === active}>
               <button
                 type="button"
-                // Fires before blur, so the click is never lost to the field
-                // closing its own list underneath the pointer.
-                onMouseDown={(event) => {
+                // Pointer, not mouse: a finger produces `pointerdown` first
+                // and reliably, while the synthesised `mousedown` arrives late
+                // enough that the field's own blur can close the list out from
+                // under the tap — which is exactly how a phone used to lose a
+                // pick. preventDefault here also suppresses that compatibility
+                // mousedown, so the choice is made once.
+                onPointerDown={(event) => {
                   event.preventDefault();
                   choose(suggestion);
                 }}

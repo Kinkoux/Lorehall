@@ -506,6 +506,18 @@ export default async function CharacterPage({
                         <Input name="qty" type="number" min={1} max={9999} defaultValue={1} className="!w-20" />
                       </div>
                       <Input name="notes" placeholder={t("character.sheet.notesOptionalPh")} />
+                      {/* Ticked, the name is taken at face value and the line
+                          starts with no source at all — the way to add a
+                          heirloom that happens to be called "Shield". */}
+                      <label className="flex items-center gap-2 text-sm text-parchment-300">
+                        <input
+                          type="checkbox"
+                          name="custom"
+                          value="1"
+                          className="accent-[#8a6516]"
+                        />
+                        {t("character.custom")}
+                      </label>
                       <Button type="submit">{t("character.sheet.addItem")}</Button>
                     </form>
                   )}
@@ -614,6 +626,17 @@ export default async function CharacterPage({
                         <Input name="usesMax" type="number" min={1} max={99} placeholder={t("character.sheet.usesPh")} className="!w-20" />
                       </div>
                       <Input name="notes" placeholder={t("character.sheet.abilityNotesPh")} />
+                      {/* Same tick as the inventory form: a homebrew power
+                          named after a book spell stays homebrew. */}
+                      <label className="flex items-center gap-2 text-sm text-parchment-300">
+                        <input
+                          type="checkbox"
+                          name="custom"
+                          value="1"
+                          className="accent-[#8a6516]"
+                        />
+                        {t("character.custom")}
+                      </label>
                       <Button type="submit">{t("common.add")}</Button>
                     </form>
                   )}

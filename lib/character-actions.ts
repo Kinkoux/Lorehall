@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, eq, isNotNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, notInArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { redirect } from "next/navigation";
 import {
@@ -63,6 +63,16 @@ function int(formData: FormData, key: string): number | null {
 
 /** Server-side length ceiling — the client's maxlength is a suggestion. */
 const cap = (s: string, n: number) => s.slice(0, n);
+
+/**
+ * The "custom" tick on the three add forms: "this is my own thing, do not go
+ * looking it up". An unchecked box sends nothing at all, so a present value is
+ * the whole signal — read the way `setMapGrid` reads its own checkbox.
+ */
+const isCustom = (formData: FormData) => str(formData, "custom") !== "";
+
+/** How a typed name is compared to a stored one: whole, folded, trimmed. */
+const foldName = (name: string) => name.trim().toLowerCase();
 
 /** Clamp an optional number into range; a blank field stays blank. */
 const clampOpt = (n: number | null, min: number, max: number) =>
@@ -413,6 +423,10 @@ function readItemBonuses(formData: FormData): string | null {
  * re-derived here from the library row or the SRD entry the reference names,
  * so a forged field buys nothing a player could not already type into the
  * sheet form by hand.
+ *
+ * A reference is no longer required for a line to know what it is, though:
+ * when none arrives the name is resolved here instead (see below), which is
+ * what makes the phone-shaped ways of losing the hidden field harmless.
  */
 type ItemSource = {
   worldItemId: string | null;
@@ -435,6 +449,11 @@ async function resolveItemSource(
     statBonuses: null,
     summary: null,
   };
+
+  // "Custom — start blank" is taken at its word, and taken first: whatever the
+  // form is carrying, a player who ticked it is asking for a line of their own
+  // with no source behind it. Everything below is the lookup they declined.
+  if (isCustom(formData)) return blank;
 
   // A library entry wins: it is the only source that carries real bonuses.
   const worldItemId = str(formData, "worldItemId");
@@ -481,6 +500,58 @@ async function resolveItemSource(
         summary: itemSummary(item),
       };
     }
+    return blank;
+  }
+
+  // No reference at all — which is the *ordinary* case at the table, not an
+  // exotic one: a tap that lands as the suggestion list closes under the
+  // finger, or an Enter that submits the form instead of picking a row, sends
+  // the name and nothing else. The name is therefore asked last, and asked the
+  // same way the suggestion list would have been read: this world's library
+  // first (only the part this reader may see), the SRD behind it, whole-name
+  // matches only. Typing "Leather Armor" by hand and picking it off the list
+  // land the same row, which is the point.
+  const name = foldName(str(formData, "name"));
+  if (!name) return blank;
+
+  const access = await getCampaignAccess(campaignId, actorId);
+  if (!access) return blank;
+  // A DM-only entry is no more reachable by name than it was by id: the party
+  // has not met it yet, and typing it exactly is not the same as being shown it.
+  const visible = access.isDm ? [] : [eq(worldItems.visibility, "everyone")];
+  const [libraryItem] = await db
+    .select()
+    .from(worldItems)
+    .where(
+      and(
+        eq(worldItems.worldId, access.world.id),
+        ...visible,
+        sql`lower(btrim(${worldItems.name})) = ${name}`
+      )
+    )
+    // Two entries may share a name; the oldest one is the answer, always.
+    .orderBy(asc(worldItems.createdAt), asc(worldItems.id))
+    .limit(1);
+  if (libraryItem) {
+    return {
+      worldItemId: libraryItem.id,
+      srdIndex: null,
+      slot: libraryItem.slot,
+      statBonuses: libraryItem.statBonuses,
+      summary: libraryItem.description,
+    };
+  }
+
+  const { ITEMS, itemSummary, srdItemSlot } = await import("@/lib/srd-data");
+  const srdItem = ITEMS.find((entry) => foldName(entry.name) === name);
+  if (srdItem) {
+    return {
+      worldItemId: null,
+      srdIndex: srdItem.index,
+      slot: srdItemSlot(srdItem),
+      statBonuses: null,
+      summary: itemSummary(srdItem),
+    };
   }
   return blank;
 }
@@ -782,12 +853,23 @@ export async function addAbility(characterId: string, formData: FormData) {
   // A line picked from the compendium keeps the index, so the sheet can link
   // back to the full text instead of reprinting it. There is no homebrew spell
   // library to reference — the SRD is the only source a spell can name.
+  //
+  // The picked reference answers first; when none arrived — the tap the
+  // closing list swallowed, the Enter that submitted the form — the name
+  // itself is asked, matched whole against the spell list. Someone who types
+  // "fireball" into this box means Fireball, and gets the link and the summary
+  // a picked one gets. The "custom" tick is the way out for a homebrew power
+  // that happens to share a name with the book's, and — as on the inventory
+  // form — it is taken at its word before anything else is asked.
   let srdIndex: string | null = null;
   let summary: string | null = null;
   const pickedIndex = str(formData, "srdIndex");
-  if (pickedIndex) {
-    const { getSpell, spellSummary } = await import("@/lib/srd-data");
-    const spell = getSpell(pickedIndex);
+  if (!isCustom(formData)) {
+    const { getSpell, spellSummary, SPELLS } = await import("@/lib/srd-data");
+    const needle = foldName(name);
+    const spell = pickedIndex
+      ? getSpell(pickedIndex)
+      : SPELLS.find((entry) => foldName(entry.name) === needle);
     if (spell) {
       srdIndex = spell.index;
       summary = spellSummary(spell);

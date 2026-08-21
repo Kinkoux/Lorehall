@@ -81,6 +81,12 @@ export function GiveItemForm({
           </Button>
         </div>
       </div>
+      {/* The name is resolved server-side when nothing was picked from the
+          list; this is how a DM says "no, I mean my own thing". */}
+      <label className="flex items-center gap-2 text-sm text-parchment-300">
+        <input type="checkbox" name="custom" value="1" className="accent-[#8a6516]" />
+        {t("character.custom")}
+      </label>
     </form>
   );
 }

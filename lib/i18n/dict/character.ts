@@ -144,6 +144,9 @@ export const character = {
       srd: "Compendium",
       world: "This world",
     },
+    // The tick that tells the server not to look the typed name up. Shared by
+    // the sheet's two add forms and the DM's give-item form.
+    custom: "Custom — start blank",
   },
   tr: {
     hub: {
@@ -281,5 +284,6 @@ export const character = {
       srd: "Kütüphane",
       world: "Bu dünya",
     },
+    custom: "Özel — boş başlasın",
   },
 } as const;
