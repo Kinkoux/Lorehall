@@ -2,7 +2,7 @@ import type { WorldItem } from "@/lib/db";
 import { fmt } from "@/lib/dnd";
 import type { T } from "@/lib/i18n";
 import { statBonusEntries, STAT_LABELS } from "@/lib/world-items";
-import { categoryArt } from "@/lib/ui-art";
+import { categoryArtThumb } from "@/lib/ui-art";
 import { DmBadge } from "@/components/ui";
 
 /**
@@ -35,9 +35,13 @@ export function WorldItemCardFace({ item, t }: { item: WorldItemFace; t: T }) {
           />
         ) : (
           // No photograph of this one yet, so the category's plate stands in.
+          // The 96px cut: the square is 64px, and a plate standing in for a
+          // photograph is a marker rather than the picture — worth the sharpest
+          // 64 pixels, not the 47KB the full 512px plate costs on a grid of
+          // cards that mostly show one of six repeated categories.
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={categoryArt(item.category)}
+            src={categoryArtThumb(item.category)}
             alt=""
             width={64}
             height={64}

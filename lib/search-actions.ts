@@ -7,6 +7,8 @@ import { getLocale } from "@/lib/locale";
 import { getCampaignAccess } from "@/lib/perms";
 import { fmt } from "@/lib/dnd";
 import { statBonusEntries, STAT_LABELS } from "@/lib/world-items";
+import { categoryArtThumb } from "@/lib/ui-art";
+import { worldItemPhoto } from "@/components/character/item-art";
 
 /**
  * Lookahead for the two "type a name" fields on a character sheet. The point
@@ -48,6 +50,28 @@ export type ItemSuggestion = {
   slot: string | null;
   /** Pre-rendered "+2 AC · +1 STR", or null. Display only — never an input. */
   bonuses: string | null;
+  /**
+   * The picture a *list row* may wear, resolved on the server for the same
+   * reason the sheet's squares are: choosing a plate means reading the
+   * compendium's manifest, and that JSON stays here.
+   *
+   * Cut small, always, and that is the whole distinction from `photo` below. A
+   * suggestion list is up to eight rows drawn 28 pixels wide while somebody is
+   * still typing; an SRD entry therefore answers with its 96px cut, and a
+   * library entry answers with its *category* plate rather than its own
+   * photograph — that photograph is whatever the DM uploaded, up to four
+   * megabytes of it, at whatever dimensions their phone shoots, and eight of
+   * those arriving mid-keystroke is a list that costs more than the sheet.
+   */
+  art: string;
+  /**
+   * The library entry's actual photograph, for the one place a single chosen
+   * item is drawn and the download is worth it: the strip under the DM's
+   * give-item field, which exists precisely so they can see that "Ring" meant
+   * the enchanted one. Null for an SRD entry, which has no photograph — only
+   * engravings, and `art` already carries the right cut of those.
+   */
+  photo: string | null;
 };
 
 export type SpellSuggestion = {
@@ -73,12 +97,19 @@ const matches = (name: string, needle: string) => name.toLowerCase().includes(ne
  * DM who runs it. Anyone else — including the world owner watching from
  * outside — gets nothing rather than an error, because the id is forgeable
  * and a refusal that differs from "no matches" is itself an answer.
+ *
+ * A roster character has no table and therefore no world: `access` is null for
+ * one, its owner is the only reader, and the library half of the lookahead
+ * simply has nothing to read.
  */
 async function openSheet(characterId: string, actorId: string) {
   const character = await db.query.characters.findFirst({
     where: eq(characters.id, characterId),
   });
   if (!character) return null;
+  if (!character.campaignId) {
+    return character.userId === actorId ? { character, access: null } : null;
+  }
   const access = await getCampaignAccess(character.campaignId, actorId);
   if (!access) return null;
   const mine = character.userId === actorId && access.canParticipate;
@@ -110,18 +141,19 @@ export async function searchItemsForCharacter(
 
   // A DM-only entry is not among the names this sheet could be typing: the
   // lookahead is a read of the library, so it reads the same slice of it the
-  // reader would see on the world page.
-  const library = await db
-    .select()
-    .from(worldItems)
-    .where(
-      open.access.isDm
-        ? eq(worldItems.worldId, open.access.world.id)
-        : and(
-            eq(worldItems.worldId, open.access.world.id),
-            eq(worldItems.visibility, "everyone")
-          )
-    );
+  // reader would see on the world page. A roster sheet reads no slice at all —
+  // it belongs to no world — and the compendium fills the whole list instead.
+  const access = open.access;
+  const library = access
+    ? await db
+        .select()
+        .from(worldItems)
+        .where(
+          access.isDm
+            ? eq(worldItems.worldId, access.world.id)
+            : and(eq(worldItems.worldId, access.world.id), eq(worldItems.visibility, "everyone"))
+        )
+    : [];
   const fromWorld: ItemSuggestion[] = library
     .filter((item) => matches(item.name, needle))
     .map((item) => ({
@@ -131,13 +163,15 @@ export async function searchItemsForCharacter(
       category: item.category,
       slot: item.slot,
       bonuses: bonusSummary(item.statBonuses),
+      art: categoryArtThumb(item.category),
+      photo: worldItemPhoto(item.id, item.imageFile),
     }));
 
   const room = MAX_RESULTS - Math.min(fromWorld.length, MAX_RESULTS);
   if (room === 0) return fromWorld.slice(0, MAX_RESULTS);
 
   // Lazy import keeps the SRD JSON out of the sheet's own chunk.
-  const { itemMatchesName, localizedItemName, srdItemSlot, ITEMS } = await import(
+  const { itemMatchesName, localizedItemName, srdItemArt, srdItemSlot, ITEMS } = await import(
     "@/lib/srd-data"
   );
   // The compendium answers to both names whatever the interface language, so a
@@ -158,6 +192,9 @@ export async function searchItemsForCharacter(
       slot: srdItemSlot(item),
       // Nothing in the SRD carries a machine-readable bonus.
       bonuses: null,
+      art: srdItemArt(item).thumb,
+      // The compendium is drawings, not photographs.
+      photo: null,
     });
   }
   return [...fromWorld, ...fromSrd];

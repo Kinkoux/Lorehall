@@ -18,11 +18,12 @@ vi.mock("@/lib/auth", () => ({
 
 import { setActiveMap } from "@/lib/map-actions";
 import { setBeatStatus } from "@/lib/beat-actions";
-import { campaignMaps, combatants, gameSessions, storyBeats } from "@/lib/db/schema";
+import { campaignMaps, characters, combatants, gameSessions, storyBeats } from "@/lib/db/schema";
 import { applySchema, db, sqlState, truncateAll } from "./support/db";
 import {
   seedBeat,
   seedCampaign,
+  seedCharacter,
   seedCombatant,
   seedMap,
   seedSession,
@@ -182,6 +183,33 @@ describe("the other guarded indexes from the bootstrap", () => {
     await seedCombatant(sessionId, { hp: 7, maxHp: 7 });
     const rows = await db.select().from(combatants).where(eq(combatants.sessionId, sessionId));
     expect(rows).toHaveLength(3);
+  });
+
+  it("characters_one_copy_per_campaign: one stamp of a master per table", async () => {
+    const master = await seedCharacter(null, fx.player);
+    const stamp = (id: string, campaignId: string) =>
+      db.insert(characters).values({
+        id,
+        campaignId,
+        userId: fx.player,
+        name: "Ashen",
+        originCharacterId: master,
+        updatedAt: Date.now(),
+      });
+
+    await stamp("copy-here", fx.campaignId);
+    const error = await capture(() => stamp("copy-here-again", fx.campaignId));
+    expect(sqlState(error)).toBe("23505");
+
+    // The same hero at a second table is a second pair, and allowed: that is
+    // what copying a roster character is for.
+    const other = await seedCampaign(fx.worldId, fx.dm);
+    await expect(stamp("copy-elsewhere", other)).resolves.toBeDefined();
+
+    // origin_character_id IS NULL rows are outside the index entirely — a
+    // player may keep any number of sheets they wrote at the table itself.
+    await seedCharacter(fx.campaignId, fx.player);
+    await seedCharacter(fx.campaignId, fx.player);
   });
 });
 

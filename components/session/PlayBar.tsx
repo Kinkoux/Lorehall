@@ -1,8 +1,17 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Combatant } from "@/lib/db";
 import type { T } from "@/lib/i18n";
 import { nextTurn } from "@/lib/session-actions";
-import { IconChevron, IconDie, IconParty, IconScroll, IconSwords } from "@/components/Icons";
+import {
+  IconChevron,
+  IconDie,
+  IconHelm,
+  IconMap,
+  IconParty,
+  IconScroll,
+  IconSwords,
+} from "@/components/Icons";
 import { turnFocus } from "@/components/session/turn-focus";
 import { Button } from "@/components/ui";
 
@@ -18,6 +27,12 @@ import { Button } from "@/components/ui";
  * It sticks at `z-40`, the same layer as the site navbar and later in the
  * document, so while the page is scrolled the bar sits over the navbar instead
  * of disappearing behind it. At rest (scroll top) the two do not overlap.
+ *
+ * Two of the marks lead somewhere conditional: the battle map, when one is on
+ * the table, and — the only one that leaves the page — the viewer's own
+ * character sheet, when they are in the order. Their own numbers are the
+ * thing a player looks up mid-turn, and the way there used to run through the
+ * campaign hub.
  */
 export function PlayBar({
   title,
@@ -28,6 +43,8 @@ export function PlayBar({
   order,
   isDm,
   sessionId,
+  mapHref,
+  sheetHref,
   t,
 }: {
   title: string;
@@ -40,6 +57,10 @@ export function PlayBar({
   order: readonly Combatant[];
   isDm: boolean;
   sessionId: string;
+  /** Anchor of the map card, when a map is on the table. */
+  mapHref?: string | null;
+  /** The viewer's own sheet in this campaign — a page, not an anchor. */
+  sheetHref?: string | null;
   t: T;
 }) {
   const { current, next } = turnFocus(order, turnIndex);
@@ -134,6 +155,11 @@ export function PlayBar({
           <JumpLink href="#initiative" label={t("session.playBar.jump.initiative")}>
             <IconSwords size={16} />
           </JumpLink>
+          {mapHref && (
+            <JumpLink href={mapHref} label={t("session.map.title")}>
+              <IconMap size={16} />
+            </JumpLink>
+          )}
           {live && (
             <JumpLink href="#dice" label={t("session.playBar.jump.dice")}>
               <IconDie size={16} />
@@ -142,13 +168,22 @@ export function PlayBar({
           <JumpLink href="#log" label={t("session.playBar.jump.log")}>
             <IconScroll size={16} />
           </JumpLink>
+          {sheetHref && (
+            <JumpLink href={sheetHref} label={t("session.playBar.jump.sheet")}>
+              <IconHelm size={16} />
+            </JumpLink>
+          )}
         </nav>
       </div>
     </div>
   );
 }
 
-/** A 44x44 mark that drops the page at one of the session's three landmarks. */
+/**
+ * A 44x44 mark that drops the page at one of the session's landmarks — or,
+ * when the mark points off the page rather than at an anchor, walks there
+ * through the router instead of a full reload.
+ */
 function JumpLink({
   href,
   label,
@@ -158,14 +193,18 @@ function JumpLink({
   label: string;
   children: ReactNode;
 }) {
+  const className =
+    "inline-flex h-11 w-9 items-center justify-center rounded-sm text-parchment-500 transition hover:text-gold-300 focus-visible:outline-2 focus-visible:outline-gold-400 sm:w-11";
+  if (href.startsWith("#")) {
+    return (
+      <a href={href} title={label} aria-label={label} className={className}>
+        {children}
+      </a>
+    );
+  }
   return (
-    <a
-      href={href}
-      title={label}
-      aria-label={label}
-      className="inline-flex h-11 w-9 items-center justify-center rounded-sm text-parchment-500 transition hover:text-gold-300 focus-visible:outline-2 focus-visible:outline-gold-400 sm:w-11"
-    >
+    <Link href={href} title={label} aria-label={label} className={className}>
       {children}
-    </a>
+    </Link>
   );
 }

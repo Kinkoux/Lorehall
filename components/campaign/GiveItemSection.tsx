@@ -6,6 +6,13 @@ import { GiveItemForm, type GiveItemTarget } from "./GiveItemForm";
 type MemberRow = { member: typeof campaignMembers.$inferSelect; user: User };
 
 /**
+ * The four columns the picker reads. Stated as a slice rather than a whole
+ * `Character` so a caller on a hot path — the session page, re-queried every
+ * three seconds — can ask the database for four fields instead of twenty-six.
+ */
+export type GiveItemCharacter = Pick<Character, "id" | "name" | "userId" | "approval">;
+
+/**
  * The DM's "hand it over" panel, next to the encounters they prepped.
  *
  * Only approved sheets are offered, because only those are ones the action
@@ -22,7 +29,7 @@ export function GiveItemSection({
   t,
 }: {
   members: MemberRow[];
-  campaignCharacters: Character[];
+  campaignCharacters: GiveItemCharacter[];
   campaignId: string;
   locale: Locale;
   t: T;

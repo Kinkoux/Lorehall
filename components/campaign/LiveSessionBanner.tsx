@@ -39,7 +39,11 @@ export function LiveSessionBanner({
                   round: liveSession.round,
                 })}
               </p>
-              <p className="text-sm text-emerald-900/70">{t("campaign.live.tap")}</p>
+              {/* Full strength, not the 70% a secondary line would normally
+                  take: faded to that, the invitation measured 4.0:1 on the
+                  banner's tinted card — under AA for text this size, and this
+                  is the line that tells a player the table is waiting. */}
+              <p className="text-sm text-emerald-900">{t("campaign.live.tap")}</p>
             </div>
             <span className="font-display text-emerald-900">→</span>
           </div>

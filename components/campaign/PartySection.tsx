@@ -5,7 +5,7 @@ import { approveCharacter, rejectCharacter } from "@/lib/character-actions";
 import { hasScores, statBlock } from "@/lib/dnd";
 import type { StatBonuses } from "@/lib/world-items";
 import type { T } from "@/lib/i18n";
-import { classArtFor } from "@/lib/ui-art";
+import { classArtThumbFor } from "@/lib/ui-art";
 import { IconSkull } from "@/components/Icons";
 import { ConfirmButton } from "@/components/ConfirmButton";
 import { Card, Portrait, portraitSrc, SectionTitle } from "@/components/ui";
@@ -142,11 +142,16 @@ export function PartySection({
                     : null;
                   return (
                     <div key={character.id} className="flex items-center justify-between gap-3">
+                      {/* The 96px cut. A party row draws the portrait 40px
+                          across — 80 on a doubled screen — and a class plate
+                          only appears here when nobody uploaded a face, so a
+                          table of six could otherwise pull six full 512px
+                          plates to fill six thumbnails. */}
                       <Portrait
                         src={portraitSrc(character.id, character.imageFile)}
                         alt={character.name}
                         size={40}
-                        fallbackSrc={classArtFor(character.klass)}
+                        fallbackSrc={classArtThumbFor(character.klass)}
                       />
                       <Link
                         href={`/c/${campaignId}/ch/${memberUser.id}?ch=${character.id}`}

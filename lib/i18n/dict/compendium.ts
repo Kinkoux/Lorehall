@@ -7,7 +7,8 @@ export const compendium = {
     searchLabel: "Search by name",
     results: "{n} results",
     refine: "showing the first {n}, refine your search",
-    noResults: "Nothing matches.",
+    noResults: "Nothing on this shelf matches.",
+    emptyClear: "Clear the search",
     filters: {
       active: "Filtering by",
       remove: "Remove filter: {label}",
@@ -25,7 +26,6 @@ export const compendium = {
     },
     spells: {
       title: "Spells",
-      cardBody: "{n} spells — filter by level, class, school, and subclass; add straight to your sheet.",
       anyLevel: "Any level",
       anyClass: "Any class",
       anySchool: "Any school",
@@ -51,7 +51,6 @@ export const compendium = {
     },
     monsters: {
       title: "Monsters",
-      cardBody: "{n} stat blocks with free artwork — filter by CR, build encounters, deploy to initiative.",
       anyCr: "Any CR",
       anyType: "Any type",
       anySize: "Any size",
@@ -105,7 +104,6 @@ export const compendium = {
     },
     items: {
       title: "Items",
-      cardBody: "{n} pieces of equipment and magic items — filter by category, add straight to your inventory.",
       allCategories: "All items",
       category: "Category",
       categories: {
@@ -159,7 +157,8 @@ export const compendium = {
     searchLabel: "İsimle ara",
     results: "{n} sonuç",
     refine: "ilk {n} gösteriliyor, aramayı daralt",
-    noResults: "Eşleşen yok.",
+    noResults: "Bu rafta eşleşen yok.",
+    emptyClear: "Aramayı temizle",
     filters: {
       active: "Filtreler",
       remove: "Filtreyi kaldır: {label}",
@@ -177,7 +176,6 @@ export const compendium = {
     },
     spells: {
       title: "Büyüler",
-      cardBody: "{n} büyü — seviye, sınıf, okul ve alt sınıfa göre filtrele; doğrudan karakter sayfana ekle.",
       anyLevel: "Her seviye",
       anyClass: "Her sınıf",
       anySchool: "Her okul",
@@ -203,7 +201,6 @@ export const compendium = {
     },
     monsters: {
       title: "Canavarlar",
-      cardBody: "{n} stat bloğu, özgür lisanslı görsellerle — CR'a göre filtrele, karşılaşma kur, inisiyatife sür.",
       anyCr: "Her CR",
       anyType: "Her tür",
       anySize: "Her boy",
@@ -257,7 +254,6 @@ export const compendium = {
     },
     items: {
       title: "Eşyalar",
-      cardBody: "{n} teçhizat ve büyülü eşya — kategoriye göre filtrele, doğrudan envanterine ekle.",
       allCategories: "Tüm eşyalar",
       category: "Kategori",
       categories: {

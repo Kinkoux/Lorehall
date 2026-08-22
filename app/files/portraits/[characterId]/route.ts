@@ -23,15 +23,21 @@ export async function GET(
   });
   if (!character?.imageFile) return new Response("Not found", { status: 404 });
 
-  const access = await getCampaignAccess(character.campaignId, user.id);
-  if (!access?.canView) return new Response("Not found", { status: 404 });
-  // Pending sheets are private to their owner and the DM — so is the face.
-  if (
-    character.approval === "pending" &&
-    !access.isDm &&
-    character.userId !== user.id
-  ) {
-    return new Response("Not found", { status: 404 });
+  if (!character.campaignId) {
+    // A roster character is shown to nobody but its player: there is no table
+    // whose members have a reason to see the face, and no DM to overrule that.
+    if (character.userId !== user.id) return new Response("Not found", { status: 404 });
+  } else {
+    const access = await getCampaignAccess(character.campaignId, user.id);
+    if (!access?.canView) return new Response("Not found", { status: 404 });
+    // Pending sheets are private to their owner and the DM — so is the face.
+    if (
+      character.approval === "pending" &&
+      !access.isDm &&
+      character.userId !== user.id
+    ) {
+      return new Response("Not found", { status: 404 });
+    }
   }
 
   const file = await readPortraitFile(character.imageFile);

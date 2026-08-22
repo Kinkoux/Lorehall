@@ -15,26 +15,43 @@ export default async function ItemPage({
 }: {
   params: Promise<{ index: string }>;
 }) {
-  const user = await getCurrentUser();
-  const { t, locale } = await getT();
+  /**
+   * The lookup comes first, and the 404 with it. A response can only carry a
+   * status code until its body starts moving, and the body starts moving the
+   * moment anything under a Suspense boundary suspends — this segment has a
+   * `loading.tsx` of its own, so `getCurrentUser()` reaching for a cookie is
+   * enough to commit a 200 and turn a missing item into a soft 404. `params`
+   * is settled by the time this renders and `getItem` is a synchronous read of
+   * JSON already in memory, so nothing above this line can suspend and the
+   * verdict is reached while the headers are still ours to write.
+   */
   const { index } = await params;
   const item = getItem(index);
   if (!item) notFound();
+
+  const user = await getCurrentUser();
+  const { t, locale } = await getT();
   const name = localizedItemName(item, locale);
 
   /**
-   * Where this item could go: my own sheets, plus every sheet at a table I
-   * run. `addItemToCharacter` has always accepted both — the picker was the
-   * half that only ever offered mine, so a DM reading the compendium had to
-   * walk to the campaign page to hand anything over. One `or` over the join
-   * covers both without a second query, and without duplicates: a character
-   * of mine in a campaign of mine still matches one row, not two.
+   * Where this item could go: my own sheets — the ones on my roster included
+   * — plus every sheet at a table I run. `addItemToCharacter` has always
+   * accepted both — the picker was the half that only ever offered mine, so a
+   * DM reading the compendium had to walk to the campaign page to hand
+   * anything over. One `or` over the join covers both without a second query,
+   * and without duplicates: a character of mine in a campaign of mine still
+   * matches one row, not two.
+   *
+   * The join to campaigns is a LEFT one because a roster character has no
+   * campaign row to match — and the SRD is the one library that answers at
+   * every table and away from all of them, so there is no reason it should be
+   * the compendium that cannot reach a sheet with no table.
    */
   const myCharacters = user
     ? await db
         .select({ character: characters, campaign: campaigns, owner: users })
         .from(characters)
-        .innerJoin(campaigns, eq(characters.campaignId, campaigns.id))
+        .leftJoin(campaigns, eq(characters.campaignId, campaigns.id))
         .innerJoin(users, eq(characters.userId, users.id))
         .where(
           and(
@@ -148,10 +165,11 @@ export default async function ItemPage({
                   {myCharacters.map(({ character, campaign, owner }) => (
                     <option key={character.id} value={character.id}>
                       {/* Someone else's sheet is named by its player too —
-                          two tables can each have a Vex. */}
+                          two tables can each have a Vex. A sheet at no table
+                          says so instead of naming one. */}
                       {[
                         character.name,
-                        campaign.name,
+                        campaign?.name ?? t("character.roster.label"),
                         character.userId === user?.id
                           ? null
                           : (owner.displayName ?? owner.username),

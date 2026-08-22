@@ -124,7 +124,8 @@ export async function seedCodexEntry(
 }
 
 export async function seedCharacter(
-  campaignId: string,
+  /** NULL is a roster character — one its player owns outside any campaign. */
+  campaignId: string | null,
   userId: string,
   maxHp = 20,
   /** What the sheet says it is, for the rules that read the written class. */

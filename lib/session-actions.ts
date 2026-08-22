@@ -339,8 +339,12 @@ export async function adjustHp(sessionId: string, combatantId: string, formData:
     if (!sheet || sheet.userId !== user.id) return;
   }
 
-  const amount = int(formData, "amount");
-  if (amount === null || amount < 0) return;
+  // An empty box means the commonest number at the table — one point. The
+  // field is left blank on purpose so a thumb can type into it without
+  // clearing a default first; blank must therefore land somewhere, not be
+  // dropped in silence.
+  const amount = int(formData, "amount") ?? 1;
+  if (amount < 0) return;
   const op = str(formData, "op");
   // Read out of the row so the narrowing survives into the transaction
   // callbacks below, and so "before" and "after" are named the same way in
@@ -549,7 +553,14 @@ export async function nextTurn(sessionId: string) {
 
 const DICE = [4, 6, 8, 10, 12, 20, 100];
 
-export async function rollDice(sessionId: string, formData: FormData) {
+/** What the roller shows the person who pressed the die, over and above the
+ *  line the whole table reads in the log. */
+export type RollResult = { notation: string; rolls: number[]; total: number };
+
+export async function rollDice(
+  sessionId: string,
+  formData: FormData
+): Promise<RollResult | undefined> {
   const user = await requireUser();
   const ctx = await requireLiveSession(sessionId, user.id);
   if (!ctx || ctx.session.status !== "live") return;
@@ -566,4 +577,8 @@ export async function rollDice(sessionId: string, formData: FormData) {
   const detail = count > 1 || modifier ? `[${rolls.join(", ")}]` : "";
   await logEvent(sessionId, "roll", logMessage("rolled", { notation, detail, total }), user.id);
   revalidatePath(`/s/${sessionId}`);
+  // The log keeps the table's copy; this one goes back to the hand that
+  // pressed the die, which should not have to hunt the scroll for its own
+  // number.
+  return { notation, rolls, total };
 }

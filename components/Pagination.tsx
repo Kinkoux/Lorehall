@@ -1,8 +1,13 @@
 import Link from "next/link";
+import { LinkPendingWash } from "@/components/LinkSpinner";
 
 /**
  * Numbered page links for the compendium lists. Preserves the active filters
  * by re-serializing the current search params with the new page number.
+ *
+ * Page ten of the items list is sixty plates the browser has not seen, and on
+ * a slow line the click can look like nothing happened. Each number carries a
+ * wash that lights while its page is on its way — no wider button, no shift.
  */
 export function Pagination({
   page,
@@ -42,9 +47,10 @@ export function Pagination({
           <Link
             key={n}
             href={href(n) as never}
-            className="flex h-8 min-w-8 items-center justify-center rounded-sm border border-ink-600 px-2 font-mono text-sm font-bold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300"
+            className="relative flex h-8 min-w-8 items-center justify-center rounded-sm border border-ink-600 px-2 font-mono text-sm font-bold text-parchment-300 transition hover:border-gold-500 hover:text-gold-300"
           >
             {n}
+            <LinkPendingWash />
           </Link>
         )
       )}

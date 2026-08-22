@@ -88,6 +88,19 @@ if (!Number.isFinite(size) || size < 1) {
 }
 
 const outDir = path.join(root, "public", "art");
+// Small cuts of the plates that get drawn small: a category plate stands in a
+// 40px list row and behind a 64px empty slot, a school sigil sits beside a
+// spell's name, a class plate fills in for a missing portrait. The vignettes
+// are never drawn small, so they get no cut. Sizes are fixed rather than taken
+// from --size: the whole point of a cut is that it is not the full plate.
+const thumbDir = path.join(outDir, "t");
+const midDir = path.join(outDir, "m");
+const THUMB_SIZE = 96;
+const THUMB_QUALITY = 75;
+const MID_SIZE = 256;
+const MID_QUALITY = 80;
+const CUT_PREFIXES = ["cat-", "school-", "class-"];
+const wantsCuts = (slug) => CUT_PREFIXES.some((p) => slug.startsWith(p));
 
 let entries;
 try {
@@ -98,6 +111,8 @@ try {
 }
 
 await mkdir(outDir, { recursive: true });
+await mkdir(thumbDir, { recursive: true });
+await mkdir(midDir, { recursive: true });
 
 const sources = entries.filter((f) => f.toLowerCase().endsWith(".png")).sort();
 const errors = [];
@@ -105,6 +120,7 @@ const skippedUnknown = [];
 const done = [];
 let written = 0;
 let upToDate = 0;
+let cutsWritten = 0;
 
 for (const file of sources) {
   const slug = file.slice(0, -4);
@@ -115,19 +131,32 @@ for (const file of sources) {
     continue;
   }
   const src = path.join(sourceDir, file);
-  const dest = path.join(outDir, `${slug}.webp`);
+  // Each cut is judged on its own age, so adding a size to this list re-encodes
+  // only the size that is missing.
+  const cuts = [
+    { dest: path.join(outDir, `${slug}.webp`), size, quality },
+    ...(wantsCuts(slug)
+      ? [
+          { dest: path.join(midDir, `${slug}.webp`), size: MID_SIZE, quality: MID_QUALITY },
+          { dest: path.join(thumbDir, `${slug}.webp`), size: THUMB_SIZE, quality: THUMB_QUALITY },
+        ]
+      : []),
+  ];
   try {
-    const [srcStat, destStat] = await Promise.all([stat(src), stat(dest).catch(() => null)]);
-    if (!force && destStat && destStat.mtimeMs >= srcStat.mtimeMs) {
-      upToDate += 1;
-      done.push(slug);
-      continue;
+    const srcStat = await stat(src);
+    let touched = false;
+    for (const cut of cuts) {
+      const destStat = await stat(cut.dest).catch(() => null);
+      if (!force && destStat && destStat.mtimeMs >= srcStat.mtimeMs) continue;
+      await sharp(src)
+        .resize(cut.size, cut.size, { fit: "cover", position: "centre" })
+        .webp({ quality: cut.quality })
+        .toFile(cut.dest);
+      if (cut.dest === cuts[0].dest) touched = true;
+      else cutsWritten += 1;
     }
-    await sharp(src)
-      .resize(size, size, { fit: "cover", position: "centre" })
-      .webp({ quality })
-      .toFile(dest);
-    written += 1;
+    if (touched) written += 1;
+    else upToDate += 1;
     done.push(slug);
   } catch (err) {
     errors.push({ file, message: err.message });
@@ -153,8 +182,27 @@ console.log(`output        ${path.relative(root, outDir)}  (${size}x${size} webp
 console.log(`png found     ${sources.length}`);
 console.log(`converted     ${written}`);
 console.log(`up to date    ${upToDate}`);
+const cutFiles = async (dir) =>
+  (await readdir(dir).catch(() => [])).filter(
+    (f) => f.endsWith(".webp") && !f.startsWith("kind-")
+  );
+const cutBytes = async (dir, names) =>
+  (await Promise.all(names.map(async (f) => (await stat(path.join(dir, f))).size))).reduce(
+    (a, b) => a + b,
+    0
+  );
+const midNames = await cutFiles(midDir);
+const thumbNames = await cutFiles(thumbDir);
+
+console.log(`cuts written  ${cutsWritten} (${MID_SIZE}px m/ + ${THUMB_SIZE}px t/)`);
 console.log(`files on disk ${outFiles.length} of ${ALLOWED.size} known names`);
-console.log(`total size    ${mb(totalBytes)}`);
+console.log(`              ${midNames.length} mids + ${thumbNames.length} thumbs`);
+console.log(`total size    ${mb(totalBytes)} plates`);
+console.log(
+  `              ${mb(await cutBytes(midDir, midNames))} mids + ${mb(
+    await cutBytes(thumbDir, thumbNames)
+  )} thumbs`
+);
 if (outFiles.length) {
   console.log(`per file      avg ${kb(totalBytes / outFiles.length)}, max ${kb(Math.max(...sizes))}`);
 }

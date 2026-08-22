@@ -3,13 +3,11 @@ export const character = {
   en: {
     hub: {
       title: "My characters",
-      mine: "Characters",
-      empty: "No characters yet. Join a campaign and your character sheet will live here — inventory, spells, and computed stats included.",
       create: "Create a character",
       level: "Level",
-      noCampaigns: "You're not in any campaign yet. Join one with a code first.",
+      noCampaigns: "You're not in an adventure yet. Join one with a code and a character can be created straight into it.",
       toDashboard: "Go to my worlds",
-      allDone: "You already have a character in every campaign you're part of.",
+      createInCampaign: "Straight into an adventure",
       nameLabel: "Character name",
       namePh: "e.g. Thorin Emberbeard",
       campaignLabel: "Campaign",
@@ -18,6 +16,33 @@ export const character = {
       approvalHint: "A second character in the same campaign waits for the DM's approval.",
       pendingBadge: "Awaiting DM approval",
       dead: "Dead",
+    },
+    // A character who belongs to their player rather than to a table. The
+    // roster is where one is invented, kept between games, and taken from —
+    // taken by copy, which is the one thing about it nobody guesses unaided,
+    // so `templateBanner` says it out loud on every roster sheet.
+    roster: {
+      label: "Roster",
+      atTable: "At the table",
+      empty: "Nothing on the roster yet. A character made here is yours from the first line — no table required, and nobody's approval to wait for.",
+      atTableEmpty: "None of your characters has sat down at a table yet.",
+      templateBanner:
+        "This sheet is a template. Sitting down at an adventure stamps a copy of it — what happens at that table stays at that table, and is never written back here.",
+      fromTemplate: "from a template",
+      sitTitle: "Take this character to an adventure",
+      sitCampaignLabel: "Adventure",
+      sitButton: "Sit down",
+      sitHint: "A copy sits down at the table with its gear and spells. This sheet stays here, untouched.",
+      sitNoCampaigns: "You're not in an adventure yet — join one with a code and this character can sit down at it.",
+      sitAllSeated: "This character is already sitting at every adventure you're in.",
+      createTitle: "Off the table",
+      createButton: "Add to roster",
+      createHint: "Yours from the first line, with nobody's approval to wait for. Take it to an adventure whenever one turns up.",
+      deleteTitle: "Strike this character out",
+      deleteButton: "Delete character",
+      deleteWarn:
+        "The sheet goes for good, with its gear and its spells. Copies already sitting at a table are left exactly where they are — they simply stop remembering they were traced from this one.",
+      deleteAria: "Delete {name} from the roster",
     },
     sheet: {
       createTitle: "Create your character",
@@ -154,13 +179,11 @@ export const character = {
   tr: {
     hub: {
       title: "Karakterlerim",
-      mine: "Karakterler",
-      empty: "Henüz karakterin yok. Bir maceraya katıl; karakter sayfan — envanter, büyüler ve hesaplanan bonuslarla — burada yaşayacak.",
       create: "Karakter oluştur",
       level: "Seviye",
-      noCampaigns: "Henüz bir macerada değilsin. Önce bir katılım koduyla maceraya gir.",
+      noCampaigns: "Henüz bir macerada değilsin. Bir katılım koduyla katıl; sonra doğrudan o maceraya karakter açabilirsin.",
       toDashboard: "Dünyalarıma git",
-      allDone: "Parçası olduğun her macerada zaten bir karakterin var.",
+      createInCampaign: "Doğrudan bir maceraya",
       nameLabel: "Karakter adı",
       namePh: "örn. Thorin Emberbeard",
       campaignLabel: "Macera",
@@ -169,6 +192,29 @@ export const character = {
       approvalHint: "Aynı maceradaki ikinci karakter DM onayı bekler.",
       pendingBadge: "DM onayı bekliyor",
       dead: "Ölü",
+    },
+    roster: {
+      label: "Kadro",
+      atTable: "Masadaki karakterler",
+      empty: "Kadroda henüz kimse yok. Buradan açtığın karakter ilk satırdan itibaren senindir — masa gerekmez, kimsenin onayı da beklenmez.",
+      atTableEmpty: "Henüz hiçbir karakterin bir masaya oturmadı.",
+      templateBanner:
+        "Bu sayfa bir şablon. Bir maceraya oturduğunda kopyası çıkarılır — o masada olan biten orada kalır, buraya geri yazılmaz.",
+      fromTemplate: "şablondan",
+      sitTitle: "Bu karakterle bir maceraya otur",
+      sitCampaignLabel: "Macera",
+      sitButton: "Otur",
+      sitHint: "Masaya, teçhizatı ve büyüleriyle birlikte bir kopyası oturur. Bu sayfa olduğu gibi burada kalır.",
+      sitNoCampaigns: "Henüz bir macerada değilsin — bir katılım koduyla katıl, bu karakter de o masaya otursun.",
+      sitAllSeated: "Bu karakter, bulunduğun her maceraya zaten oturmuş durumda.",
+      createTitle: "Masasız",
+      createButton: "Kadroya ekle",
+      createHint: "İlk satırdan itibaren senin, kimsenin onayını beklemeden. Sırası gelince bir maceraya götürürsün.",
+      deleteTitle: "Bu karakteri sil",
+      deleteButton: "Karakteri sil",
+      deleteWarn:
+        "Sayfa, teçhizatı ve büyüleriyle birlikte kalıcı olarak silinir. Bir masada oturan kopyalarına dokunulmaz — yalnızca bu sayfadan çıkarıldıklarını unuturlar.",
+      deleteAria: "{name} karakterini kadrodan sil",
     },
     sheet: {
       createTitle: "Karakterini oluştur",

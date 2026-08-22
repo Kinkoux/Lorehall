@@ -46,6 +46,7 @@ export function AutocompleteInput({
   locale,
   required = false,
   className = "",
+  onPick,
 }: {
   characterId: string;
   kind: "item" | "spell";
@@ -54,6 +55,13 @@ export function AutocompleteInput({
   locale: Locale;
   required?: boolean;
   className?: string;
+  /**
+   * Told what was picked, and told again — with null — the moment a keystroke
+   * detaches it. Only a client caller can hand this in, which is exactly the
+   * caller that wants it: the DM's give-item form draws a small preview of the
+   * chosen piece, and the field already holds the only copy of that answer.
+   */
+  onPick?: (picked: ItemSuggestion | null) => void;
 }) {
   const t = makeT(locale);
   const listId = useId();
@@ -96,11 +104,13 @@ export function AutocompleteInput({
   function clearRefs() {
     if (srdRef.current) srdRef.current.value = "";
     if (worldRef.current) worldRef.current.value = "";
+    onPick?.(null);
   }
 
   function choose(suggestion: Suggestion) {
     if (inputRef.current) inputRef.current.value = suggestion.value.name;
     clearRefs();
+    if (suggestion.kind === "item") onPick?.(suggestion.value);
     // A library entry is named by its row id, everything else by its SRD index.
     const field =
       suggestion.kind === "item" && suggestion.value.source === "world" ? worldRef : srdRef;
@@ -196,10 +206,33 @@ export function AutocompleteInput({
                   choose(suggestion);
                 }}
                 onMouseEnter={() => setActive(i)}
-                className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm transition ${
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition ${
                   i === active ? "bg-gold-500/15 text-gold-300" : "text-parchment-100"
                 }`}
               >
+                {/*
+                  A picture of what the row is, shown while it is still a
+                  choice: the pack, the paper doll and this list all draw the
+                  same kinds of piece, so the eye can pick a longsword out of
+                  five weapons without reading five names. Items only — a
+                  spell's plate would be its school's sigil, which says far
+                  less about the line than its own name does.
+
+                  `art` and never `photo`: this is a 28px square in a list of
+                  eight that redraws as somebody types, and a library entry's
+                  own photograph is a full-size upload. The photograph gets its
+                  moment once one row has actually been chosen.
+                */}
+                {suggestion.kind === "item" && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={suggestion.value.art}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="h-7 w-7 shrink-0 rounded-sm border border-ink-600 object-cover"
+                  />
+                )}
                 <span className="min-w-0 flex-1 truncate">
                   {label(suggestion)}
                   {/* Beside a translated name, the one the row will actually

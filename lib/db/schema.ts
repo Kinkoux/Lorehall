@@ -1,4 +1,12 @@
-import { pgTable, text, integer, bigint, primaryKey, index } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  integer,
+  bigint,
+  primaryKey,
+  index,
+  type AnyPgColumn,
+} from "drizzle-orm/pg-core";
 
 // Timestamps are Date.now() ms kept as BIGINT (mode: number) so no call
 // site changed in the SQLite -> Postgres port.
@@ -289,9 +297,11 @@ export const sessionEvents = pgTable("session_events", {
 
 export const characters = pgTable("characters", {
   id: text("id").primaryKey(),
-  campaignId: text("campaign_id")
-    .notNull()
-    .references(() => campaigns.id),
+  // NULL is a character with no table yet: one that belongs to its player
+  // rather than to a campaign. It is a whole sheet — items, spells, portrait —
+  // that simply nobody is running. Bringing it to a table stamps a copy; the
+  // master keeps sitting on the roster untouched.
+  campaignId: text("campaign_id").references(() => campaigns.id),
   userId: text("user_id")
     .notNull()
     .references(() => users.id),
@@ -328,6 +338,19 @@ export const characters = pgTable("characters", {
   // type. NULL/NULL means "no portrait" — the UI draws a placeholder instead.
   imageFile: text("image_file"),
   imageMime: text("image_mime"),
+  // The roster sheet this one was stamped from, for a copy brought to a table.
+  // NULL on a master and on every sheet created straight into a campaign. It
+  // is a record of descent, not a live link: the copy is played on its own
+  // from the moment it exists, and editing either one leaves the other alone.
+  // Which is also why deleting the master only clears the memory of it (SET
+  // NULL) — the copy is somebody's character, mid-campaign, and outliving the
+  // sheet it was traced from is the whole point of having been copied.
+  // At most one copy of a given master per campaign, enforced by the partial
+  // unique index `characters_one_copy_per_campaign` in scripts/bootstrap-db.mjs.
+  originCharacterId: text("origin_character_id").references(
+    (): AnyPgColumn => characters.id,
+    { onDelete: "set null" }
+  ),
   updatedAt: ms("updated_at").notNull(),
 });
 

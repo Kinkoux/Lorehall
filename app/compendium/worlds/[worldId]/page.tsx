@@ -31,9 +31,18 @@ export default async function WorldLibraryPage({
 }: {
   params: Promise<{ worldId: string }>;
 }) {
-  const user = await requireUser();
-  const { t } = await getT();
+  /**
+   * The gate is the first thing this page waits on, and the translations are
+   * the last. Unlike the SRD routes there is no synchronous answer here — the
+   * question "does this world exist, and am I in it?" is a round trip — so the
+   * best that can be done is to spend nothing before it: `requireUser` is the
+   * one await the queries cannot be written without, and `getT()` waits its
+   * turn below rather than burning the headers on a stranger's 404. This
+   * subtree deliberately carries no `loading.tsx`, so no fallback renders
+   * ahead of the verdict and the 404 leaves as a 404.
+   */
   const { worldId } = await params;
+  const user = await requireUser();
 
   const [membership, libraryRows, campaignRows] = await Promise.all([
     getWorldMembership(worldId, user.id),
@@ -60,6 +69,7 @@ export default async function WorldLibraryPage({
   // A world nobody let me into and a world that never existed read the same.
   if (!membership || libraryRows.length === 0) notFound();
 
+  const { t } = await getT();
   const world = libraryRows[0].world;
   // The same answer `hasDmPowers` gives, worked out from rows already fetched.
   const dmPowers =

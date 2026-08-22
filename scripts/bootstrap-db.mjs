@@ -427,6 +427,29 @@ ALTER TABLE sessions ADD COLUMN IF NOT EXISTS show_monster_hp INTEGER NOT NULL D
 -- entry written before this column is 'everyone' — the library was public to
 -- the world by construction, so the default preserves what people already saw.
 ALTER TABLE world_items ADD COLUMN IF NOT EXISTS visibility TEXT NOT NULL DEFAULT 'everyone';
+-- roster characters (2026-08-22): a sheet no longer has to belong to a table.
+-- campaign_id NULL is a character its player owns outright; bringing it to a
+-- campaign stamps a copy that carries origin_character_id back to the master,
+-- so the roster sheet is never moved, never emptied, and never deleted with
+-- the table it visited. The user index is what the roster page reads by —
+-- every character of one player, campaign or no campaign.
+--
+-- ON DELETE SET NULL because descent is a memory rather than a dependency: a
+-- player striking a master off their roster must not take a character somebody
+-- is mid-campaign with, so the copy survives and simply forgets where it came
+-- from.
+--
+-- One copy of a master per table, with the database as the arbiter: the second
+-- of two presses that arrive together loses with SQLSTATE 23505 and is read as
+-- the idempotent case it is. Partial, because origin_character_id is NULL on
+-- every master and on every sheet created straight into a campaign, and a
+-- plain UNIQUE would be satisfied by any number of those but still has to be
+-- added to a table already full of them. The same hero at two different tables
+-- is deliberately outside it — that is two rows with two campaign ids.
+ALTER TABLE characters ALTER COLUMN campaign_id DROP NOT NULL;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS origin_character_id TEXT REFERENCES characters(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_characters_user ON characters(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS characters_one_copy_per_campaign ON characters (campaign_id, origin_character_id) WHERE origin_character_id IS NOT NULL;
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

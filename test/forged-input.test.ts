@@ -189,29 +189,48 @@ describe("giveItem — the campaign is the capability, not the character id", ()
   it("writes nothing when a player hands themselves treasure", async () => {
     const sheet = await seedCharacter(fx.campaignId, fx.player);
     auth.userId = fx.player;
-    await giveItem(fx.campaignId, formData({ characterId: sheet, name: "Vorpal Sword" }));
+    const state = await giveItem(
+      fx.campaignId,
+      {},
+      formData({ characterId: sheet, name: "Vorpal Sword" })
+    );
     expect(await allItems()).toHaveLength(0);
+    // The refusal is a sentence now, not an unchanged page: a form that posts
+    // and reports nothing is indistinguishable from one that worked.
+    expect(state.error).toBeTruthy();
+    expect(state.given).toBeUndefined();
   });
 
   it("refuses a sheet that sits at another table, even one the same DM runs", async () => {
     const theirs = await seedCharacter(elsewhere, fx.player);
     // The id is real and the caller does run that other campaign — but they
     // are not running *this* one's hand-over, and the two are not the same key.
-    await giveItem(fx.campaignId, formData({ characterId: theirs, name: "Vorpal Sword" }));
+    const state = await giveItem(
+      fx.campaignId,
+      {},
+      formData({ characterId: theirs, name: "Vorpal Sword" })
+    );
     expect(await allItems()).toHaveLength(0);
+    expect(state.error).toBeTruthy();
   });
 
   it("refuses a sheet still waiting on the DM's nod", async () => {
     const sheet = await seedCharacter(fx.campaignId, fx.player);
     await db.update(characters).set({ approval: "pending" }).where(eq(characters.id, sheet));
-    await giveItem(fx.campaignId, formData({ characterId: sheet, name: "Vorpal Sword" }));
+    const state = await giveItem(
+      fx.campaignId,
+      {},
+      formData({ characterId: sheet, name: "Vorpal Sword" })
+    );
     expect(await allItems()).toHaveLength(0);
+    expect(state.error).toBeTruthy();
   });
 
   it("re-reads an SRD reference server-side rather than trusting the form", async () => {
     const sheet = await seedCharacter(fx.campaignId, fx.player);
     await giveItem(
       fx.campaignId,
+      {},
       // The quantity is past the form's own ceiling and the bonus is a field
       // the DM would have had to type by hand; neither survives the round trip.
       formData({ characterId: sheet, name: "Shield", srdIndex: "shield", qty: "5000", bonus_ac: "9" })
@@ -236,6 +255,7 @@ describe("giveItem — the campaign is the capability, not the character id", ()
     });
     await giveItem(
       fx.campaignId,
+      {},
       formData({ characterId: sheet, name: "Emberfang Dagger", worldItemId: relic })
     );
 
@@ -247,7 +267,7 @@ describe("giveItem — the campaign is the capability, not the character id", ()
 
   it("names the hand-over in the feed as its own kind of event", async () => {
     const sheet = await seedCharacter(fx.campaignId, fx.player);
-    await giveItem(fx.campaignId, formData({ characterId: sheet, name: "Rope", qty: "2" }));
+    await giveItem(fx.campaignId, {}, formData({ characterId: sheet, name: "Rope", qty: "2" }));
 
     const events = await db
       .select()

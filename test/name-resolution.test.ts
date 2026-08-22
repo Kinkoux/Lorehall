@@ -174,7 +174,7 @@ describe("addItem resolves the name when no reference arrives", () => {
 describe("giveItem resolves the name the same way", () => {
   it("hands over a compendium piece the DM only typed the name of", async () => {
     auth.userId = fx.dm;
-    await giveItem(fx.campaignId, formData({ characterId: sheet, name: "Shield", qty: "1" }));
+    await giveItem(fx.campaignId, {}, formData({ characterId: sheet, name: "Shield", qty: "1" }));
     const [row] = await rowsOf(sheet);
     expect(row.srdIndex).toBe("shield");
     // A shield is held — the slot came from the source, not the form.
@@ -185,6 +185,7 @@ describe("giveItem resolves the name the same way", () => {
     auth.userId = fx.dm;
     await giveItem(
       fx.campaignId,
+      {},
       formData({ characterId: sheet, name: "Shield", qty: "1", custom: "1" })
     );
     const [row] = await rowsOf(sheet);

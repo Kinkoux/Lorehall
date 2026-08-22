@@ -173,6 +173,14 @@ describe("adjustCharacterHp", () => {
     await adjustCharacterHp(characterId, formData({ op: "damage", amount: "-5" }));
     expect((await readCharacter(characterId))?.currentHp).toBeNull();
   });
+
+  it("reads an empty box as a single point", async () => {
+    // The sheet's field starts blank with a faint 1 written in it, so that the
+    // common press is a number typed rather than a digit cleared first. A
+    // submission with nothing in it therefore has to mean what the hint says.
+    await adjustCharacterHp(characterId, formData({ op: "damage" }));
+    expect((await readCharacter(characterId))?.currentHp).toBe(19);
+  });
 });
 
 describe("adjustHp authority", () => {

@@ -1,6 +1,16 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, desc, eq } from "drizzle-orm";
-import { db, campaignMaps, characters, gameSessions, sessionEvents, users, type Combatant } from "@/lib/db";
+import {
+  db,
+  campaignMaps,
+  campaignMembers,
+  characters,
+  gameSessions,
+  sessionEvents,
+  users,
+  type Combatant,
+} from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import {
@@ -32,7 +42,9 @@ import { AutoRefresh } from "@/components/AutoRefresh";
 import { DiceRoller } from "@/components/DiceRoller";
 import { AddCombatantForm } from "@/components/AddCombatantForm";
 import { MapViewer } from "@/components/MapViewer";
+import { MapFold } from "@/components/session/MapFold";
 import { PlayBar } from "@/components/session/PlayBar";
+import { GiveItemSection } from "@/components/campaign/GiveItemSection";
 import {
   IconBookmark,
   IconDie,
@@ -74,7 +86,9 @@ export default async function SessionPage({
     activeMap,
     events,
     myCharacters,
-    partyPortraits,
+    portraitRows,
+    giveItemRoster,
+    members,
   ] = await Promise.all([
     getTurnOrder(sessionId),
     access.isDm ? getBeats(session.campaignId) : Promise.resolve([]),
@@ -116,15 +130,45 @@ export default async function SessionPage({
           eq(characters.approval, "approved")
         )
       ),
-    // Faces for the initiative list — one lookup for the whole campaign.
+    // Faces for the initiative list: two columns, because this is the one
+    // character lookup every player's three-second poll pays for, and a whole
+    // sheet drags twenty-six columns of backstory and notes behind each face.
     db
       .select({ id: characters.id, imageFile: characters.imageFile })
       .from(characters)
       .where(eq(characters.campaignId, session.campaignId)),
+    // The roster the give-item panel hands things to — a DM-only panel on a
+    // live table, so only that table asks for the wider rows, and only for the
+    // four fields the picker actually reads.
+    live && access.isDm
+      ? db
+          .select({
+            id: characters.id,
+            name: characters.name,
+            userId: characters.userId,
+            approval: characters.approval,
+          })
+          .from(characters)
+          .where(eq(characters.campaignId, session.campaignId))
+      : Promise.resolve([]),
+    // Who is at this table, so the give-item picker can say whose hero is whose.
+    access.isDm
+      ? db
+          .select({ member: campaignMembers, user: users })
+          .from(campaignMembers)
+          .innerJoin(users, eq(campaignMembers.userId, users.id))
+          .where(eq(campaignMembers.campaignId, session.campaignId))
+      : Promise.resolve([]),
   ]);
   const aliveCharacters = myCharacters.filter((c) => c.status === "alive");
-  const portraits = new Map(partyPortraits.map((c) => [c.id, c.imageFile]));
-  const iAmIn = order.some((c) => c.userId === user.id);
+  const portraits = new Map(portraitRows.map((c) => [c.id, c.imageFile]));
+  const myCombatant = order.find((c) => c.userId === user.id);
+  const iAmIn = myCombatant !== undefined;
+  // The sheet behind the viewer's own row — the numbers they look up mid-turn.
+  const mySheetHref =
+    myCombatant?.characterId && myCombatant.userId
+      ? `/c/${session.campaignId}/ch/${myCombatant.userId}?ch=${myCombatant.characterId}`
+      : null;
   const shownMap =
     activeMap && (activeMap.visibility === "everyone" || access.isDm) ? activeMap : null;
 
@@ -153,6 +197,8 @@ export default async function SessionPage({
           order={order}
           isDm={access.isDm}
           sessionId={sessionId}
+          mapHref={live && shownMap ? "#map" : null}
+          sheetHref={mySheetHref}
           t={t}
         />
 
@@ -178,33 +224,45 @@ export default async function SessionPage({
         </div>
 
         {live && shownMap && (
-          <Card className="mb-8">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <h3 className="flex items-center gap-2 font-display text-base text-gold-300">
-                <IconMap size={16} /> {shownMap.title}
-              </h3>
-              {shownMap.visibility === "dm" && <DmBadge label={t("campaign.maps.dmOnly")} />}
-            </div>
-            <MapViewer
-              src={`/files/maps/${shownMap.id}`}
-              alt={shownMap.title}
-              className="h-[420px] w-full sm:h-[520px]"
-              grid={
-                shownMap.gridSize
-                  ? {
-                      size: shownMap.gridSize,
-                      offsetX: shownMap.gridOffsetX ?? 0,
-                      offsetY: shownMap.gridOffsetY ?? 0,
-                    }
-                  : null
+          <Card id="map" className="mb-8 scroll-mt-28">
+            {/* The lid is the fold's own; the DM's map switcher stays outside
+                it, so the poll that keeps the table in step is never held up
+                by a panel that only shows a picture. */}
+            <MapFold
+              summary={
+                <>
+                  {/* The lid may well be shut when the play bar's map mark
+                      drops the table here, so the row says what it is before
+                      it says which one. */}
+                  <h3 className="flex items-center gap-2 font-display text-base text-gold-300">
+                    <IconMap size={16} /> {t("session.map.title")}
+                  </h3>
+                  <span className="text-sm text-parchment-300">{shownMap.title}</span>
+                  {shownMap.visibility === "dm" && <DmBadge label={t("campaign.maps.dmOnly")} />}
+                </>
               }
-              labels={{
-                zoomIn: t("campaign.maps.viewer.zoomIn"),
-                zoomOut: t("campaign.maps.viewer.zoomOut"),
-                reset: t("campaign.maps.viewer.reset"),
-                fullscreen: t("campaign.maps.viewer.fullscreen"),
-              }}
-            />
+            >
+              <MapViewer
+                src={`/files/maps/${shownMap.id}`}
+                alt={shownMap.title}
+                className="h-[420px] w-full sm:h-[520px]"
+                grid={
+                  shownMap.gridSize
+                    ? {
+                        size: shownMap.gridSize,
+                        offsetX: shownMap.gridOffsetX ?? 0,
+                        offsetY: shownMap.gridOffsetY ?? 0,
+                      }
+                    : null
+                }
+                labels={{
+                  zoomIn: t("campaign.maps.viewer.zoomIn"),
+                  zoomOut: t("campaign.maps.viewer.zoomOut"),
+                  reset: t("campaign.maps.viewer.reset"),
+                  fullscreen: t("campaign.maps.viewer.fullscreen"),
+                }}
+              />
+            </MapFold>
             {access.isDm && mapsList.length > 0 && (
               <form
                 action={chooseActiveMap.bind(null, session.campaignId)}
@@ -366,6 +424,11 @@ export default async function SessionPage({
                         combatant.characterId,
                         portraits.get(combatant.characterId) ?? null
                       )
+                    : null
+                }
+                sheetHref={
+                  combatant.characterId && combatant.userId
+                    ? `/c/${session.campaignId}/ch/${combatant.userId}?ch=${combatant.characterId}`
                     : null
                 }
                 t={t}
@@ -538,6 +601,19 @@ export default async function SessionPage({
               </Card>
             )}
 
+            {/* Loot is handed out mid-scene, and the DM was leaving the table
+                to do it. The panel is the campaign hub's own, unchanged —
+                only its address is new. */}
+            {live && access.isDm && (
+              <GiveItemSection
+                members={members}
+                campaignCharacters={giveItemRoster}
+                campaignId={session.campaignId}
+                locale={locale}
+                t={t}
+              />
+            )}
+
             {live && (
               <Card id="dice" className="scroll-mt-28">
                 <h3 className="mb-3 font-display text-base text-gold-300">{t("session.dice.title")}</h3>
@@ -676,6 +752,7 @@ function CombatantRow({
   hideHp,
   sessionId,
   portrait,
+  sheetHref,
   t,
 }: {
   combatant: Combatant;
@@ -688,6 +765,8 @@ function CombatantRow({
   sessionId: string;
   /** Portrait URL, or null for a player character without one. */
   portrait: string | null;
+  /** The sheet standing behind this row, when one does — monsters have none. */
+  sheetHref: string | null;
   t: T;
 }) {
   // With the numbers hidden, the bar would give them straight back — so the
@@ -709,6 +788,30 @@ function CombatantRow({
   const canAdjustHp =
     live && combatant.hp !== null && (isDm || (isMe && combatant.characterId !== null));
 
+  // Face and name, which are also the way to the sheet behind them. Only that
+  // much is wrapped: the HP box and the buttons under it are their own
+  // controls, and a link swallowing them would be a trap for the thumb.
+  const face = (
+    <>
+      {/* Monsters stay compact — only sheets get a face. */}
+      {combatant.characterId && <Portrait src={portrait} alt={combatant.name} size={32} />}
+      <div className="min-w-0 flex-1">
+        {/* Hover underlines rather than gilds: gold-300 reads at 4.24:1 here,
+            which is fine for a marker and not for the name itself. */}
+        <p className="font-semibold text-parchment-100 underline-offset-4 group-hover:underline group-hover:decoration-gold-500">
+          {isTurn && <span className="mr-1 text-gold-400">▶</span>}
+          {combatant.name}
+          {/* Reads on the gold active-turn row too: parchment-500 on ink-800
+              lands at 4.34:1, under the 4.5 this 11px label needs. */}
+          {isMe && <span className="ml-2 text-[11px] uppercase tracking-wide text-parchment-300">{t("session.combatant.you")}</span>}
+        </p>
+        {combatant.conditions && (
+          <p className="text-xs font-semibold text-amber-800">{combatant.conditions}</p>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <Card
       className={`py-3 ${isTurn ? "anim-turn-flash border-gold-500 bg-ink-800" : ""}`}
@@ -717,22 +820,16 @@ function CombatantRow({
         <span className="w-8 text-center font-display text-lg font-bold text-gold-400">
           {combatant.initiative}
         </span>
-        {/* Monsters stay compact — only sheets get a face. */}
-        {combatant.characterId && (
-          <Portrait src={portrait} alt={combatant.name} size={32} />
+        {sheetHref ? (
+          <Link
+            href={sheetHref}
+            className="group flex min-w-0 flex-1 items-center gap-3 rounded-sm focus-visible:outline-2 focus-visible:outline-gold-400"
+          >
+            {face}
+          </Link>
+        ) : (
+          face
         )}
-        <div className="flex-1">
-          <p className="font-semibold text-parchment-100">
-            {isTurn && <span className="mr-1 text-gold-400">▶</span>}
-            {combatant.name}
-            {/* Reads on the gold active-turn row too: parchment-500 on ink-800
-                lands at 4.34:1, under the 4.5 this 11px label needs. */}
-            {isMe && <span className="ml-2 text-[11px] uppercase tracking-wide text-parchment-300">{t("session.combatant.you")}</span>}
-          </p>
-          {combatant.conditions && (
-            <p className="text-xs font-semibold text-amber-800">{combatant.conditions}</p>
-          )}
-        </div>
         {combatant.hp !== null &&
           (hideHp ? (
             condition && (
@@ -824,12 +921,15 @@ function CombatantRow({
               action={adjustHp.bind(null, sessionId, combatant.id)}
               className="flex items-center gap-1"
             >
+              {/* Empty, not pre-filled with 1: a thumb that taps this box to
+                  type "7" should not have to clear a digit first. Blank still
+                  means one point — the server reads it that way. */}
               <Input
                 name="amount"
                 type="number"
                 min={0}
                 max={999}
-                defaultValue={1}
+                placeholder="1"
                 className="!w-16 min-h-11 !py-1"
               />
               <button

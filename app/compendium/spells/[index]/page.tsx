@@ -15,17 +15,25 @@ export default async function SpellPage({
 }: {
   params: Promise<{ index: string }>;
 }) {
-  const user = await getCurrentUser();
-  const { t } = await getT();
+  // The lookup before any await that can suspend: once a fallback renders the
+  // headers are gone, and a spell that does not exist would answer 200 with a
+  // not-found page streamed into it. `getSpell` reads JSON already in memory,
+  // so the verdict costs nothing and arrives while the status is still ours.
   const { index } = await params;
   const spell = getSpell(index);
   if (!spell) notFound();
 
+  const user = await getCurrentUser();
+  const { t } = await getT();
+
+  // LEFT, so a character on the player's roster is offered the spell too: the
+  // SRD is the same book whether or not anyone is running the sheet yet, and
+  // an inner join here would have quietly made the compendium table-only.
   const myCharacters = user
     ? await db
         .select({ character: characters, campaign: campaigns })
         .from(characters)
-        .innerJoin(campaigns, eq(characters.campaignId, campaigns.id))
+        .leftJoin(campaigns, eq(characters.campaignId, campaigns.id))
         .where(eq(characters.userId, user.id))
     : [];
 
@@ -104,7 +112,7 @@ export default async function SpellPage({
                   action={addSpellToCharacter.bind(null, spell.index, character.id)}
                 >
                   <Button type="submit">
-                    {character.name} · {campaign.name}
+                    {character.name} · {campaign?.name ?? t("character.roster.label")}
                   </Button>
                 </form>
               ))}

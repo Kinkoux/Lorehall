@@ -6,6 +6,7 @@ import {
   deleteEncounter,
   removeEncounterMonster,
 } from "@/lib/compendium-actions";
+import { getMonsterArt } from "@/lib/srd-data";
 import type { T } from "@/lib/i18n";
 import { EMPTY_ART } from "@/lib/ui-art";
 import { IconX } from "@/components/Icons";
@@ -68,6 +69,7 @@ export function EncountersSection({
                 )}
                 {rows.map((row) => (
                   <li key={row.id} className="flex items-center gap-2 text-sm">
+                    <MonsterMark srdIndex={row.srdIndex} />
                     <span className="flex-1 text-parchment-100">
                       {row.name}
                       {row.count > 1 && (
@@ -128,5 +130,30 @@ export function EncountersSection({
         </form>
       </Card>
     </section>
+  );
+}
+
+/**
+ * The face of the thing on the roster line, when the compendium has drawn one.
+ *
+ * Local plates only. `getMonsterArt` will happily fall back to a Wikimedia
+ * photograph, but that fallback carries an attribution line the picture must
+ * be shown with, and a 32px mark in a list of six is no place to print one.
+ * A credit of null is exactly the test for "this engraving is ours", so a
+ * monster we have no plate for simply goes unillustrated — as does every
+ * homebrew line, which was never in the compendium to begin with.
+ */
+function MonsterMark({ srdIndex }: { srdIndex: string | null }) {
+  const art = srdIndex ? getMonsterArt(srdIndex) : undefined;
+  if (!art || art.credit !== null) return null;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={art.thumb}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      className="h-8 w-8 shrink-0 rounded-sm border border-ink-600 object-cover"
+    />
   );
 }

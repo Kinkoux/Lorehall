@@ -101,7 +101,7 @@ describe("equipItem", () => {
     const old = await seedItem(sheet, 1, "Iron Helm", { slot: "head", equipped: 1 });
     const fresh = await seedItem(sheet, 1, "Crown", { slot: "head" });
 
-    await equipItem(fresh, formData({}));
+    await equipItem(fresh, {}, formData({}));
 
     const worn = await wornIn(sheet, "head");
     expect(worn).toHaveLength(1);
@@ -114,7 +114,7 @@ describe("equipItem", () => {
 
   it("takes the slot from the form when the line has none of its own", async () => {
     const heirloom = await seedItem(sheet, 1, "Grandfather's Signet");
-    await equipItem(heirloom, formData({ slot: "ring" }));
+    await equipItem(heirloom, {}, formData({ slot: "ring" }));
     const row = await rowOf(heirloom);
     expect(row?.slot).toBe("ring");
     expect(row?.equipped).toBe(1);
@@ -122,7 +122,7 @@ describe("equipItem", () => {
 
   it("refuses a slot name that is not one of the eight", async () => {
     const heirloom = await seedItem(sheet, 1, "Grandfather's Signet");
-    await equipItem(heirloom, formData({ slot: "tail" }));
+    await equipItem(heirloom, {}, formData({ slot: "tail" }));
     const row = await rowOf(heirloom);
     expect(row?.equipped).toBe(0);
     expect(row?.slot).toBeNull();
@@ -130,7 +130,7 @@ describe("equipItem", () => {
 
   it("ignores a form slot for a piece that already knows where it goes", async () => {
     const boots = await seedItem(sheet, 1, "Striding Boots", { slot: "boots" });
-    await equipItem(boots, formData({ slot: "head" }));
+    await equipItem(boots, {}, formData({ slot: "head" }));
     const row = await rowOf(boots);
     expect(row?.slot).toBe("boots");
     expect(await wornIn(sheet, "head")).toHaveLength(0);
@@ -139,14 +139,16 @@ describe("equipItem", () => {
   it("writes nothing when another player reaches for someone else's sheet", async () => {
     const helm = await seedItem(sheet, 1, "Iron Helm", { slot: "head" });
     auth.userId = fx.stranger;
-    await equipItem(helm, formData({}));
+    const state = await equipItem(helm, {}, formData({}));
     expect((await rowOf(helm))?.equipped).toBe(0);
+    // Refusing and doing nothing used to look identical from the sheet.
+    expect(state.error).toBeTruthy();
   });
 
   it("lets the DM equip a piece on a player's sheet", async () => {
     const helm = await seedItem(sheet, 1, "Iron Helm", { slot: "head" });
     auth.userId = fx.dm;
-    await equipItem(helm, formData({}));
+    await equipItem(helm, {}, formData({}));
     expect((await rowOf(helm))?.equipped).toBe(1);
   });
 
@@ -154,15 +156,16 @@ describe("equipItem", () => {
     // The row itself has no slot (stocked before the sheet recorded one), so
     // the only thing standing between a breastplate and a hat is its source.
     const plate = await seedItem(sheet, 1, "Breastplate", { srdIndex: "breastplate" });
-    await equipItem(plate, formData({ slot: "head" }));
+    const state = await equipItem(plate, {}, formData({ slot: "head" }));
     const row = await rowOf(plate);
     expect(row?.equipped).toBe(0);
     expect(row?.slot).toBeNull();
+    expect(state.error).toBeTruthy();
   });
 
   it("places a piece by its source when the form names no slot", async () => {
     const plate = await seedItem(sheet, 1, "Breastplate", { srdIndex: "breastplate" });
-    await equipItem(plate, formData({}));
+    await equipItem(plate, {}, formData({}));
     const row = await rowOf(plate);
     expect(row?.slot).toBe("armor");
     expect(row?.equipped).toBe(1);
@@ -171,13 +174,13 @@ describe("equipItem", () => {
   it("keeps a shield in a hand and a sword in the weapon slot", async () => {
     const shield = await seedItem(sheet, 1, "Shield", { srdIndex: "shield" });
     const sword = await seedItem(sheet, 1, "Longsword", { srdIndex: "longsword" });
-    await equipItem(shield, formData({ slot: "armor" }));
-    await equipItem(sword, formData({ slot: "ring" }));
+    await equipItem(shield, {}, formData({ slot: "armor" }));
+    await equipItem(sword, {}, formData({ slot: "ring" }));
     expect((await rowOf(shield))?.equipped).toBe(0);
     expect((await rowOf(sword))?.equipped).toBe(0);
 
-    await equipItem(shield, formData({}));
-    await equipItem(sword, formData({}));
+    await equipItem(shield, {}, formData({}));
+    await equipItem(sword, {}, formData({}));
     expect((await rowOf(shield))?.slot).toBe("hands");
     expect((await rowOf(sword))?.slot).toBe("weapon");
   });
@@ -189,7 +192,7 @@ describe("equipItem", () => {
       srdIndex: "leather-armor",
       slot: "head",
     });
-    await equipItem(armour, formData({}));
+    await equipItem(armour, {}, formData({}));
     const row = await rowOf(armour);
     expect(row?.slot).toBe("armor");
     expect(row?.equipped).toBe(1);
@@ -201,9 +204,9 @@ describe("equipItem", () => {
       category: "armor",
     });
     const mail = await seedItem(sheet, 1, "Dwarven Mail", { worldItemId: forged });
-    await equipItem(mail, formData({ slot: "boots" }));
+    await equipItem(mail, {}, formData({ slot: "boots" }));
     expect((await rowOf(mail))?.equipped).toBe(0);
-    await equipItem(mail, formData({}));
+    await equipItem(mail, {}, formData({}));
     expect((await rowOf(mail))?.slot).toBe("armor");
   });
 
@@ -216,7 +219,7 @@ describe("equipItem", () => {
       slot: "hands",
     });
     const buckler = await seedItem(sheet, 1, "Oaken Buckler", { worldItemId: forged });
-    await equipItem(buckler, formData({ slot: "hands" }));
+    await equipItem(buckler, {}, formData({ slot: "hands" }));
     expect((await rowOf(buckler))?.slot).toBe("hands");
     expect((await rowOf(buckler))?.equipped).toBe(1);
   });
@@ -224,7 +227,7 @@ describe("equipItem", () => {
   it("leaves a hand-typed line free to be worn anywhere", async () => {
     // No source ever spoke for it, so the player's word is the only word.
     const trinket = await seedItem(sheet, 1, "Grandmother's Charm");
-    await equipItem(trinket, formData({ slot: "neck" }));
+    await equipItem(trinket, {}, formData({ slot: "neck" }));
     expect((await rowOf(trinket))?.slot).toBe("neck");
   });
 
@@ -313,7 +316,7 @@ describe("addItem takes a reference, never the numbers", () => {
   it("keeps a stated score when the line editor rewrites the flat bonuses", async () => {
     await addItem(sheet, formData({ name: "Amulet of Health", srdIndex: "amulet-of-health" }));
     const [row] = await rowsOf(sheet);
-    await setItemStats(row.id, formData({ slot: "neck", bonus_ac: "1" }));
+    await setItemStats(row.id, {}, formData({ slot: "neck", bonus_ac: "1" }));
     // The editor has no field for a floor, so its silence is not a deletion.
     expect(sumStatBonuses([(await rowOf(row.id))?.statBonuses])).toEqual({
       ac: 1,
@@ -345,6 +348,7 @@ describe("setItemStats", () => {
     const mail = await seedItem(sheet, 1, "Adamantine Armor", { slot: "armor" });
     await setItemStats(
       mail,
+      {},
       formData({ slot: "armor", acBase: "16", acDex: "capped2", bonus_ac: "1", bonus_str: "2" })
     );
     const row = await rowOf(mail);
@@ -355,18 +359,18 @@ describe("setItemStats", () => {
 
   it("clamps a base and a bonus that no piece of gear could carry", async () => {
     const cheat = await seedItem(sheet, 1, "Plate of Nonsense", { slot: "armor" });
-    await setItemStats(cheat, formData({ slot: "armor", acBase: "99", bonus_ac: "50" }));
+    await setItemStats(cheat, {}, formData({ slot: "armor", acBase: "99", bonus_ac: "50" }));
     expect((await rowOf(cheat))?.acBase).toBe(30);
     expect(sumStatBonuses([(await rowOf(cheat))?.statBonuses])).toEqual({ ac: 10 });
 
-    await setItemStats(cheat, formData({ slot: "armor", acBase: "-5", bonus_dex: "-40" }));
+    await setItemStats(cheat, {}, formData({ slot: "armor", acBase: "-5", bonus_dex: "-40" }));
     expect((await rowOf(cheat))?.acBase).toBe(0);
     expect(sumStatBonuses([(await rowOf(cheat))?.statBonuses])).toEqual({ dex: -10 });
   });
 
   it("refuses a DEX rule that is not one of the three, and blanks that say nothing", async () => {
     const mail = await seedItem(sheet, 1, "Star Mail", { slot: "armor" });
-    await setItemStats(mail, formData({ slot: "armor", acDex: "sideways", acBase: "" }));
+    await setItemStats(mail, {}, formData({ slot: "armor", acDex: "sideways", acBase: "" }));
     const row = await rowOf(mail);
     expect(row?.acDex).toBeNull();
     expect(row?.acBase).toBeNull();
@@ -380,7 +384,7 @@ describe("setItemStats", () => {
     const plate = await seedItem(sheet, 1, "Adamantine Armor", {
       srdIndex: "adamantine-armor",
     });
-    await setItemStats(plate, formData({ slot: "head", acBase: "16" }));
+    await setItemStats(plate, {}, formData({ slot: "head", acBase: "16" }));
     const row = await rowOf(plate);
     expect(row?.slot).toBe("armor");
     expect(row?.acBase).toBe(16);
@@ -388,19 +392,19 @@ describe("setItemStats", () => {
 
   it("lets a line with no source be moved, and blank means carried", async () => {
     const charm = await seedItem(sheet, 1, "Grandmother's Charm", { slot: "ring" });
-    await setItemStats(charm, formData({ slot: "neck" }));
+    await setItemStats(charm, {}, formData({ slot: "neck" }));
     expect((await rowOf(charm))?.slot).toBe("neck");
-    await setItemStats(charm, formData({ slot: "" }));
+    await setItemStats(charm, {}, formData({ slot: "" }));
     expect((await rowOf(charm))?.slot).toBeNull();
   });
 
   it("takes a worn piece off when its square changes, and leaves it on when it does not", async () => {
     const helm = await seedItem(sheet, 1, "Iron Helm", { slot: "head", equipped: 1 });
     // Same square: still worn, and the new numbers are in play immediately.
-    await setItemStats(helm, formData({ slot: "head", bonus_ac: "1" }));
+    await setItemStats(helm, {}, formData({ slot: "head", bonus_ac: "1" }));
     expect((await rowOf(helm))?.equipped).toBe(1);
 
-    await setItemStats(helm, formData({ slot: "ring" }));
+    await setItemStats(helm, {}, formData({ slot: "ring" }));
     const row = await rowOf(helm);
     expect(row?.slot).toBe("ring");
     // A helm cannot still be the worn head once it has become a ring.
@@ -411,11 +415,11 @@ describe("setItemStats", () => {
   it("writes nothing when someone else reaches for the sheet, and everything for the DM", async () => {
     const helm = await seedItem(sheet, 1, "Iron Helm", { slot: "head" });
     auth.userId = fx.stranger;
-    await setItemStats(helm, formData({ slot: "head", acBase: "20" }));
+    await setItemStats(helm, {}, formData({ slot: "head", acBase: "20" }));
     expect((await rowOf(helm))?.acBase).toBeNull();
 
     auth.userId = fx.dm;
-    await setItemStats(helm, formData({ slot: "head", acBase: "20" }));
+    await setItemStats(helm, {}, formData({ slot: "head", acBase: "20" }));
     expect((await rowOf(helm))?.acBase).toBe(20);
   });
 });

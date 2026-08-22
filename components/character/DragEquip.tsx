@@ -153,7 +153,21 @@ export function SlotDrop({
         // drop and a click on the equip button arrive as the same request.
         const formData = new FormData();
         formData.set("slot", slot);
-        startTransition(() => equipItem(itemId, formData));
+        // The action answers now, and a drop has nowhere to print an answer:
+        // there is no form here, only a square that lit up. A refusal shows as
+        // the piece simply not moving, which is what a dragged thing snapping
+        // back already means. The buttons inside the inventory square are
+        // where the same refusal gets words.
+        //
+        // Awaited inside the transition rather than dropped on the floor: an
+        // un-awaited promise leaves the transition finished the instant it
+        // starts (so the pending state covers nothing at all) and turns a
+        // network failure into an unhandled rejection. `{}` is the previous
+        // state the action's `.bind`-able shape asks for, and there is none
+        // here — no form, nothing that was showing an answer.
+        startTransition(async () => {
+          await equipItem(itemId, {}, formData);
+        });
       }}
       className={`${className} ${over ? OVER : ""}`}
     >
@@ -199,7 +213,12 @@ export function InventoryDrop({
         event.preventDefault();
         const itemId = event.dataTransfer.getData(EQUIPPED);
         if (!itemId) return;
-        startTransition(() => unequipItem(itemId));
+        // Awaited for the same reason the equip above is: a promise handed back
+        // to a synchronous transition is a transition that ends immediately and
+        // a rejection with nobody to catch it.
+        startTransition(async () => {
+          await unequipItem(itemId);
+        });
       }}
       className={`${className} ${over ? "rounded-sm ring-2 ring-gold-500/60" : ""}`}
     >

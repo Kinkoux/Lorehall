@@ -30,6 +30,39 @@ export function categoryArt(category: string): string {
 }
 
 /**
+ * The category and school plates at the sizes they are actually drawn. The full
+ * plate is 512px and around 47KB; a list row shows it 40px wide and the empty
+ * slots on a paper doll show it at 64. Sixty rows of full plates is most of a
+ * megabyte spent on pictures nobody can see the detail of, so anything drawing
+ * one small asks for a cut instead — `scripts/convert-ui-art.mjs` writes them.
+ */
+export function categoryArtThumb(category: string): string {
+  return ART(`t/cat-${category}`);
+}
+
+/** The category plate at 256px, for a square that a retina screen doubles. */
+export function categoryArtMid(category: string): string {
+  return ART(`m/cat-${category}`);
+}
+
+/** The school sigil at 96px, for the spell list's row marks. */
+export function schoolArtThumb(school: string): string {
+  return ART(`t/school-${school.toLowerCase()}`);
+}
+
+/** The class plate at 96px, for a party row standing in for a portrait. */
+export function classArtThumbFor(klass: string | null | undefined): string | null {
+  const slug = matchClass(klass);
+  return slug ? ART(`t/class-${slug}`) : null;
+}
+
+/** The class plate at 256px, for the portrait a sheet draws at 96 or more. */
+export function classArtMidFor(klass: string | null | undefined): string | null {
+  const slug = matchClass(klass);
+  return slug ? ART(`m/class-${slug}`) : null;
+}
+
+/**
  * The plate for a *kind* of item — an axe, a flask, a coil of rope — which is
  * the picture an entry with no engraving of its own settles for. Kinds are
  * named by lib/data/item-kinds.json; that file never comes near this module,

@@ -30,12 +30,26 @@ export function Card({
   );
 }
 
-/** Rubric: small-caps vermilion heading with a trailing double ledger rule. */
-export function SectionTitle({ children }: { children: ReactNode }) {
+/**
+ * Rubric: small-caps vermilion heading with a trailing double ledger rule.
+ *
+ * `centered` sets a second rule in front of the words, which is how a rubric
+ * reads when it heads a page rather than a column — the landing page wants
+ * that one, and used to hand-roll it with different letter-spacing.
+ */
+export function SectionTitle({
+  children,
+  centered = false,
+}: {
+  children: ReactNode;
+  centered?: boolean;
+}) {
+  const rule = <span aria-hidden className="h-[3px] flex-1 border-y border-ink-600/70" />;
   return (
     <h2 className="flex items-center gap-3 font-display text-base font-bold uppercase tracking-[0.18em] text-blood-400">
+      {centered && rule}
       <span className="shrink-0">{children}</span>
-      <span aria-hidden className="h-[3px] flex-1 border-y border-ink-600/70" />
+      {rule}
     </h2>
   );
 }

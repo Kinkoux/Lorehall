@@ -20,13 +20,18 @@ export default async function MonsterPage({
 }: {
   params: Promise<{ index: string }>;
 }) {
-  const user = await getCurrentUser();
-  const { t, locale } = await getT();
+  // First the bestiary, then everything else. `loading.tsx` puts this segment
+  // under a Suspense boundary, and the first await that suspends underneath one
+  // sends the headers — after which `notFound()` can still draw the right page
+  // but can no longer set the status on it. Both reads here are synchronous.
   const { index } = await params;
   const monster = getMonster(index);
   if (!monster) notFound();
-  const name = localizedMonsterName(monster, locale);
   const image = getMonsterArt(index);
+
+  const user = await getCurrentUser();
+  const { t, locale } = await getT();
+  const name = localizedMonsterName(monster, locale);
 
   const myCampaigns = user
     ? await db.select().from(campaigns).where(eq(campaigns.dmUserId, user.id))

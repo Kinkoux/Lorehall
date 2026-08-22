@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { rollDice } from "@/lib/session-actions";
+import { rollDice, type RollResult } from "@/lib/session-actions";
 import { makeT, type Locale } from "@/lib/i18n";
 import { Input, Label } from "@/components/ui";
 
@@ -11,6 +11,7 @@ export function DiceRoller({ sessionId, locale }: { sessionId: string; locale: L
   const t = makeT(locale);
   const [count, setCount] = useState(1);
   const [modifier, setModifier] = useState(0);
+  const [last, setLast] = useState<RollResult | null>(null);
   const [pending, startTransition] = useTransition();
 
   function roll(sides: number) {
@@ -18,7 +19,12 @@ export function DiceRoller({ sessionId, locale }: { sessionId: string; locale: L
     formData.set("sides", String(sides));
     formData.set("count", String(count));
     formData.set("modifier", String(modifier));
-    startTransition(() => rollDice(sessionId, formData));
+    startTransition(async () => {
+      const result = await rollDice(sessionId, formData);
+      // A refused roll (session closed under them) leaves the last one
+      // standing rather than blanking the plate for no stated reason.
+      if (result) setLast(result);
+    });
   }
 
   return (
@@ -45,6 +51,28 @@ export function DiceRoller({ sessionId, locale }: { sessionId: string; locale: L
           />
         </label>
       </div>
+      {/* The number, struck large enough to read from across the table. It is
+          in the log too, but the log is a scroll of everyone's rolls; this is
+          the one this hand just made. */}
+      {last && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`rounded-sm border border-gold-500/60 bg-ink-800/70 px-3 py-2 text-center transition-opacity ${
+            pending ? "opacity-50" : ""
+          }`}
+        >
+          <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-parchment-500">
+            {last.notation}
+          </p>
+          <p className="font-display text-4xl font-bold leading-tight text-gold-300">
+            {last.total}
+          </p>
+          {last.rolls.length > 1 && (
+            <p className="font-mono text-xs text-parchment-500">[{last.rolls.join(", ")}]</p>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-4 gap-2">
         {DICE.map((sides) => (
           <button

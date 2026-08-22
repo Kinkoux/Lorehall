@@ -18,7 +18,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { logMessage } from "@/lib/session-log";
-import { campaignLog } from "@/lib/campaign-log";
+import { logSheet, revalidateSheet } from "@/lib/sheet-refresh";
 import { fmt } from "@/lib/dnd";
 
 function str(formData: FormData, key: string) {
@@ -37,6 +37,17 @@ function int(formData: FormData, key: string): number | null {
 const cap = (s: string, n: number) => s.slice(0, n);
 
 // ---------- spells → character sheet ----------
+
+/*
+ * The compendium is the one shop open to every sheet, roster ones included: an
+ * SRD entry means the same thing at every table, so stocking one needs no
+ * world behind it. What that stocking has to *say* afterwards — which pages
+ * went stale, and whether there is a campaign feed to write a line in — is the
+ * same question the sheet's own actions ask, and it is answered in the same
+ * place: lib/sheet-refresh.ts. This module used to keep a second, shorter copy
+ * of that rule, which had quietly stopped refreshing the character hub and the
+ * campaign page whose party numbers read from these very rows.
+ */
 
 export async function addSpellToCharacter(spellIndex: string, characterId: string) {
   const user = await requireUser();
@@ -69,11 +80,11 @@ export async function addSpellToCharacter(spellIndex: string, characterId: strin
     srdIndex: spell.index,
     createdAt: Date.now(),
   });
-  await campaignLog(character.campaignId, user.id, "spellAdded", {
+  await logSheet(character, user.id, "spellAdded", {
     name: spell.name,
     character: character.name,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheet(character);
 }
 
 // ---------- items → character inventory ----------
@@ -90,8 +101,10 @@ export async function addItemToCharacter(itemIndex: string, formData: FormData) 
     where: eq(characters.id, characterId),
   });
   if (!character || character.approval !== "approved") return;
-  // Mine, or one in a campaign I run.
+  // Mine, or one in a campaign I run. A roster sheet has no DM to be run by,
+  // so for that one the first half is the whole rule.
   if (character.userId !== user.id) {
+    if (!character.campaignId) return;
     const access = await getCampaignAccess(character.campaignId, user.id);
     if (!access?.isDm) return;
   }
@@ -113,12 +126,14 @@ export async function addItemToCharacter(itemIndex: string, formData: FormData) 
     slot: srdItemSlot(item),
     createdAt: Date.now(),
   });
-  await campaignLog(character.campaignId, user.id, "srdItemAdded", {
+  await logSheet(character, user.id, "srdItemAdded", {
     name: item.name,
     n: qty,
     character: character.name,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  // A line stocked from the compendium can be armour, so the hub and the party
+  // list — which both print a computed armour class — go stale with the sheet.
+  revalidateSheet(character);
 }
 
 // ---------- encounters ----------

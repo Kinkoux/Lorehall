@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { eq } from "drizzle-orm";
-import { db, worlds, worldMembers, campaigns, campaignMembers } from "@/lib/db";
+import { and, eq } from "drizzle-orm";
+import { db, worlds, worldMembers, campaigns, campaignMembers, gameSessions } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { createWorld, logoutEverywhere } from "@/lib/actions";
 import { getT } from "@/lib/locale";
@@ -27,7 +27,7 @@ export default async function DashboardPage() {
   const user = await requireUser();
   const { t, locale } = await getT();
 
-  const [myWorlds, myCampaigns] = await Promise.all([
+  const [myWorlds, myCampaigns, liveSessions] = await Promise.all([
     db
       .select({ world: worlds, role: worldMembers.role })
       .from(worldMembers)
@@ -39,7 +39,15 @@ export default async function DashboardPage() {
       .innerJoin(campaigns, eq(campaignMembers.campaignId, campaigns.id))
       .innerJoin(worlds, eq(campaigns.worldId, worlds.id))
       .where(eq(campaignMembers.userId, user.id)),
+    // A table that is playing right now is the one thing on this page worth
+    // interrupting for, so it is fetched with the rest, not after it.
+    db
+      .select({ session: gameSessions })
+      .from(gameSessions)
+      .innerJoin(campaignMembers, eq(campaignMembers.campaignId, gameSessions.campaignId))
+      .where(and(eq(campaignMembers.userId, user.id), eq(gameSessions.status, "live"))),
   ]);
+  const liveByCampaign = new Map(liveSessions.map(({ session }) => [session.campaignId, session]));
 
   return (
     <>
@@ -94,26 +102,88 @@ export default async function DashboardPage() {
             {myCampaigns.length === 0 && (
               <p className="text-sm text-parchment-500">{t("dashboard.campaigns.empty")}</p>
             )}
-            {myCampaigns.map(({ campaign, world }) => (
-              <Link key={campaign.id} href={`/c/${campaign.id}`} className="block">
-                <Card className="transition hover:border-gold-500">
+            {myCampaigns.map(({ campaign, world }) => {
+              const liveSession = liveByCampaign.get(campaign.id);
+              const role = (
+                <RoleBadge
+                  role={campaign.dmUserId === user.id ? "DM" : "Player"}
+                  label={
+                    campaign.dmUserId === user.id
+                      ? "DM"
+                      : t("dashboard.campaigns.rolePlayer")
+                  }
+                />
+              );
+              const inWorld = (
+                <p className="mt-1 text-sm text-parchment-500">
+                  {t("dashboard.campaigns.inWorld", { world: world.name })}
+                </p>
+              );
+
+              if (!liveSession) {
+                return (
+                  <Link key={campaign.id} href={`/c/${campaign.id}`} className="block">
+                    <Card className="transition hover:border-gold-500">
+                      <div className="flex items-center justify-between gap-3">
+                        <h3 className="font-display text-lg text-parchment-100">
+                          {campaign.name}
+                        </h3>
+                        {role}
+                      </div>
+                      {inWorld}
+                    </Card>
+                  </Link>
+                );
+              }
+
+              // A table already playing wants one tap, not three: the card as a
+              // whole leads to the session, and the campaign's own page keeps
+              // the name on the heading. Two destinations, no nested links —
+              // the pulse line's ::after is what makes the card clickable.
+              //
+              // That ::after is a sheet over the whole card, so anything
+              // interactive put inside this card from here on needs
+              // `relative z-10` to sit above it — the campaign-name link below
+              // is the standing example. Without it the new control is
+              // unreachable: every tap lands on the session link underneath.
+              return (
+                <Card
+                  key={campaign.id}
+                  className="relative border-emerald-700/60 transition hover:border-emerald-700 hover:shadow-md hover:shadow-[#5e4420]/20"
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-display text-lg text-parchment-100">{campaign.name}</h3>
-                    <RoleBadge
-                      role={campaign.dmUserId === user.id ? "DM" : "Player"}
-                      label={
-                        campaign.dmUserId === user.id
-                          ? "DM"
-                          : t("dashboard.campaigns.rolePlayer")
-                      }
-                    />
+                    <h3 className="font-display text-lg text-parchment-100">
+                      <Link
+                        href={`/c/${campaign.id}`}
+                        className="relative z-10 underline-offset-4 hover:underline hover:decoration-gold-500"
+                      >
+                        {campaign.name}
+                      </Link>
+                    </h3>
+                    {role}
                   </div>
-                  <p className="mt-1 text-sm text-parchment-500">
-                    {t("dashboard.campaigns.inWorld", { world: world.name })}
-                  </p>
+                  <Link
+                    href={`/s/${liveSession.id}`}
+                    className="mt-2 flex items-center gap-2 after:absolute after:inset-0"
+                  >
+                    <span className="relative flex h-2.5 w-2.5 shrink-0">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-600 opacity-60" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-600" />
+                    </span>
+                    <span className="flex-1 text-sm font-bold text-emerald-900">
+                      {t("campaign.live.banner", {
+                        title: liveSession.title,
+                        round: liveSession.round,
+                      })}
+                    </span>
+                    <span aria-hidden className="font-display text-emerald-900">
+                      →
+                    </span>
+                  </Link>
+                  {inWorld}
                 </Card>
-              </Link>
-            ))}
+              );
+            })}
 
             <Card>
               <h3 className="mb-3 font-display text-base text-gold-300">

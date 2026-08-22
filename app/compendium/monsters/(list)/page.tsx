@@ -9,11 +9,15 @@ import {
   localizedMonsterName,
   searchMonsters,
 } from "@/lib/srd-data";
+import { EMPTY_ART } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { IconClaw } from "@/components/Icons";
 import { Pagination } from "@/components/Pagination";
 import { BackLink, Button, Input, Select } from "@/components/ui";
-import { ActiveFilters, type FilterChip } from "../ActiveFilters";
+import { ActiveFilters, type FilterChip } from "../../ActiveFilters";
+import { EmptyRow } from "../../EmptyRow";
+
+const BASE_PATH = "/compendium/monsters";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -74,19 +78,22 @@ export default async function MonstersPage({
           {t("compendium.monsters.title")}
         </h1>
 
-        <form className="mb-4 flex flex-wrap gap-2">
+        {/* Four fixed-width controls on one wrapped line left a phone with a
+            ragged staircase of half-empty boxes. Below `sm` they pair off in
+            a two-column grid at full width; from `sm` up it is the old row. */}
+        <form className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <Input
             name="q"
             defaultValue={q}
             aria-label={t("compendium.searchLabel")}
             placeholder={t("compendium.searchByName")}
-            className="!w-56"
+            className="col-span-2 sm:!w-56"
           />
           <Select
             name="cr"
             defaultValue={cr}
             aria-label={t("compendium.monsters.crLabel")}
-            className="!w-32"
+            className="sm:!w-32"
           >
             <option value="">{t("compendium.monsters.anyCr")}</option>
             {CR_LABELS.map((label) => (
@@ -99,7 +106,7 @@ export default async function MonstersPage({
             name="type"
             defaultValue={type}
             aria-label={t("compendium.monsters.type")}
-            className="!w-40"
+            className="sm:!w-40"
           >
             <option value="">{t("compendium.monsters.anyType")}</option>
             {MONSTER_TYPES.map((value) => (
@@ -112,7 +119,7 @@ export default async function MonstersPage({
             name="size"
             defaultValue={size}
             aria-label={t("compendium.monsters.size")}
-            className="!w-36"
+            className="sm:!w-36"
           >
             <option value="">{t("compendium.monsters.anySize")}</option>
             {MONSTER_SIZES.map((value) => (
@@ -125,7 +132,7 @@ export default async function MonstersPage({
         </form>
 
         <ActiveFilters
-          basePath="/compendium/monsters"
+          basePath={BASE_PATH}
           params={{ q, cr, type, size }}
           chips={chips}
           heading={t("compendium.filters.active")}
@@ -133,7 +140,7 @@ export default async function MonstersPage({
           clearLabel={t("compendium.filters.clearAll")}
         />
 
-        <p className="mb-4 text-xs text-parchment-500">
+        <p className="mb-4 text-sm text-parchment-500">
           {t("compendium.results", { n: results.length })}
         </p>
 
@@ -141,11 +148,14 @@ export default async function MonstersPage({
           {shown.map((monster) => {
             const image = getMonsterArt(monster.index);
             const name = localizedMonsterName(monster, locale);
+            // The challenge rating is already standing in its own column, so
+            // the narrow line spends its width on what the thing *is* instead.
+            const shortMeta = `${monster.size} ${monster.type} · ${monster.hp} HP`;
             return (
               <li key={monster.index}>
                 <Link
                   href={`/compendium/monsters/${monster.index}`}
-                  className="group flex items-center gap-3 px-4 py-2"
+                  className="group flex items-center gap-3 px-4 py-2.5"
                 >
                   {image ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -153,6 +163,7 @@ export default async function MonstersPage({
                       src={image.thumb}
                       alt=""
                       loading="lazy"
+                      decoding="async"
                       referrerPolicy="no-referrer"
                       className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
                     />
@@ -164,16 +175,23 @@ export default async function MonstersPage({
                   <span className="w-14 shrink-0 text-xs font-bold text-blood-400">
                     CR {monster.crLabel}
                   </span>
-                  <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
-                      {name}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                        {name}
+                      </span>
+                      {/* The stat block's own name, which is what the rest of
+                          the entry — and the encounter it is thrown into —
+                          will call the thing. */}
+                      {name !== monster.name && (
+                        <span className="text-xs text-parchment-500">{monster.name}</span>
+                      )}
                     </span>
-                    {/* The stat block's own name, which is what the rest of
-                        the entry — and the encounter it is thrown into — will
-                        call the thing. */}
-                    {name !== monster.name && (
-                      <span className="text-xs text-parchment-500">{monster.name}</span>
-                    )}
+                    {/* The meta used to vanish below `sm` and take the row's
+                        only fact with it. It moves under the name instead. */}
+                    <span className="mt-0.5 block text-xs text-parchment-500 sm:hidden">
+                      {shortMeta}
+                    </span>
                   </span>
                   <span className="hidden text-xs text-parchment-500 sm:block">
                     {monster.size} {monster.type} · AC {monster.ac} · {monster.hp} HP
@@ -183,13 +201,18 @@ export default async function MonstersPage({
             );
           })}
           {shown.length === 0 && (
-            <li className="px-4 py-6 text-sm text-parchment-500">{t("compendium.noResults")}</li>
+            <EmptyRow
+              art={EMPTY_ART.library}
+              message={t("compendium.noResults")}
+              clearHref={chips.length > 0 ? BASE_PATH : null}
+              clearLabel={t("compendium.emptyClear")}
+            />
           )}
         </ul>
         <Pagination
           page={page}
           totalPages={totalPages}
-          basePath="/compendium/monsters"
+          basePath={BASE_PATH}
           params={{ q, cr, type, size }}
         />
       </main>

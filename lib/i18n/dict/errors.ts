@@ -56,6 +56,18 @@ export const errors = {
       nameRequired: "Name is required.",
       initiativeRequired: "Initiative is required.",
     },
+    // The inventory's own refusals. Every one of these used to be a silent
+    // return: the form posted, the page came back, and nothing had happened.
+    items: {
+      notAllowed: "You cannot edit this character sheet.",
+      nameRequired: "Type or pick an item first.",
+      slotTaken: "Something is already worn in that slot — take it off first.",
+      slotMismatch: "This piece cannot be worn there.",
+      slotUnknown: "Pick where this piece goes.",
+      dmOnlyGive: "Only the DM can hand out items.",
+      notAtTable: "That character is not at this table.",
+      notApproved: "That character is still waiting to be let in.",
+    },
   },
   tr: {
     auth: {
@@ -108,6 +120,16 @@ export const errors = {
       dmOnlyAdd: "Dövüşçüleri yalnız DM ekleyebilir.",
       nameRequired: "İsim zorunlu.",
       initiativeRequired: "İnisiyatif zorunlu.",
+    },
+    items: {
+      notAllowed: "Bu karakter sayfasını düzenleyemezsin.",
+      nameRequired: "Önce bir eşya yaz ya da listeden seç.",
+      slotTaken: "O yerde zaten bir şey takılı — önce onu çıkar.",
+      slotMismatch: "Bu parça oraya takılamaz.",
+      slotUnknown: "Bu parçanın nereye takılacağını seç.",
+      dmOnlyGive: "Eşya dağıtmak yalnız DM'in elinde.",
+      notAtTable: "Bu karakter bu masada değil.",
+      notApproved: "Bu karakter henüz masaya kabul edilmedi.",
     },
   },
 } as const;

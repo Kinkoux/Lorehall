@@ -3,9 +3,8 @@ import { and, count, eq } from "drizzle-orm";
 import { db, campaigns, worldItems, worldMembers, worlds } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { ITEMS, MONSTERS, SPELLS } from "@/lib/srd-data";
 import { SiteHeader } from "@/components/SiteHeader";
-import { IconBook, IconChest, IconClaw } from "@/components/Icons";
+import { SHELVES } from "@/components/shelves";
 import { Button, Card, Input, SectionTitle } from "@/components/ui";
 
 export async function generateMetadata() {
@@ -86,40 +85,26 @@ export default async function CompendiumPage() {
           <Button type="submit">{t("common.search")}</Button>
         </form>
 
+        {/* The same four shelves the landing page offers, in the hub's
+            furniture. The tally rides beside the name rather than inside the
+            sentence, which is where it reads everywhere else in the hall. */}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Link href="/compendium/spells" className="block">
-            <Card className="transition hover:border-gold-500">
-              <IconBook size={30} className="text-blood-400" />
-              <h2 className="mt-3 font-display text-xl font-bold text-parchment-100">
-                {t("compendium.spells.title")}
-              </h2>
-              <p className="mt-1 text-sm text-parchment-500">
-                {t("compendium.spells.cardBody", { n: SPELLS.length })}
-              </p>
-            </Card>
-          </Link>
-          <Link href="/compendium/monsters" className="block">
-            <Card className="transition hover:border-gold-500">
-              <IconClaw size={30} className="text-blood-400" />
-              <h2 className="mt-3 font-display text-xl font-bold text-parchment-100">
-                {t("compendium.monsters.title")}
-              </h2>
-              <p className="mt-1 text-sm text-parchment-500">
-                {t("compendium.monsters.cardBody", { n: MONSTERS.length })}
-              </p>
-            </Card>
-          </Link>
-          <Link href="/compendium/items" className="block">
-            <Card className="transition hover:border-gold-500">
-              <IconChest size={30} className="text-blood-400" />
-              <h2 className="mt-3 font-display text-xl font-bold text-parchment-100">
-                {t("compendium.items.title")}
-              </h2>
-              <p className="mt-1 text-sm text-parchment-500">
-                {t("compendium.items.cardBody", { n: ITEMS.length })}
-              </p>
-            </Card>
-          </Link>
+          {SHELVES.map((shelf) => (
+            <Link key={shelf.href} href={shelf.href as never} className="block">
+              <Card className="transition hover:border-gold-500">
+                <shelf.icon size={30} className="text-blood-400" />
+                <h2 className="mt-3 font-display text-xl font-bold text-parchment-100">
+                  {t(shelf.titleKey)}
+                  {shelf.count !== null && (
+                    <span className="ml-2 font-sans text-sm font-normal text-parchment-500">
+                      {shelf.count}
+                    </span>
+                  )}
+                </h2>
+                <p className="mt-1 text-sm text-parchment-500">{t(shelf.bodyKey)}</p>
+              </Card>
+            </Link>
+          ))}
         </div>
 
         {myWorlds.length > 0 && (

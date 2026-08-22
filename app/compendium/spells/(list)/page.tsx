@@ -7,11 +7,14 @@ import {
   SPELL_SCHOOLS,
   SUBCLASS_FILTERS,
 } from "@/lib/srd-data";
-import { schoolArt } from "@/lib/ui-art";
+import { EMPTY_ART, schoolArtThumb } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Pagination } from "@/components/Pagination";
 import { BackLink, Button, Input, Select } from "@/components/ui";
-import { ActiveFilters, type FilterChip } from "../ActiveFilters";
+import { ActiveFilters, type FilterChip } from "../../ActiveFilters";
+import { EmptyRow } from "../../EmptyRow";
+
+const BASE_PATH = "/compendium/spells";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -74,19 +77,19 @@ export default async function SpellsPage({
           {t("compendium.spells.title")}
         </h1>
 
-        <form className="mb-4 flex flex-wrap gap-2">
+        <form className="mb-4 grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <Input
             name="q"
             defaultValue={q}
             aria-label={t("compendium.searchLabel")}
             placeholder={t("compendium.searchByName")}
-            className="!w-52"
+            className="col-span-2 sm:!w-52"
           />
           <Select
             name="level"
             defaultValue={level}
             aria-label={t("compendium.spells.level")}
-            className="!w-32"
+            className="sm:!w-32"
           >
             <option value="">{t("compendium.spells.anyLevel")}</option>
             <option value="0">{t("compendium.spells.cantrip")}</option>
@@ -100,7 +103,7 @@ export default async function SpellsPage({
             name="klass"
             defaultValue={klass}
             aria-label={t("compendium.spells.class")}
-            className="!w-36"
+            className="sm:!w-36"
           >
             <option value="">{t("compendium.spells.anyClass")}</option>
             {SPELL_CLASSES.map((c) => (
@@ -113,7 +116,7 @@ export default async function SpellsPage({
             name="school"
             defaultValue={school}
             aria-label={t("compendium.spells.school")}
-            className="!w-40"
+            className="sm:!w-40"
           >
             <option value="">{t("compendium.spells.anySchool")}</option>
             {SPELL_SCHOOLS.map((s) => (
@@ -126,7 +129,7 @@ export default async function SpellsPage({
             name="subclass"
             defaultValue={subclass}
             aria-label={t("compendium.spells.subclass")}
-            className="!w-52"
+            className="sm:!w-52"
           >
             <option value="">{t("compendium.spells.anySubclass")}</option>
             {SUBCLASS_FILTERS.map((f) => (
@@ -139,7 +142,7 @@ export default async function SpellsPage({
         </form>
 
         <ActiveFilters
-          basePath="/compendium/spells"
+          basePath={BASE_PATH}
           params={{ q, level, klass, school, subclass }}
           chips={chips}
           heading={t("compendium.filters.active")}
@@ -147,7 +150,7 @@ export default async function SpellsPage({
           clearLabel={t("compendium.filters.clearAll")}
         />
 
-        <p className="mb-1 text-xs text-parchment-500">
+        <p className="mb-1 text-sm text-parchment-500">
           {t("compendium.results", { n: results.length })}
         </p>
         {activeSubclass?.kind === "rule" && (
@@ -163,11 +166,18 @@ export default async function SpellsPage({
                 href={`/compendium/spells/${spell.index}`}
                 className="group flex items-center gap-3 px-4 py-2.5"
               >
+                {/* The 96px cut: the mark is drawn 40px wide, which a doubled
+                    screen
+                    wants 80 pixels for. The full plate is 512px and near 45KB,
+                    and a page of sixty rows shows eight different schools —
+                    most of a third of a megabyte, spent on detail no row is
+                    large enough to show. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={schoolArt(spell.school)}
+                  src={schoolArtThumb(spell.school)}
                   alt=""
                   loading="lazy"
+                  decoding="async"
                   className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
                 />
                 <span className="w-14 shrink-0 text-xs font-bold text-gold-300">
@@ -203,15 +213,18 @@ export default async function SpellsPage({
             </li>
           ))}
           {shown.length === 0 && (
-            <li className="px-4 py-6 text-sm text-parchment-500">
-              {t("compendium.noResults")}
-            </li>
+            <EmptyRow
+              art={EMPTY_ART.spells}
+              message={t("compendium.noResults")}
+              clearHref={chips.length > 0 ? BASE_PATH : null}
+              clearLabel={t("compendium.emptyClear")}
+            />
           )}
         </ul>
         <Pagination
           page={page}
           totalPages={totalPages}
-          basePath="/compendium/spells"
+          basePath={BASE_PATH}
           params={{ q, level, klass, school, subclass }}
         />
       </main>

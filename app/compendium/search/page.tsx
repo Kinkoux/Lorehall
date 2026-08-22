@@ -11,7 +11,7 @@ import {
   searchSpells,
   srdItemArt,
 } from "@/lib/srd-data";
-import { schoolArt } from "@/lib/ui-art";
+import { schoolArtThumb } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { IconClaw } from "@/components/Icons";
 import { BackLink, Button, Input, SectionTitle } from "@/components/ui";
@@ -67,6 +67,7 @@ function Thumb({ src }: { src: string }) {
       src={src}
       alt=""
       loading="lazy"
+      decoding="async"
       referrerPolicy="no-referrer"
       className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
     />
@@ -159,7 +160,7 @@ export default async function CompendiumSearchPage({
           </p>
         ) : (
           <>
-            <p className="mb-6 text-xs text-parchment-500">
+            <p className="mb-6 text-sm text-parchment-500">
               {t("compendium.search.heading", { q: needle })} ·{" "}
               {t("compendium.results", { n: total })}
             </p>
@@ -170,11 +171,13 @@ export default async function CompendiumSearchPage({
               seeAllHref={`/compendium/spells${forQuery}`}
               seeAllLabel={t("compendium.search.seeAll", { n: spells.length })}
             >
+              {/* `Thumb` draws 40px, so the school sigil comes in its 96px cut
+                  — the same one the spell list takes, for the same reason. */}
               {spells.slice(0, PREVIEW).map((spell) => (
                 <ResultRow
                   key={spell.index}
                   href={`/compendium/spells/${spell.index}`}
-                  art={<Thumb src={schoolArt(spell.school)} />}
+                  art={<Thumb src={schoolArtThumb(spell.school)} />}
                   badge={
                     <span className="text-gold-300">
                       {spell.level === 0 ? t("compendium.spells.cantrip") : spell.level}

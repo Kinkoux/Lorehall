@@ -17,6 +17,9 @@ export const session = {
         initiative: "Initiative",
         dice: "Dice",
         log: "Table log",
+        // The one mark that leaves the page. Named from the reader's side —
+        // it is *their* sheet, which is why the mark is worth its width.
+        sheet: "Your sheet",
       },
     },
     recap: {
@@ -143,6 +146,7 @@ export const session = {
         initiative: "İnisiyatif",
         dice: "Zarlar",
         log: "Masa kaydı",
+        sheet: "Sayfan",
       },
     },
     recap: {

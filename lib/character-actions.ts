@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { and, asc, eq, isNotNull, notInArray, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { redirect } from "next/navigation";
 import {
@@ -26,6 +26,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { campaignLog } from "@/lib/campaign-log";
+import { logSheet, revalidateSheet, revalidateSheetOnly } from "@/lib/sheet-refresh";
 import { fmt } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
@@ -80,8 +81,70 @@ const foldName = (name: string) => name.trim().toLowerCase();
 const clampOpt = (n: number | null, min: number, max: number) =>
   n === null ? null : Math.min(Math.max(n, min), max);
 
-/** Owner of the sheet or the campaign's DM may edit it. */
-async function canEditSheet(campaignId: string, sheetUserId: string, actorId: string) {
+/**
+ * "Belongs to this table", where a roster sheet's table is no table at all.
+ * `eq(column, null)` is never true in SQL, so the NULL case has to be asked
+ * differently — and it is asked here once instead of everywhere.
+ */
+const inCampaign = (campaignId: string | null) =>
+  campaignId === null ? isNull(characters.campaignId) : eq(characters.campaignId, campaignId);
+
+/**
+ * A handle on the transaction the write is running in, for the helpers below
+ * that are called from inside one. Read off `db.transaction` itself rather
+ * than spelled out, so it follows the driver instead of drifting from it.
+ */
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/**
+ * The rule every door into a campaign obeys, in one place.
+ *
+ * A player's first sheet at a table is live on arrival and names the party
+ * list's shorthand; anything after it waits for the DM's nod and renames
+ * nothing. That is one rule, and it had been written out three times — in the
+ * quick-create, in the roster's sit-down, and in the sheet form — where the
+ * third had already drifted into renaming the party list on *every* save, so
+ * editing a pending second character relabelled the player in the party.
+ *
+ * `characterId` is the sheet being admitted, or null for one that does not
+ * exist yet. Naming it excludes it from the count, which is what lets a save
+ * to somebody's only sheet still carry its new name into the party list while
+ * a save to their second one carries nothing.
+ *
+ * `approval` only answers for a sheet that is arriving; a save to an existing
+ * one has already been approved (or is still waiting) and ignores it.
+ */
+async function admitCharacter(
+  tx: Tx,
+  campaignId: string,
+  userId: string,
+  name: string,
+  characterId: string | null
+): Promise<{ approval: "approved" | "pending"; first: boolean }> {
+  const mine = await tx
+    .select({ id: characters.id })
+    .from(characters)
+    .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, userId)));
+  const first = mine.every((row) => row.id === characterId);
+  if (first) {
+    await tx
+      .update(campaignMembers)
+      .set({ characterName: cap(name, 150) })
+      .where(and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, userId)));
+  }
+  return { approval: first ? "approved" : "pending", first };
+}
+
+/**
+ * Owner of the sheet or the campaign's DM may edit it — and on the roster,
+ * where no DM exists to overrule anyone, the owner alone.
+ */
+async function canEditSheet(
+  campaignId: string | null,
+  sheetUserId: string,
+  actorId: string
+) {
+  if (campaignId === null) return sheetUserId === actorId;
   if (sheetUserId === actorId) {
     const access = await getCampaignAccess(campaignId, actorId);
     return access?.canParticipate ?? false;
@@ -103,32 +166,243 @@ export async function createCharacter(formData: FormData) {
   const access = await getCampaignAccess(campaignId, user.id);
   if (!access?.canParticipate) return;
 
-  const existing = await db
-    .select({ id: characters.id })
-    .from(characters)
-    .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, user.id)));
   const id = nanoid(12);
   // The sheet and the party list's shorthand name are one change.
   await db.transaction(async (tx) => {
+    const { approval } = await admitCharacter(tx, campaignId, user.id, name, null);
     await tx.insert(characters).values({
       id,
       campaignId,
       userId: user.id,
       name: cap(name, 150),
-      approval: existing.length === 0 ? "approved" : "pending",
+      approval,
       updatedAt: Date.now(),
     });
-    if (existing.length === 0) {
-      await tx
-        .update(campaignMembers)
-        .set({ characterName: cap(name, 150) })
-        .where(
-          and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, user.id))
-        );
-    }
   });
   await campaignLog(campaignId, user.id, "characterCreated", { name: cap(name, 150) });
   redirect(`/c/${campaignId}/ch/${user.id}?ch=${id}`);
+}
+
+/**
+ * A character with no table yet.
+ *
+ * People are invented before they are cast: a player statting someone out on a
+ * Tuesday evening should not have to name a campaign to do it, and a hero whose
+ * table has ended should not have to be deleted along with it. So the roster is
+ * a place a whole sheet can simply live — items, spells, portrait and all —
+ * owned by its player rather than by anyone's campaign.
+ *
+ * Approved on arrival, because approval is a DM's word and there is no DM here.
+ */
+export async function createUnboundCharacter(formData: FormData) {
+  const user = await requireUser();
+  const name = str(formData, "name");
+  if (!name) return;
+  const id = nanoid(12);
+  await db.insert(characters).values({
+    id,
+    campaignId: null,
+    userId: user.id,
+    name: cap(name, 150),
+    approval: "approved",
+    // Invented here, not stamped from anyone: this row *is* a master.
+    originCharacterId: null,
+    updatedAt: Date.now(),
+  });
+  // No feed line: the change log belongs to a campaign, and this character has
+  // not walked into one.
+  redirect(`/characters/${id}`);
+}
+
+/**
+ * Take a roster character to a table — by copy, never by move.
+ *
+ * The alternative was to hand the campaign the master row itself, and it is
+ * the wrong shape for what actually happens at tables: the same person is run
+ * in two games at once, one of those games kills them and the other does not,
+ * a DM hands out a sword that has no business existing in the other world.
+ * A copy makes each of those the local fact it always was. `originCharacterId`
+ * remembers where the copy came from and nothing more — the two sheets are
+ * strangers from the moment the second exists.
+ *
+ * Three things deliberately do not travel:
+ * - hit points, because a character arrives rested rather than mid-wound;
+ * - the portrait, because it is a stored object rather than a column, and two
+ *   rows naming one file would let either sheet's face be blanked by the
+ *   other's removal (a copy starts faceless and the player uploads again);
+ * - an inventory line's library reference, because a homebrew entry belongs to
+ *   one world. The snapshot on the row — name, slot, bonuses, armour — is what
+ *   the copy plays with, so the piece still works, it simply stops pointing at
+ *   a library this table cannot see.
+ *
+ * Everything else travels by being copied wholesale rather than column by
+ * column. A hand-written list is a list that silently stops being complete:
+ * the next column added to a character would simply not reach the copy, and
+ * nothing would say so. Spreading the master and overriding the four
+ * exceptions makes the exceptions the only thing anyone has to read.
+ */
+export async function useCharacterInCampaign(characterId: string, campaignId: string) {
+  const user = await requireUser();
+  // Mine, and still on the roster: a sheet already at a table is not a master,
+  // and someone else's is not mine to stamp. Silent, like every other refusal
+  // here — the id is forgeable.
+  const master = await db.query.characters.findFirst({
+    where: and(
+      eq(characters.id, characterId),
+      eq(characters.userId, user.id),
+      isNull(characters.campaignId)
+    ),
+  });
+  if (!master) return;
+  const access = await getCampaignAccess(campaignId, user.id);
+  if (!access?.canParticipate) return;
+
+  // A second press is the same press. `originCharacterId` is what makes that
+  // answerable at all: without it, "have I already brought this one here?" has
+  // no better answer than comparing names.
+  const already = await findCopyInCampaign(master.id, campaignId);
+  if (already) redirect(`/c/${campaignId}/ch/${user.id}?ch=${already.id}`);
+
+  const id = nanoid(12);
+  const now = Date.now();
+  // Sheet, inventory, powers and slots are one write: a copy that arrived with
+  // its gear but not its spells is a sheet nobody asked for, and there is no
+  // half-copy the player could sensibly fix by hand.
+  //
+  // Two presses that arrive together both read an empty answer above and both
+  // go on to write, which is what `characters_one_copy_per_campaign` is for:
+  // the loser is thrown out with SQLSTATE 23505 rather than leaving the table
+  // holding permanent twins. That refusal is not an error to the player — the
+  // copy they asked for exists — so it is caught and read as the idempotent
+  // case the first check already covers.
+  let twinned = false;
+  try {
+    await db.transaction(async (tx) => {
+      // The same rule the quick-create uses, from the same helper: the first
+      // sheet a player brings to a table is live and names the party list, and
+      // any extra waits for the DM's nod.
+      const { approval } = await admitCharacter(tx, campaignId, user.id, master.name, null);
+
+      await tx.insert(characters).values({
+        ...master,
+        id,
+        campaignId,
+        currentHp: null,
+        imageFile: null,
+        imageMime: null,
+        originCharacterId: master.id,
+        approval,
+        updatedAt: now,
+      });
+
+      // One statement per ledger rather than one per row: a well-stocked
+      // character is twenty-five round trips with the transaction held open,
+      // and the copy is the one moment nobody is waiting on anything else.
+      const items = await tx
+        .select()
+        .from(characterItems)
+        .where(eq(characterItems.characterId, master.id));
+      if (items.length > 0) {
+        await tx.insert(characterItems).values(
+          items.map((item) => ({
+            ...item,
+            id: nanoid(12),
+            characterId: id,
+            worldItemId: null,
+            createdAt: now,
+          }))
+        );
+      }
+
+      const abilities = await tx
+        .select()
+        .from(characterAbilities)
+        .where(eq(characterAbilities.characterId, master.id));
+      if (abilities.length > 0) {
+        await tx.insert(characterAbilities).values(
+          abilities.map((ability) => ({
+            ...ability,
+            id: nanoid(12),
+            characterId: id,
+            // Rested, like the hit points: nothing the roster sheet spent is spent.
+            usesLeft: ability.usesMax,
+            createdAt: now,
+          }))
+        );
+      }
+
+      const slots = await tx
+        .select()
+        .from(characterSpellSlots)
+        .where(eq(characterSpellSlots.characterId, master.id));
+      if (slots.length > 0) {
+        await tx
+          .insert(characterSpellSlots)
+          .values(slots.map((slot) => ({ ...slot, characterId: id, used: 0 })));
+      }
+    });
+  } catch (e) {
+    if (!isUniqueViolation(e)) throw e;
+    twinned = true;
+  }
+
+  // redirect() works by throwing, so it waits until the catch is behind us —
+  // inside the try it would read as a failed transaction and be swallowed.
+  if (twinned) {
+    const winner = await findCopyInCampaign(master.id, campaignId);
+    if (winner) redirect(`/c/${campaignId}/ch/${user.id}?ch=${winner.id}`);
+    return;
+  }
+
+  await campaignLog(campaignId, user.id, "characterCreated", { name: master.name });
+  redirect(`/c/${campaignId}/ch/${user.id}?ch=${id}`);
+}
+
+/** The copy of one master already sitting at one table, if there is one. */
+function findCopyInCampaign(masterId: string, campaignId: string) {
+  return db.query.characters.findFirst({
+    where: and(
+      eq(characters.campaignId, campaignId),
+      eq(characters.originCharacterId, masterId)
+    ),
+  });
+}
+
+/**
+ * Strike a roster character out for good.
+ *
+ * Only from the roster, and only by the player who owns it: a sheet at a table
+ * is the table's business — the DM's reject is the door out of a campaign, and
+ * this one deliberately cannot reach it. What goes is the whole document, in
+ * one write, because a sheet whose items outlived it is a set of orphan rows
+ * nobody can see or clear.
+ *
+ * Copies already sitting at tables are untouched. They were strangers from the
+ * moment they were stamped, and the master's disappearance is not news to
+ * them: `origin_character_id` is ON DELETE SET NULL, so a copy simply stops
+ * remembering where it came from and carries on being played.
+ */
+export async function deleteRosterCharacter(characterId: string) {
+  const user = await requireUser();
+  const character = await db.query.characters.findFirst({
+    where: eq(characters.id, characterId),
+  });
+  // A missing sheet, somebody else's, and one that has since sat down at a
+  // table all answer the same — the id is forgeable.
+  if (!character || character.userId !== user.id || character.campaignId !== null) return;
+
+  await db.transaction(async (tx) => {
+    await tx.delete(characterItems).where(eq(characterItems.characterId, characterId));
+    await tx.delete(characterAbilities).where(eq(characterAbilities.characterId, characterId));
+    await tx.delete(characterSpellSlots).where(eq(characterSpellSlots.characterId, characterId));
+    await tx.delete(characters).where(eq(characters.id, characterId));
+  });
+
+  // No feed line: the roster sits in no campaign's history, exactly as it did
+  // when the character was invented.
+  revalidatePath("/characters");
+  // The page the press came from may be the sheet that no longer exists.
+  redirect("/characters");
 }
 
 /** DM lets an extra character into the campaign. */
@@ -138,13 +412,13 @@ export async function approveCharacter(characterId: string) {
     where: eq(characters.id, characterId),
   });
   if (!character || character.approval !== "pending") return;
+  // Nobody approves a roster character: it answers to its player, not to a DM.
+  if (!character.campaignId) return;
   const access = await getCampaignAccess(character.campaignId, user.id);
   if (!access?.isDm) return;
   await db.update(characters).set({ approval: "approved" }).where(eq(characters.id, characterId));
   await campaignLog(character.campaignId, user.id, "characterApproved", { name: character.name });
-  revalidatePath(`/c/${character.campaignId}`);
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
-  revalidatePath("/characters");
+  revalidateSheet(character);
 }
 
 /** DM turns an extra character away — the sheet is removed entirely. */
@@ -154,6 +428,10 @@ export async function rejectCharacter(characterId: string) {
     where: eq(characters.id, characterId),
   });
   if (!character || character.approval !== "pending") return;
+  // A roster character is nobody's to turn away, and this action *deletes* —
+  // so the guard is what keeps a DM's rejection from reaching a sheet that was
+  // never at their table in the first place.
+  if (!character.campaignId) return;
   const access = await getCampaignAccess(character.campaignId, user.id);
   if (!access?.isDm) return;
   // All four deletes or none: a half-removed sheet leaves items, abilities and
@@ -168,9 +446,7 @@ export async function rejectCharacter(characterId: string) {
     await tx.delete(characters).where(eq(characters.id, characterId));
   });
   await campaignLog(character.campaignId, user.id, "characterRejected", { name: character.name });
-  revalidatePath(`/c/${character.campaignId}`);
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
-  revalidatePath("/characters");
+  revalidateSheet(character);
 }
 
 /** Only the campaign's DM decides who is dead — the mark shows everywhere. */
@@ -180,6 +456,8 @@ export async function setCharacterStatus(characterId: string, status: "alive" | 
     where: eq(characters.id, characterId),
   });
   if (!character) return;
+  // Death is a ruling made at a table. A roster character is at none.
+  if (!character.campaignId) return;
   const access = await getCampaignAccess(character.campaignId, user.id);
   if (!access?.isDm) return;
   await db.update(characters).set({ status }).where(eq(characters.id, characterId));
@@ -187,13 +465,22 @@ export async function setCharacterStatus(characterId: string, status: "alive" | 
     character: character.name,
     status,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
-  revalidatePath(`/c/${character.campaignId}`);
-  revalidatePath("/characters");
+  revalidateSheet(character);
 }
 
+/**
+ * The sheet form's save, for a sheet that exists and for one that does not.
+ *
+ * The nameless-target branch below — no `characterId`, so "the sheet this
+ * user has here" — is a *campaign* affordance and nothing else. On the roster
+ * a player may keep any number of characters, and "the one they have" is not a
+ * question with an answer: the lookup would return whichever row came back
+ * first and the save would land on top of a character nobody was editing.
+ * Creating on the roster has its own door (`createUnboundCharacter`), so a
+ * roster save that names no sheet is simply not a request this can serve.
+ */
 export async function upsertCharacter(
-  campaignId: string,
+  campaignId: string | null,
   sheetUserId: string,
   formData: FormData
 ) {
@@ -203,6 +490,7 @@ export async function upsertCharacter(
   const name = str(formData, "name");
   if (!name) return;
   const characterId = str(formData, "characterId");
+  if (campaignId === null && !characterId) return;
   const score = (key: string) => {
     const n = int(formData, key);
     return n === null ? null : Math.min(Math.max(n, 1), 30);
@@ -237,56 +525,53 @@ export async function upsertCharacter(
     ? await db.query.characters.findFirst({
         where: and(
           eq(characters.id, characterId),
-          eq(characters.campaignId, campaignId),
+          inCampaign(campaignId),
           eq(characters.userId, sheetUserId)
         ),
       })
     : await db.query.characters.findFirst({
-        where: and(eq(characters.campaignId, campaignId), eq(characters.userId, sheetUserId)),
+        where: and(inCampaign(campaignId), eq(characters.userId, sheetUserId)),
       });
   // characterId comes from the form and is forgeable: when it names a sheet
   // outside this campaign/user the scoped lookup finds nothing, and the
   // request is refused rather than quietly creating a fresh sheet.
   if (characterId && !existing) return;
 
-  // First sheet in the campaign goes live; any extra waits for the DM.
-  let approval: "approved" | "pending" = "approved";
-  if (!existing) {
-    const mine = await db
-      .select({ id: characters.id })
-      .from(characters)
-      .where(and(eq(characters.campaignId, campaignId), eq(characters.userId, sheetUserId)));
-    approval = mine.length === 0 ? "approved" : "pending";
-  }
-
-  // The sheet and the party list's shorthand name move together.
+  const id = existing?.id ?? nanoid(12);
+  // The sheet and the party list's shorthand name move together — under the
+  // same rule the other two doors into a campaign obey. A save is not
+  // automatically a renaming of the player in the party list: only the sheet
+  // that list is already named after gets to carry a new name into it, which
+  // is why the row being saved is excluded from the count rather than the
+  // count simply being asked for zero.
   await db.transaction(async (tx) => {
+    // No approval to grant and no party list to rename on the roster: there is
+    // no DM and there is no party.
+    const admitted =
+      campaignId === null
+        ? null
+        : await admitCharacter(tx, campaignId, sheetUserId, values.name, existing?.id ?? null);
     if (existing) {
       await tx.update(characters).set(values).where(eq(characters.id, existing.id));
     } else {
       await tx.insert(characters).values({
-        id: nanoid(12),
+        id,
         campaignId,
         userId: sheetUserId,
         ...values,
-        approval,
+        approval: admitted?.approval ?? "approved",
       });
     }
-    await tx
-      .update(campaignMembers)
-      .set({ characterName: values.name })
-      .where(
-        and(eq(campaignMembers.campaignId, campaignId), eq(campaignMembers.userId, sheetUserId))
-      );
   });
   // A save on someone else's sheet is a DM write — the feed says so out loud.
   const byDm = sheetUserId !== user.id;
-  await campaignLog(campaignId, user.id, byDm ? "sheetSavedByDm" : "sheetSaved", {
-    character: values.name,
-    dm: byDm ? 1 : 0,
-  });
-  revalidatePath(`/c/${campaignId}/ch/${sheetUserId}`);
-  revalidatePath(`/c/${campaignId}`);
+  await logSheet(
+    { id, campaignId, userId: sheetUserId },
+    user.id,
+    byDm ? "sheetSavedByDm" : "sheetSaved",
+    { character: values.name, dm: byDm ? 1 : 0 }
+  );
+  revalidateSheet({ id, campaignId, userId: sheetUserId });
 }
 
 async function getEditableCharacter(characterId: string, actorId: string) {
@@ -306,13 +591,6 @@ const PORTRAIT_EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/webp": "webp",
 };
-
-/** The portrait shows on the sheet, the party list, the hub and initiative. */
-function revalidatePortraitPages(campaignId: string, userId: string) {
-  revalidatePath(`/c/${campaignId}/ch/${userId}`);
-  revalidatePath(`/c/${campaignId}`);
-  revalidatePath("/characters");
-}
 
 /**
  * Owner or DM uploads a face for the character. The stored name is a one-shot
@@ -356,10 +634,8 @@ export async function uploadPortrait(
       console.error("uploadPortrait: old file delete failed", e)
     );
   }
-  await campaignLog(character.campaignId, user.id, "portraitChanged", {
-    character: character.name,
-  });
-  revalidatePortraitPages(character.campaignId, character.userId);
+  await logSheet(character, user.id, "portraitChanged", { character: character.name });
+  revalidateSheet(character);
   return {};
 }
 
@@ -375,24 +651,11 @@ export async function removePortrait(characterId: string) {
   await deletePortraitFile(character.imageFile).catch((e) =>
     console.error("removePortrait: file delete failed", e)
   );
-  await campaignLog(character.campaignId, user.id, "portraitRemoved", {
-    character: character.name,
-  });
-  revalidatePortraitPages(character.campaignId, character.userId);
+  await logSheet(character, user.id, "portraitRemoved", { character: character.name });
+  revalidateSheet(character);
 }
 
 // ---------- inventory ----------
-
-/**
- * Every page that shows a number the worn gear moves. The armour class on the
- * hub and the passive Perception in the party list are computed from the
- * equipped lines now, so taking a helm off is not only the sheet's business.
- */
-function revalidateSheetPages(campaignId: string, userId: string) {
-  revalidatePath(`/c/${campaignId}/ch/${userId}`);
-  revalidatePath(`/c/${campaignId}`);
-  revalidatePath("/characters");
-}
 
 /** One of the three DEX rules, or nothing — which lib/armor.ts reads as "none". */
 function readAcDex(formData: FormData): AcDexRule | null {
@@ -447,7 +710,7 @@ type ItemSource = {
 
 async function resolveItemSource(
   formData: FormData,
-  campaignId: string,
+  campaignId: string | null,
   actorId: string
 ): Promise<ItemSource> {
   const blank: ItemSource = {
@@ -463,9 +726,14 @@ async function resolveItemSource(
   // with no source behind it. Everything below is the lookup they declined.
   if (isCustom(formData)) return blank;
 
-  // A library entry wins: it is the only source that carries real bonuses.
+  // A roster sheet plays in no world, so there is no library standing behind
+  // it and nobody to ask for access: every lookup below that reaches for one
+  // is skipped for a character with no campaign, and the compendium answers
+  // alone. An SRD entry is the same entry at every table, which is exactly why
+  // it can be stocked onto a character that has none.
   const worldItemId = str(formData, "worldItemId");
-  if (worldItemId) {
+  // A library entry wins: it is the only source that carries real bonuses.
+  if (campaignId !== null && worldItemId) {
     const [access, item] = await Promise.all([
       getCampaignAccess(campaignId, actorId),
       db.query.worldItems.findFirst({ where: eq(worldItems.id, worldItemId) }),
@@ -525,32 +793,34 @@ async function resolveItemSource(
   const name = foldName(str(formData, "name"));
   if (!name) return blank;
 
-  const access = await getCampaignAccess(campaignId, actorId);
-  if (!access) return blank;
-  // A DM-only entry is no more reachable by name than it was by id: the party
-  // has not met it yet, and typing it exactly is not the same as being shown it.
-  const visible = access.isDm ? [] : [eq(worldItems.visibility, "everyone")];
-  const [libraryItem] = await db
-    .select()
-    .from(worldItems)
-    .where(
-      and(
-        eq(worldItems.worldId, access.world.id),
-        ...visible,
-        sql`lower(btrim(${worldItems.name})) = ${name}`
+  if (campaignId !== null) {
+    const access = await getCampaignAccess(campaignId, actorId);
+    if (!access) return blank;
+    // A DM-only entry is no more reachable by name than it was by id: the party
+    // has not met it yet, and typing it exactly is not the same as being shown it.
+    const visible = access.isDm ? [] : [eq(worldItems.visibility, "everyone")];
+    const [libraryItem] = await db
+      .select()
+      .from(worldItems)
+      .where(
+        and(
+          eq(worldItems.worldId, access.world.id),
+          ...visible,
+          sql`lower(btrim(${worldItems.name})) = ${name}`
+        )
       )
-    )
-    // Two entries may share a name; the oldest one is the answer, always.
-    .orderBy(asc(worldItems.createdAt), asc(worldItems.id))
-    .limit(1);
-  if (libraryItem) {
-    return {
-      worldItemId: libraryItem.id,
-      srdIndex: null,
-      slot: libraryItem.slot,
-      statBonuses: libraryItem.statBonuses,
-      summary: libraryItem.description,
-    };
+      // Two entries may share a name; the oldest one is the answer, always.
+      .orderBy(asc(worldItems.createdAt), asc(worldItems.id))
+      .limit(1);
+    if (libraryItem) {
+      return {
+        worldItemId: libraryItem.id,
+        srdIndex: null,
+        slot: libraryItem.slot,
+        statBonuses: libraryItem.statBonuses,
+        summary: libraryItem.description,
+      };
+    }
   }
 
   // Either language reaches the entry: a table that plays in Turkish types
@@ -581,18 +851,19 @@ async function resolveItemSource(
  * the form carried no name at all (nothing is written then).
  */
 async function stockItem(
-  character: { id: string; campaignId: string },
+  character: { id: string; campaignId: string | null },
   formData: FormData,
   actorId: string,
   maxQty: number
-): Promise<{ name: string; qty: number } | null> {
+): Promise<{ id: string; name: string; qty: number } | null> {
   const name = str(formData, "name");
   if (!name) return null;
   const itemName = cap(name, 150);
   const qty = Math.min(Math.max(int(formData, "qty") ?? 1, 1), maxQty);
   const source = await resolveItemSource(formData, character.campaignId, actorId);
+  const id = nanoid(12);
   await db.insert(characterItems).values({
-    id: nanoid(12),
+    id,
     characterId: character.id,
     name: itemName,
     qty,
@@ -605,7 +876,7 @@ async function stockItem(
     statBonuses: source.statBonuses,
     createdAt: Date.now(),
   });
-  return { name: itemName, qty };
+  return { id, name: itemName, qty };
 }
 
 export async function addItem(characterId: string, formData: FormData) {
@@ -614,12 +885,12 @@ export async function addItem(characterId: string, formData: FormData) {
   if (!character) return;
   const stocked = await stockItem(character, formData, user.id, 9999);
   if (!stocked) return;
-  await campaignLog(character.campaignId, user.id, "itemAdded", {
+  await logSheet(character, user.id, "itemAdded", {
     name: stocked.name,
     n: stocked.qty,
     character: character.name,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheet(character);
 }
 
 /**
@@ -633,22 +904,55 @@ export async function addItem(characterId: string, formData: FormData) {
  * treasure. The reference the autocomplete attaches is resolved exactly as it
  * is on the sheet, which is what keeps a handed-over sword the same kind of
  * row as a typed one.
+ *
+ * Every one of those refusals used to be a bare `return`, which a DM standing
+ * at a table read as "it worked": the form posted, the page came back, and the
+ * player's sheet was unchanged. They now come back as sentences. So does the
+ * success — `given` is what the form prints over itself, because a hand-over
+ * lands on somebody else's page and the giver never sees it otherwise.
  */
-export async function giveItem(campaignId: string, formData: FormData) {
+/**
+ * `given` names the sheet it landed on as well as the thing that landed,
+ * because the form outlives the hand-over: the DM picks the next player from
+ * the same select, and a receipt that stayed put while the target changed read
+ * as a claim about the player now selected. Naming the character is what lets
+ * the form print the line only where it is still true — no effect, no second
+ * copy of the answer, just a comparison.
+ *
+ * `id` is the inventory line itself, and it is here to be a *different string*
+ * every time. Handing the same player a second rope produces a word-for-word
+ * identical receipt, and the field below the receipt is cleared by remounting
+ * on it; without an identity, twice in a row would be indistinguishable from
+ * once and the second hand-over would keep the first one's hidden reference.
+ */
+export type GiveItemState = FormState & {
+  given?: { id: string; name: string; qty: number; character: string; characterId: string };
+};
+
+export async function giveItem(
+  campaignId: string,
+  _prev: GiveItemState,
+  formData: FormData
+): Promise<GiveItemState> {
   const user = await requireUser();
+  const { t } = await getT();
   const access = await getCampaignAccess(campaignId, user.id);
-  if (!access?.isDm) return;
+  if (!access?.isDm) return { error: t("errors.items.dmOnlyGive") };
 
   const characterId = str(formData, "characterId");
-  if (!characterId) return;
+  if (!characterId) return { error: t("errors.items.notAtTable") };
   const character = await db.query.characters.findFirst({
     where: eq(characters.id, characterId),
   });
-  if (!character || character.campaignId !== campaignId) return;
-  if (character.approval !== "approved") return;
+  // A missing sheet and one at another table answer the same — the id is
+  // forgeable, and a DM has no business learning that it names anything.
+  if (!character || character.campaignId !== campaignId) {
+    return { error: t("errors.items.notAtTable") };
+  }
+  if (character.approval !== "approved") return { error: t("errors.items.notApproved") };
 
   const stocked = await stockItem(character, formData, user.id, 999);
-  if (!stocked) return;
+  if (!stocked) return { error: t("errors.items.nameRequired") };
   await campaignLog(campaignId, user.id, "itemGiven", {
     name: stocked.name,
     n: stocked.qty,
@@ -656,7 +960,16 @@ export async function giveItem(campaignId: string, formData: FormData) {
   });
   // The sheet gained a line, and the campaign page's own party numbers read
   // from the same rows — one helper already covers both.
-  revalidateSheetPages(campaignId, character.userId);
+  revalidateSheet(character);
+  return {
+    given: {
+      id: stocked.id,
+      name: stocked.name,
+      qty: stocked.qty,
+      character: character.name,
+      characterId: character.id,
+    },
+  };
 }
 
 /**
@@ -680,13 +993,32 @@ export async function giveItem(campaignId: string, formData: FormData) {
  * two helms, and never briefly wearing none. `character_items_one_per_slot`
  * backs that up for two clicks that arrive at once — the loser gets SQLSTATE
  * 23505 and is dropped, because the slot did end up filled either way.
+ *
+ * The refusals speak now. A dropped 23505 is still the right *write* — the
+ * slot ended up filled — but it is the wrong *answer*: the player pressed
+ * equip and something else is on the square, and being told so is the
+ * difference between a race and a bug. The drag-and-drop path throws the
+ * answer away (a drop has nowhere to print one); the buttons show it.
+ *
+ * The `(…ids, _prev, formData)` shape is this codebase's signature for an
+ * action a form can both post to and read an answer from, and it is not
+ * decoration: React only writes a POST target into the form's markup when the
+ * action handed to `useActionState` is a server function *reference*, so the
+ * button works before hydration and with scripting off only while the binding
+ * happens through `.bind` rather than through a closure in the component.
  */
-export async function equipItem(itemId: string, formData: FormData) {
+export async function equipItem(
+  itemId: string,
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
   const user = await requireUser();
+  const { t } = await getT();
   const item = await db.query.characterItems.findFirst({ where: eq(characterItems.id, itemId) });
-  if (!item) return;
+  // A missing line and an unreachable one answer the same — the id is forgeable.
+  if (!item) return { error: t("errors.items.notAllowed") };
   const character = await getEditableCharacter(item.characterId, user.id);
-  if (!character) return;
+  if (!character) return { error: t("errors.items.notAllowed") };
 
   // Lazy import keeps the SRD JSON out of the sheet's chunk, as everywhere
   // else this module reaches for it.
@@ -696,11 +1028,12 @@ export async function equipItem(itemId: string, formData: FormData) {
     : null;
   const required = requiredSlot(item.srdIndex, source);
   const asked = readSlotName(str(formData, "slot"));
-  if (required && asked && asked !== required) return;
+  if (required && asked && asked !== required) return { error: t("errors.items.slotMismatch") };
 
   const slot = required ?? item.slot ?? asked;
-  if (!slot) return;
-  if (item.equipped === 1 && item.slot === slot) return;
+  if (!slot) return { error: t("errors.items.slotUnknown") };
+  // Already on, already there: nothing to do and nothing to complain about.
+  if (item.equipped === 1 && item.slot === slot) return {};
 
   try {
     await db.transaction(async (tx) => {
@@ -720,14 +1053,15 @@ export async function equipItem(itemId: string, formData: FormData) {
         .where(eq(characterItems.id, itemId));
     });
   } catch (e) {
-    if (isUniqueViolation(e)) return;
+    if (isUniqueViolation(e)) return { error: t("errors.items.slotTaken") };
     throw e;
   }
-  await campaignLog(character.campaignId, user.id, "itemEquipped", {
+  await logSheet(character, user.id, "itemEquipped", {
     name: item.name,
     character: character.name,
   });
-  revalidateSheetPages(character.campaignId, character.userId);
+  revalidateSheet(character);
+  return {};
 }
 
 /** Take it off. The slot stays on the row — it is still a helm, just not worn. */
@@ -738,11 +1072,11 @@ export async function unequipItem(itemId: string) {
   const character = await getEditableCharacter(item.characterId, user.id);
   if (!character) return;
   await db.update(characterItems).set({ equipped: 0 }).where(eq(characterItems.id, itemId));
-  await campaignLog(character.campaignId, user.id, "itemUnequipped", {
+  await logSheet(character, user.id, "itemUnequipped", {
     name: item.name,
     character: character.name,
   });
-  revalidateSheetPages(character.campaignId, character.userId);
+  revalidateSheet(character);
 }
 
 /**
@@ -766,13 +1100,27 @@ export async function unequipItem(itemId: string) {
  * cannot sit in `ring` while the sheet still counts it as the worn helm, and
  * one UPDATE carries both halves, so `character_items_one_per_slot` never sees
  * the row in between.
+ *
+ * The two gates answer out loud rather than returning nothing. The clamps
+ * below stay silent on purpose: they are how the form is *specified* to read a
+ * number, not a refusal to read it, and the inputs already carry the same
+ * min/max the server enforces.
+ *
+ * `_prev` is the same `.bind`-able shape equipItem carries, and for the same
+ * reason: it is what keeps this form posting without hydration.
  */
-export async function setItemStats(itemId: string, formData: FormData) {
+export async function setItemStats(
+  itemId: string,
+  _prev: FormState,
+  formData: FormData
+): Promise<FormState> {
   const user = await requireUser();
+  const { t } = await getT();
   const item = await db.query.characterItems.findFirst({ where: eq(characterItems.id, itemId) });
-  if (!item) return;
+  // A missing line and an unreachable one answer the same — the id is forgeable.
+  if (!item) return { error: t("errors.items.notAllowed") };
   const character = await getEditableCharacter(item.characterId, user.id);
-  if (!character) return;
+  if (!character) return { error: t("errors.items.notAllowed") };
 
   // Lazy import keeps the SRD JSON out of the sheet's chunk, as everywhere
   // else this module reaches for it.
@@ -800,7 +1148,8 @@ export async function setItemStats(itemId: string, formData: FormData) {
 
   // The party list and the character hub both show a computed armour class
   // now, so a line that changes one changes them too.
-  revalidateSheetPages(character.campaignId, character.userId);
+  revalidateSheet(character);
+  return {};
 }
 
 export async function adjustItemQty(itemId: string, delta: number) {
@@ -826,15 +1175,20 @@ export async function adjustItemQty(itemId: string, delta: number) {
   });
   if (qty === null) return;
 
-  await campaignLog(
-    character.campaignId,
+  await logSheet(
+    character,
     user.id,
     qty <= 0 ? "itemRemoved" : "itemQty",
     qty <= 0
       ? { name: item.name, character: character.name }
       : { name: item.name, d: fmt(delta), n: qty, character: character.name }
   );
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  // A pile counted up or down is a number on this page and nowhere else — the
+  // hub and the party list read an armour class, not an inventory. Counting the
+  // last one away is different: the row goes with it, and if it was worn armour
+  // the numbers those two pages do read have just changed.
+  if (qty <= 0) revalidateSheet(character);
+  else revalidateSheetOnly(character);
 }
 
 export async function deleteItem(itemId: string) {
@@ -844,11 +1198,11 @@ export async function deleteItem(itemId: string) {
   const character = await getEditableCharacter(item.characterId, user.id);
   if (!character) return;
   await db.delete(characterItems).where(eq(characterItems.id, itemId));
-  await campaignLog(character.campaignId, user.id, "itemRemoved", {
+  await logSheet(character, user.id, "itemRemoved", {
     name: item.name,
     character: character.name,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheet(character);
 }
 
 // ---------- spells & abilities ----------
@@ -904,11 +1258,11 @@ export async function addAbility(characterId: string, formData: FormData) {
     srdIndex,
     createdAt: Date.now(),
   });
-  await campaignLog(character.campaignId, user.id, "abilityAdded", {
+  await logSheet(character, user.id, "abilityAdded", {
     name: abilityName,
     character: character.name,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheet(character);
 }
 
 /** Spend one use (e.g. cast a spell slot); floor at zero. */
@@ -929,7 +1283,8 @@ export async function useAbility(abilityId: string) {
     .where(
       and(eq(characterAbilities.id, abilityId), isNotNull(characterAbilities.usesLeft))
     );
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  // Spent uses are read on the sheet alone; nothing else in the app counts them.
+  revalidateSheetOnly(character);
 }
 
 // ---------- hit points ----------
@@ -962,8 +1317,15 @@ export async function adjustCharacterHp(characterId: string, formData: FormData)
   const character = await getEditableCharacter(characterId, user.id);
   if (!character) return;
 
-  const amount = int(formData, "amount");
-  if (amount === null || amount < 0) return;
+  // An empty box is one point. The sheet's form leaves the field blank with a
+  // faint 1 written in it — the press that matters is a number typed over
+  // whatever was there, and a prefilled digit is one more thing to clear first
+  // — so the blank submission has to mean what the hint promises rather than
+  // silently doing nothing. A negative number is still refused: that is a form
+  // arguing with the two buttons beside it.
+  const typed = int(formData, "amount");
+  if (typed !== null && typed < 0) return;
+  const amount = typed ?? 1;
   const delta = str(formData, "op") === "heal" ? amount : -amount;
 
   const base = sql`COALESCE(${characters.currentHp}, ${characters.maxHp}, 0)`;
@@ -976,8 +1338,7 @@ export async function adjustCharacterHp(characterId: string, formData: FormData)
 
   // No feed entry: the session log already narrates the blows that land at the
   // table, and a line per point of healing is noise the DM did not ask for.
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
-  revalidatePath(`/c/${character.campaignId}`);
+  revalidateSheet(character);
 }
 
 /**
@@ -1017,11 +1378,11 @@ export async function longRest(characterId: string) {
       .where(eq(characters.id, characterId));
     return rows;
   });
-  await campaignLog(character.campaignId, user.id, "longRest", {
+  await logSheet(character, user.id, "longRest", {
     character: character.name,
     n: refilled.length,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheet(character);
 }
 
 export async function deleteAbility(abilityId: string) {
@@ -1033,11 +1394,11 @@ export async function deleteAbility(abilityId: string) {
   const character = await getEditableCharacter(ability.characterId, user.id);
   if (!character) return;
   await db.delete(characterAbilities).where(eq(characterAbilities.id, abilityId));
-  await campaignLog(character.campaignId, user.id, "abilityRemoved", {
+  await logSheet(character, user.id, "abilityRemoved", {
     name: ability.name,
     character: character.name,
   });
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheet(character);
 }
 
 // ---------- spell slots ----------
@@ -1097,7 +1458,8 @@ export async function setSpellSlots(characterId: string, formData: FormData) {
     if (total > 0) rows.push({ level, total });
   }
   await writeSlotRows(characterId, rows);
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  // The slot table is drawn on the sheet and summarised nowhere.
+  revalidateSheetOnly(character);
 }
 
 /**
@@ -1118,7 +1480,7 @@ export async function suggestFromClass(characterId: string) {
   const rows = suggestSlots(character.klass, character.level);
   if (!rows || rows.length === 0) return;
   await writeSlotRows(characterId, rows);
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheetOnly(character);
 }
 
 /** Neither end of the counter takes a level the table could not hold. */
@@ -1146,7 +1508,10 @@ export async function spendSpellSlot(characterId: string, level: number) {
         eq(characterSpellSlots.level, level)
       )
     );
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  // A spent slot is a pip on this sheet. The hub and the party list carry an
+  // armour class and a passive Perception, neither of which a cast moves — and
+  // these two are the most-tapped controls at the table, so they pay the least.
+  revalidateSheetOnly(character);
 }
 
 /** Misclicked. The same counter, the other way, floored at zero. */
@@ -1164,5 +1529,5 @@ export async function restoreSpellSlot(characterId: string, level: number) {
         eq(characterSpellSlots.level, level)
       )
     );
-  revalidatePath(`/c/${character.campaignId}/ch/${character.userId}`);
+  revalidateSheetOnly(character);
 }

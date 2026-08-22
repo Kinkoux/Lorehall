@@ -96,6 +96,12 @@ export const campaign = {
       itemPh: "Item name",
       qty: "Qty",
       submit: "Give",
+      // The strip under the form: what the list handed back, before it is sent.
+      picked: "Picked",
+      carried: "Carried",
+      noBonuses: "No bonuses",
+      // The one line after: what actually landed, and on whose sheet.
+      gave: "Gave {name} ×{n} to {character}.",
     },
     maps: {
       title: "Maps",
@@ -312,6 +318,10 @@ export const campaign = {
       itemPh: "Eşya adı",
       qty: "Adet",
       submit: "Ver",
+      picked: "Seçilen",
+      carried: "Çantada",
+      noBonuses: "Bonus yok",
+      gave: "{name} ×{n} → {character}.",
     },
     maps: {
       title: "Haritalar",

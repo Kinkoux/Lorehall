@@ -3,6 +3,7 @@ import { unequipItem } from "@/lib/character-actions";
 import { acGearBonus, acTitle, fmt, type AcBreakdown } from "@/lib/dnd";
 import { statBonusEntries, STAT_LABELS } from "@/lib/world-items";
 import type { T } from "@/lib/i18n";
+import { categoryArtMid } from "@/lib/ui-art";
 import { IconShield, IconX, SlotIcon } from "@/components/Icons";
 import { Card, Portrait, SectionTitle } from "@/components/ui";
 import { itemArtSrc, SLOT_CATEGORY } from "@/components/character/item-art";
@@ -184,6 +185,13 @@ function AcPlate({ ac, t }: { ac: AcBreakdown; t: T }) {
  * category, then the plate for whatever the slot can only ever hold — and when
  * even that is unknown, the slot's own monoline mark, which is also what an
  * empty square wears.
+ *
+ * An empty square for a slot that can only ever hold one kind of thing gets
+ * that kind's plate as a watermark behind the mark: the weapon square is
+ * faintly a sword, the armour square faintly a breastplate. It is set low
+ * enough to read as the paper's own grain rather than as a piece — the gaps
+ * are the information a paper doll exists to show, and a plate at full
+ * strength would fill them in.
  */
 function SlotCell({
   slot,
@@ -199,6 +207,10 @@ function SlotCell({
   const slotName = t(`world.items.slots.${slot}`);
   const bonuses = piece ? statBonusEntries(piece.statBonuses) : [];
   const art = piece ? itemArtSrc(piece, SLOT_CATEGORY[slot] ?? null) : null;
+  // Only the three slots that can hold one kind of thing say anything about an
+  // empty square; a cloak, a pair of boots or a pair of gloves could be
+  // anything, so those keep the bare mark.
+  const emptyPlate = piece ? null : (SLOT_CATEGORY[slot] ?? null);
   const label = piece
     ? `${slotName}: ${piece.name}`
     : `${slotName} — ${t("character.equipment.slotEmpty")}`;
@@ -237,11 +249,29 @@ function SlotCell({
             className="h-full w-full object-cover"
           />
         ) : (
-          <SlotIcon
-            slot={slot}
-            size={26}
-            className={piece ? "text-gold-300" : "text-parchment-500/45"}
-          />
+          <>
+            {emptyPlate && (
+              // The 256px cut. The square is 64px, 80 from `sm` up, so a
+              // doubled screen asks for 160 — and this is a watermark at
+              // eighteen percent, not a picture anyone studies. The full plate
+              // is 512px and up to 80KB, and the doll shows several empty
+              // squares at once.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={categoryArtMid(emptyPlate)}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-cover opacity-[0.18]"
+              />
+            )}
+            <SlotIcon
+              slot={slot}
+              size={26}
+              className={`relative ${piece ? "text-gold-300" : "text-parchment-500/45"}`}
+            />
+          </>
         )}
         {piece && editable && (
           <form

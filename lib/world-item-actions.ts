@@ -263,6 +263,10 @@ export async function addWorldItemToCharacter(itemId: string, formData: FormData
     where: eq(characters.id, characterId),
   });
   if (!character || character.approval !== "approved") return;
+  // A roster character plays in no world, so no world's library reaches it:
+  // homebrew belongs to the table it was forged for, and a sheet with no table
+  // has nothing to draw from. The compendium is that sheet's whole shop.
+  if (!character.campaignId) return;
 
   const access = await getCampaignAccess(character.campaignId, user.id);
   if (!access) return;
