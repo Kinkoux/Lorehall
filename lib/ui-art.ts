@@ -29,6 +29,26 @@ export function categoryArt(category: string): string {
   return ART(`cat-${category}`);
 }
 
+/**
+ * The plate for a *kind* of item — an axe, a flask, a coil of rope — which is
+ * the picture an entry with no engraving of its own settles for. Kinds are
+ * named by lib/data/item-kinds.json; that file never comes near this module,
+ * because reading it is the server's job (see lib/srd-data.ts).
+ */
+export function kindArt(kind: string): string {
+  return ART(`kind-${kind}`);
+}
+
+/** The same kind plate at 96px, for a list row that draws it 40px wide. */
+export function kindArtThumb(kind: string): string {
+  return ART(`t/kind-${kind}`);
+}
+
+/** The same kind plate at 256px, for the inventory squares on a sheet. */
+export function kindArtMid(kind: string): string {
+  return ART(`m/kind-${kind}`);
+}
+
 /** Vignettes for the empty states, one per ledger that can stand empty. */
 export const EMPTY_ART = {
   codex: ART("empty-codex"),

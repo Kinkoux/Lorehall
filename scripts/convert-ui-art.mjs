@@ -17,9 +17,13 @@ import sharp from "sharp";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const DEFAULT_SOURCE = "C:/Users/Burak/Desktop/Lorehall UI Images";
 
-// The full vocabulary lib/ui-art.ts can ask for. A source file outside this
-// list is reported and skipped rather than silently published under a name
-// nothing links to.
+// The full vocabulary *this* script publishes. A source file outside this list
+// is reported and skipped rather than silently published under a name nothing
+// links to. lib/ui-art.ts also names the kind-<slug> plates, and those belong
+// to convert-item-art.mjs — it writes them into public/art/ (and their smaller
+// cuts into public/art/t/ and public/art/m/) from a different source folder,
+// keyed by lib/data/item-kinds.json. This script neither writes them nor
+// counts them.
 const CLASSES = [
   "barbarian",
   "bard",
@@ -132,7 +136,11 @@ for (const file of sources) {
 
 const missing = [...ALLOWED].filter((slug) => !done.includes(slug)).sort();
 
-const outFiles = (await readdir(outDir)).filter((f) => f.endsWith(".webp"));
+// The kind plates share this directory but are convert-item-art.mjs's business
+// — counting them here would report forty files this script has never written.
+const outFiles = (await readdir(outDir)).filter(
+  (f) => f.endsWith(".webp") && !f.startsWith("kind-")
+);
 const sizes = await Promise.all(
   outFiles.map(async (f) => (await stat(path.join(outDir, f))).size)
 );

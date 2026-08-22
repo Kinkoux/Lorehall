@@ -31,6 +31,7 @@ import { effectiveAc } from "@/lib/armor";
 import { SKILLS } from "@/lib/srd";
 import {
   getItem,
+  getItemArt,
   getSpell,
   itemNameTr,
   itemSummary,
@@ -102,13 +103,14 @@ const KIND_STYLES: Record<string, string> = {
 /**
  * An inventory row as this page reads it: the stored line plus what the join
  * answered — what it grants (its own snapshot, or its source's), which world
- * the library entry lives in for the link back, and the two things the square
- * needs to draw itself.
+ * the library entry lives in for the link back, and the three things the
+ * square needs to draw itself.
  */
 type InventoryLineShape = CharacterItem & {
   bonuses: string | null;
   sourceWorldId: string | null;
   photo: string | null;
+  plate: string | null;
   category: string | null;
   /** Where its source insists it is worn, or null when nothing insists. */
   requiredSlot: WorldItemSlot | null;
@@ -193,6 +195,12 @@ export default async function CharacterPage({
     sourceWorldId: source?.worldId ?? null,
     // Only a library entry can carry a photograph of the actual piece.
     photo: worldItemPhoto(item.worldItemId, source?.imageFile),
+    // Resolved here rather than in the component: choosing a plate means
+    // reading the compendium's manifest, and that JSON belongs on the server.
+    // The middle cut, not the full engraving: no square on this page is wider
+    // than about 100 CSS px, which 256px covers on a retina screen, and the
+    // 640px plate was sixty-odd times the pixels the layout can show.
+    plate: item.srdIndex ? (getItemArt(item.srdIndex)?.mid ?? null) : null,
     // For the plate that stands in for one: the compendium knows the category
     // of an SRD line, the library entry knows its own, and a hand-typed line
     // knows neither.
@@ -218,6 +226,7 @@ export default async function CharacterPage({
             acBase: item.acBase,
             acDex: item.acDex,
             photo: item.photo,
+            plate: item.plate,
             category: item.category,
           },
         ]
@@ -744,10 +753,12 @@ function InventoryGrid({
               <span className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-sm border border-ink-600 bg-ink-950/60 transition hover:border-gold-500 group-open/cell:aspect-auto group-open/cell:h-16 group-open/cell:w-16">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  // Photograph, then the line's own category, then what its slot
-                  // gives away (a line in the armour slot is armour, whatever
-                  // else the row forgot), then the plate that says "a thing in a
-                  // backpack" and nothing more. Same chain as the paper doll's.
+                  // Photograph, then the plate engraved for this very piece (or
+                  // for its kind), then the line's own category, then what its
+                  // slot gives away (a line in the armour slot is armour,
+                  // whatever else the row forgot), then the plate that says "a
+                  // thing in a backpack" and nothing more. Same chain as the
+                  // paper doll's.
                   src={itemArtSrc(item, slotCategory(item.slot)) ?? categoryArt("gear")}
                   alt=""
                   loading="lazy"

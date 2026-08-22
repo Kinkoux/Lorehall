@@ -33,7 +33,9 @@ export type EquippedPiece = {
   acDex: AcDexRule | null;
   /** The library entry's photograph, when it has one. */
   photo: string | null;
-  /** The item's category, for the plate that stands in for a photograph. */
+  /** The SRD plate for the piece or its kind, resolved by the page. */
+  plate: string | null;
+  /** The item's category, for the plate that stands in for both of those. */
   category: string | null;
 };
 
@@ -178,9 +180,10 @@ function AcPlate({ ac, t }: { ac: AcBreakdown; t: T }) {
 
 /**
  * One square. What it shows, in order: the piece's own photograph, then the
- * plate for its category, then the plate for whatever the slot can only ever
- * hold — and when even that is unknown, the slot's own monoline mark, which is
- * also what an empty square wears.
+ * engraving of the piece itself (or of its kind), then the plate for its
+ * category, then the plate for whatever the slot can only ever hold — and when
+ * even that is unknown, the slot's own monoline mark, which is also what an
+ * empty square wears.
  */
 function SlotCell({
   slot,

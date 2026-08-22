@@ -9,8 +9,9 @@ import {
   searchItems,
   searchMonsters,
   searchSpells,
+  srdItemArt,
 } from "@/lib/srd-data";
-import { categoryArt, schoolArt } from "@/lib/ui-art";
+import { schoolArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { IconClaw } from "@/components/Icons";
 import { BackLink, Button, Input, SectionTitle } from "@/components/ui";
@@ -225,7 +226,7 @@ export default async function CompendiumSearchPage({
                 <ResultRow
                   key={item.index}
                   href={`/compendium/items/${item.index}`}
-                  art={<Thumb src={categoryArt(item.category)} />}
+                  art={<Thumb src={srdItemArt(item).thumb} />}
                   name={localizedItemName(item, locale)}
                   original={item.name}
                   meta={[item.sub, item.rarity, item.cost].filter(Boolean).join(" · ")}

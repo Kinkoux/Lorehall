@@ -14,6 +14,9 @@ import itemsJson from "@/lib/data/items.json";
 import itemsTrJson from "@/lib/data/items-tr.json";
 import monstersTrJson from "@/lib/data/monsters-tr.json";
 import itemEffectsJson from "@/lib/data/item-effects.json";
+import itemArtJson from "@/lib/data/item-art.json";
+import itemKindsJson from "@/lib/data/item-kinds.json";
+import { categoryArt, kindArt, kindArtMid, kindArtThumb } from "@/lib/ui-art";
 
 export type SrdSpell = {
   index: string;
@@ -130,6 +133,77 @@ export function getMonsterArt(index: string): MonsterArt | undefined {
   const fallback = getMonsterImage(index);
   // Wikimedia URLs are already thumbnail-sized; the same file serves both roles.
   return fallback ? { src: fallback.img, thumb: fallback.img, credit: fallback } : undefined;
+}
+
+/**
+ * Items with an engraving of their very own under `public/items/`, written by
+ * `scripts/convert-item-art.mjs`.
+ */
+export const ITEM_ART = new Set(itemArtJson as string[]);
+
+/**
+ * What *shape* of thing each SRD entry is — an axe, a flask, a coil of rope —
+ * so an entry with no plate of its own can still be drawn as the thing it is
+ * rather than as the filter bucket it files under. One plate serves the whole
+ * kind, which is why forty of them cover six hundred entries.
+ */
+const ITEM_KINDS = new Map(Object.entries(itemKindsJson as Record<string, string>));
+
+/**
+ * One plate at the three sizes it is published in: the full engraving, the
+ * 256px cut the sheet's inventory squares read (they are never wider than
+ * about 100 CSS px, so 256 satisfies a retina screen and nothing more), and
+ * the 96px cut the 40px list rows read.
+ */
+export type SrdItemArt = { src: string; thumb: string; mid: string };
+
+/**
+ * The picture for an SRD entry: its own plate first, its kind's plate second,
+ * and nothing at all when the compendium has never heard of it — at which
+ * point the caller falls back to the category plate, which is the one picture
+ * every item is guaranteed. `srdItemArt` below walks all three and is what
+ * most callers want.
+ *
+ * The kind step is a safety net that is not currently load-bearing, and that
+ * is the point of it: the manifest covers all 599 entries today, so the branch
+ * never fires. It exists for the two days it will — the day an entry is added
+ * to items.json before anyone has drawn it, and the day the manifest is
+ * rebuilt over a partial source folder. Deleting it as dead code would mean
+ * discovering on one of those days that a dagger is drawn as "a weapon".
+ *
+ * Each kind plate is cut to the same three sizes an item plate is (see
+ * scripts/convert-item-art.mjs): forty extra files, against a 512px download
+ * for every 40px row on the day the net catches something.
+ */
+export function getItemArt(index: string): SrdItemArt | undefined {
+  if (ITEM_ART.has(index))
+    return {
+      src: `/items/${index}.webp`,
+      thumb: `/items/t/${index}.webp`,
+      mid: `/items/m/${index}.webp`,
+    };
+  const kind = ITEM_KINDS.get(index);
+  return kind
+    ? { src: kindArt(kind), thumb: kindArtThumb(kind), mid: kindArtMid(kind) }
+    : undefined;
+}
+
+/**
+ * The same question with a guaranteed answer, the way `getMonsterArt` carries
+ * its own floor: the category plate stands in where the two steps above have
+ * nothing, so a caller holding an SRD entry never has to write the chain out
+ * again. Three pages had written it out, and a fourth would have got it wrong.
+ *
+ * `getItemArt` stays exported because the character sheet needs the undefined:
+ * a line there may carry a photograph of the actual piece, and the category it
+ * infers from an equipment slot must not out-rank that photograph. Only a
+ * caller that can see the *whole* chain may decide what a nothing means.
+ */
+export function srdItemArt(item: SrdItem): SrdItemArt {
+  const art = getItemArt(item.index);
+  if (art) return art;
+  const src = categoryArt(item.category);
+  return { src, thumb: src, mid: src };
 }
 
 export const SPELL_CLASSES = [...new Set(SPELLS.flatMap((s) => s.classes))].sort();

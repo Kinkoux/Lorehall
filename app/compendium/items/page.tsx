@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { ITEM_CATEGORIES, localizedItemName, searchItems } from "@/lib/srd-data";
-import { categoryArt } from "@/lib/ui-art";
+import { ITEM_CATEGORIES, localizedItemName, searchItems, srdItemArt } from "@/lib/srd-data";
 import { SiteHeader } from "@/components/SiteHeader";
 import { Pagination } from "@/components/Pagination";
 import { BackLink, Button, Input } from "@/components/ui";
@@ -111,7 +110,7 @@ export default async function ItemsPage({
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={categoryArt(item.category)}
+                    src={srdItemArt(item).thumb}
                     alt=""
                     loading="lazy"
                     className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"

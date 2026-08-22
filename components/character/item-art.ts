@@ -4,17 +4,22 @@ import { categoryArt } from "@/lib/ui-art";
 /**
  * What picture stands for a thing on the sheet.
  *
- * Two sources, in order: a library entry can carry an actual photograph of the
- * piece, and everything else falls back to the engraved plate for its category.
- * The priority is spelled here once so the paper doll and the inventory grid
- * cannot drift apart on it.
+ * Three sources, narrowing: a library entry can carry an actual photograph of
+ * the piece; an SRD line has a plate of the item itself, or failing that of its
+ * kind; and everything else falls back to the plate for its category, which
+ * says only "a weapon" or "a thing in a backpack". The priority is spelled here
+ * once so the paper doll and the inventory grid cannot drift apart on it.
  *
  * Kept out of lib/ui-art.ts on purpose — that module is import-free so client
- * bundles can reach for a plate without dragging anything else along.
+ * bundles can reach for a plate without dragging anything else along. `plate`
+ * arrives already chosen for the same reason: picking it means reading the
+ * compendium's manifest, and that JSON stays on the server.
  */
 export type ItemArt = {
   /** `/files/items/<id>?v=…`, when the library entry has an upload. */
   photo: string | null;
+  /** The SRD plate for this exact line, resolved by getItemArt() upstream. */
+  plate: string | null;
   /** One of WORLD_ITEM_CATEGORIES — from the SRD entry or the library entry. */
   category: string | null;
 };
@@ -48,6 +53,7 @@ export const slotCategory = (slot: WorldItemSlot | null | undefined): string | n
  */
 export function itemArtSrc(art: ItemArt, fallback: string | null = null): string | null {
   if (art.photo) return art.photo;
+  if (art.plate) return art.plate;
   const category = art.category ?? fallback;
   return category ? categoryArt(category) : null;
 }

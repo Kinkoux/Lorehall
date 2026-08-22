@@ -3,10 +3,9 @@ import { and, asc, eq, or } from "drizzle-orm";
 import { db, characters, campaigns, users } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { getItem, localizedItemName, srdItemBonuses } from "@/lib/srd-data";
+import { getItem, localizedItemName, srdItemArt, srdItemBonuses } from "@/lib/srd-data";
 import { parseStatBonuses } from "@/lib/world-items";
 import { addItemToCharacter } from "@/lib/compendium-actions";
-import { categoryArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
 import { ItemIcon } from "@/components/Icons";
 import { BackLink, Button, Card, Input, Label, Select } from "@/components/ui";
@@ -100,12 +99,15 @@ export default async function ItemPage({
                 .join(" · ")}
             </p>
           </div>
-          {/* A category plate, not a picture of this item — the compendium has
-              no per-item art. Ours, so no caption. */}
+          {/* The item's own engraving where one was cut, the plate for its kind
+              where one was not, and the category plate for the handful of
+              entries neither covers. All ours, so no caption either way. The
+              full-size cut on purpose: this is the one page where the plate is
+              the picture rather than a marker beside a name. */}
           <figure className="w-24 shrink-0 sm:w-28">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={categoryArt(item.category)}
+              src={srdItemArt(item).src}
               alt=""
               className="w-full rounded-sm border border-ink-600 object-cover"
             />
