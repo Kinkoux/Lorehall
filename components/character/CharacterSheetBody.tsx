@@ -39,6 +39,7 @@ import { PortraitUploadForm } from "@/components/PortraitUploadForm";
 import { AutocompleteInput } from "@/components/character/AutocompleteInput";
 import { EquipControl } from "@/components/character/EquipControl";
 import { EquipmentPanel, type EquippedPiece } from "@/components/character/EquipmentPanel";
+import { LevelUpPanel } from "@/components/character/LevelUpPanel";
 import { ItemStatsEditor } from "@/components/character/ItemStatsEditor";
 import { SpellSlotTracker } from "@/components/character/SpellSlotTracker";
 import {
@@ -335,7 +336,7 @@ export function CharacterSheetBody({
         reading the whole file:
 
           phone, `order-*` on each block —
-            (none) vitals · hit points · hit dice, in markup order
+            (none) vitals · hit points · hit dice · level up, in markup order
             4  paper doll          8  attacks
             5  ability scores      9  spellcasting
             6  saves & skills     10  backpack
@@ -382,6 +383,16 @@ export function CharacterSheetBody({
                 label={t("character.sheet.hitDice")}
                 value={`${character.level}d${hitDie}`}
               />
+            </div>
+          )}
+          {/* Under the hit dice, which is the other place on this sheet where
+              the level is a number rather than a word: the plate says what the
+              character has, and the fold beneath it is how they get the next
+              one. Unnumbered like the three blocks above it, so the phone
+              reads them in markup order. */}
+          {editable && (
+            <div>
+              <LevelUpPanel character={character} t={t} />
             </div>
           )}
           <section className="order-8 space-y-4 lg:order-none">
@@ -522,9 +533,41 @@ export function CharacterSheetBody({
             written down about them. */}
         <div className="contents lg:order-3 lg:flex lg:flex-col lg:gap-6">
           <section className="order-11 space-y-4 lg:order-none">
-            <div className="flex items-center justify-between gap-2">
-              <SectionTitle>{t("character.sheet.spellsAbilities")}</SectionTitle>
-              <div className="flex items-center gap-2">
+            {/*
+              The one section title on this sheet with controls beside it, and
+              therefore the one that has to be told how to share a line.
+
+              Three corrections, all of them measured rather than guessed:
+
+              `flex-auto` on the title. A SectionTitle draws its name and then
+              a double rule to the end of its box — but a bare `<h2>` dropped
+              into a flex row is sized to its contents, and the rule, being the
+              part that flexes, is the part that gets nothing: it rendered
+              exactly 0px wide here and nowhere else on the sheet. Growing the
+              wrapper gives the rule its width back and the row its horizontal
+              datum.
+
+              `flex-wrap`, because this column is 272px wide at `lg` and the
+              title alone wants 224 of them. Unwrapped, the two rest buttons
+              were shrunk to 69px, their labels broken over two lines, and the
+              whole group laid across the title's own letters — on a phone as
+              well as in the wide grid. Wrapped, they drop to a line of their
+              own at full size and the title takes the one above.
+
+              `translate-y-px`, which is the optical correction the eye was
+              actually complaining about. Both boxes are centred on the row and
+              the boxes are not the thing being read: 16px Cinzel in a 24px
+              line box puts its baseline 17px down, while a 12px label inside a
+              30px button sits 15px down its own — so with the button box
+              standing 3px taller, the two lines of type ended up a pixel
+              apart, the label the higher of them. One pixel of transform, no
+              layout moved, and they share a baseline.
+            */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex-auto">
+                <SectionTitle>{t("character.sheet.spellsAbilities")}</SectionTitle>
+              </div>
+              <div className="flex shrink-0 translate-y-px items-center gap-2">
                 {/* Short rest is a warlock's button and nobody else's: an hour by
                     the fire refills pact slots and hands every other class
                     nothing at all. Drawn only when the written class reads as a

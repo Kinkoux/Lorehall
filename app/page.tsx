@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { SHELVES } from "@/components/shelves";
 import { SectionTitle } from "@/components/ui";
 import { IconCoin, IconCompass, IconDie, IconParty, IconQuill } from "@/components/Icons";
@@ -149,9 +150,7 @@ export default async function LandingPage() {
           </ul>
         </section>
 
-        <footer className="border-t border-ink-600/50 py-8 text-center text-xs leading-relaxed text-parchment-500">
-          {t("landing.srdNote")}
-        </footer>
+        <SiteFooter />
       </main>
     </>
   );

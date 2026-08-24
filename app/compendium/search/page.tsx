@@ -152,9 +152,7 @@ export default async function CompendiumSearchPage({
           <Button type="submit">{t("common.search")}</Button>
         </form>
 
-        {!needle ? (
-          <p className="text-sm text-parchment-500">{t("compendium.search.prompt")}</p>
-        ) : total === 0 ? (
+        {!needle ? null : total === 0 ? (
           <p className="text-sm text-parchment-500">
             {t("compendium.search.empty", { q: needle })}
           </p>

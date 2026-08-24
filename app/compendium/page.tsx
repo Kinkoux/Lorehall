@@ -4,6 +4,7 @@ import { db, campaigns, worldItems, worldMembers, worlds } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import { SiteHeader } from "@/components/SiteHeader";
+import { SiteFooter } from "@/components/SiteFooter";
 import { SHELVES } from "@/components/shelves";
 import { Button, Card, Input, SectionTitle } from "@/components/ui";
 
@@ -125,6 +126,8 @@ export default async function CompendiumPage() {
             </div>
           </section>
         )}
+
+        <SiteFooter className="mt-12" />
       </main>
     </>
   );

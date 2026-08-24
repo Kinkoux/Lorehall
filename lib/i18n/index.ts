@@ -12,6 +12,7 @@ import { session } from "./dict/session";
 import { character } from "./dict/character";
 import { compendium } from "./dict/compendium";
 import { reference } from "./dict/reference";
+import { legal } from "./dict/legal";
 import { errors } from "./dict/errors";
 
 export type Locale = "en" | "tr";
@@ -30,6 +31,7 @@ const NAMESPACES: Record<string, { en: Dict; tr: Dict }> = {
   character,
   compendium,
   reference,
+  legal,
   errors,
 };
 

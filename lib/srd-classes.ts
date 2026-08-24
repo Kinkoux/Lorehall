@@ -62,6 +62,34 @@ export type ClassInfo = {
   castingAbility: "intel" | "wis" | "cha" | null;
   /** The one subclass the SRD publishes for this class. */
   srdSubclass: string;
+  /**
+   * Every path the 2014 Player's Handbook offers this class, by name — the
+   * SRD's one included, and marked out by `srdSubclass` where the builder
+   * wants to say which of them it can actually speak for.
+   *
+   * Names and nothing else. A subclass *name* is a reference to a thing that
+   * exists, the way a bibliography is; what a Battle Master's manoeuvres
+   * actually do is the book's text, and the book's text is not ours to
+   * reprint. A player who picks "Battle Master" here gets the four letters
+   * written onto their sheet and reads the rest out of their own copy.
+   *
+   * The list is a starting point like everything else in this table: the form
+   * puts "write your own" at the bottom of it, because a table running a
+   * homebrew path should not have to lie about which one they are playing.
+   */
+  subclasses: readonly string[];
+  /**
+   * The level at which this class chooses its path.
+   *
+   * Three, for all twelve, by a house ruling this app makes on purpose: the
+   * book staggers it — cleric, sorcerer and warlock choose at 1st, wizard and
+   * druid at 2nd, everyone else at 3rd — and a builder that enforced the
+   * stagger would be twelve different rules for one question, taught to a
+   * player who is meeting the game this evening. One answer is learnable. The
+   * RAW numbers are written down here rather than lost, for the day this
+   * becomes a per-class column again.
+   */
+  subclassLevel: number;
 };
 
 export const CLASSES: Record<ClassSlug, ClassInfo> = {
@@ -75,6 +103,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: null,
     srdSubclass: "Path of the Berserker",
+    subclasses: ["Path of the Berserker", "Path of the Totem Warrior"],
+    subclassLevel: 3,
   },
   bard: {
     name: "Bard",
@@ -84,6 +114,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     skillChoices: { n: 3, from: ALL_SKILLS },
     castingAbility: "cha",
     srdSubclass: "College of Lore",
+    subclasses: ["College of Lore", "College of Valor"],
+    subclassLevel: 3,
   },
   cleric: {
     name: "Cleric",
@@ -92,6 +124,16 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     skillChoices: { n: 2, from: ["History", "Insight", "Medicine", "Persuasion", "Religion"] },
     castingAbility: "wis",
     srdSubclass: "Life Domain",
+    subclasses: [
+      "Knowledge Domain",
+      "Life Domain",
+      "Light Domain",
+      "Nature Domain",
+      "Tempest Domain",
+      "Trickery Domain",
+      "War Domain",
+    ],
+    subclassLevel: 3,
   },
   druid: {
     name: "Druid",
@@ -112,6 +154,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: "wis",
     srdSubclass: "Circle of the Land",
+    subclasses: ["Circle of the Land", "Circle of the Moon"],
+    subclassLevel: 3,
   },
   fighter: {
     name: "Fighter",
@@ -132,6 +176,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: null,
     srdSubclass: "Champion",
+    subclasses: ["Champion", "Battle Master", "Eldritch Knight"],
+    subclassLevel: 3,
   },
   monk: {
     name: "Monk",
@@ -143,6 +189,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: null,
     srdSubclass: "Way of the Open Hand",
+    subclasses: ["Way of the Open Hand", "Way of Shadow", "Way of the Four Elements"],
+    subclassLevel: 3,
   },
   paladin: {
     name: "Paladin",
@@ -154,6 +202,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: "cha",
     srdSubclass: "Oath of Devotion",
+    subclasses: ["Oath of Devotion", "Oath of the Ancients", "Oath of Vengeance"],
+    subclassLevel: 3,
   },
   ranger: {
     name: "Ranger",
@@ -174,6 +224,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: "wis",
     srdSubclass: "Hunter",
+    subclasses: ["Hunter", "Beast Master"],
+    subclassLevel: 3,
   },
   rogue: {
     name: "Rogue",
@@ -197,6 +249,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: null,
     srdSubclass: "Thief",
+    subclasses: ["Thief", "Assassin", "Arcane Trickster"],
+    subclassLevel: 3,
   },
   sorcerer: {
     name: "Sorcerer",
@@ -208,6 +262,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: "cha",
     srdSubclass: "Draconic Bloodline",
+    subclasses: ["Draconic Bloodline", "Wild Magic"],
+    subclassLevel: 3,
   },
   warlock: {
     name: "Warlock",
@@ -227,6 +283,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: "cha",
     srdSubclass: "The Fiend",
+    subclasses: ["The Archfey", "The Fiend", "The Great Old One"],
+    subclassLevel: 3,
   },
   wizard: {
     name: "Wizard",
@@ -238,6 +296,17 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     },
     castingAbility: "intel",
     srdSubclass: "School of Evocation",
+    subclasses: [
+      "School of Abjuration",
+      "School of Conjuration",
+      "School of Divination",
+      "School of Enchantment",
+      "School of Evocation",
+      "School of Illusion",
+      "School of Necromancy",
+      "School of Transmutation",
+    ],
+    subclassLevel: 3,
   },
 };
 

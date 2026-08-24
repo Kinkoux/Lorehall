@@ -35,6 +35,7 @@ const KIND_BY_EVENT = {
   spellAdded: "ability",
   statusChanged: "status",
   characterCreated: "character",
+  leveledUp: "character",
   characterApproved: "character",
   characterRejected: "character",
   goldChanged: "gold",

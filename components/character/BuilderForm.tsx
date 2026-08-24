@@ -1,17 +1,12 @@
 "use client";
 
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { buildCharacter } from "@/lib/character-actions";
 import { CLASS_SLUGS, type ClassSlug } from "@/lib/class-match";
 import { averageHp, CLASSES, spellcasting } from "@/lib/srd-classes";
+import { BACKGROUNDS } from "@/lib/srd-backgrounds";
 import { RACES, raceBySlug, type RaceInfo } from "@/lib/srd-races";
+import { AlignmentWheel } from "@/components/character/AlignmentWheel";
 import { ABILITIES, ABILITY_LABELS, fmt, mod, profBonus, type AbilityKey } from "@/lib/dnd";
 // The leaf list, not lib/srd.ts: this island wants eighteen names and their
 // abilities, and the compendium's entries carry two locales of description per
@@ -59,9 +54,16 @@ import { Button, Card, Input, Label, SectionTitle, Select } from "@/components/u
  *
  * - the class summary, the race's speed and increases, the preview strip;
  * - the standard-array helper, a second way of filling the same six boxes;
- * - the subclass suggestion (an empty <datalist> is a plain text box);
+ * - the subclass *list*, which depends on a class chosen a moment ago, and the
+ *   lock that holds it shut below 3rd level (a plain suggestion box takes its
+ *   place, and the action drops an early path either way);
  * - the "something else…" race, which needs a text box to appear;
  * - the skill counter, and the fading of skills off the class's own list.
+ *
+ * The background list and the alignment grid are in neither list, because
+ * neither depends on an answer given elsewhere on the form: thirteen fixed
+ * suggestions and nine fixed radio buttons are ordinary markup, and they are
+ * drawn once, on the server, working.
  *
  * Nothing in that list is a gate. The counter counts past the class's
  * allowance and says so rather than refusing the tick, because tables hand out
@@ -77,14 +79,45 @@ const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8] as const;
 /** The race select's escape hatch — deliberately not a slug any race owns. */
 const CUSTOM_RACE = "__custom__";
 
+/** The same hatch on the subclass list, and no path in any book is named it. */
+const CUSTOM_SUBCLASS = "__custom__";
+
 /** A store with nothing to subscribe to, as MapViewer's locale read has. */
 const NEVER_CHANGES = () => () => {};
 
 type ScoreMode = "array" | "manual";
-type ScoreDraft = Record<AbilityKey, string>;
+export type ScoreDraft = Record<AbilityKey, string>;
 
 const blankScores = (): ScoreDraft =>
   Object.fromEntries(ABILITIES.map((key) => [key, ""])) as ScoreDraft;
+
+/**
+ * Six written answers plus whatever is being added to them — the numbers this
+ * form actually posts.
+ *
+ * Lifted out of the component because it is the one piece of arithmetic on the
+ * page that can be wrong in a way nobody notices: a race's increase added
+ * twice, or added to a grid that had already included it, is a sheet that
+ * plays a whole campaign two points stronger than it should. `increases` is
+ * null for "add nothing" — which is both the by-hand grid, where the player
+ * has done the addition themselves, and the switch that turns the race's
+ * bonuses off for a table whose peoples are their own.
+ *
+ * A box left blank stays blank rather than becoming a zero: the sheet is
+ * allowed to have unanswered questions, and a Strength of 0 is not one.
+ */
+export function finalScores(
+  written: ScoreDraft,
+  increases: Partial<Record<AbilityKey, number>> | null
+): Record<AbilityKey, number | null> {
+  const out = {} as Record<AbilityKey, number | null>;
+  for (const key of ABILITIES) {
+    const raw = written[key];
+    const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
+    out[key] = Number.isFinite(n) ? n + (increases?.[key] ?? 0) : null;
+  }
+  return out;
+}
 
 export function BuilderForm({
   campaigns,
@@ -115,9 +148,23 @@ export function BuilderForm({
   );
 
   const [klassSlug, setKlassSlug] = useState<ClassSlug | "">("");
+  const [subclassChoice, setSubclassChoice] = useState("");
+  const [customSubclass, setCustomSubclass] = useState("");
   const [raceValue, setRaceValue] = useState("");
   const [customRace, setCustomRace] = useState("");
   const [levelText, setLevelText] = useState("1");
+  /**
+   * "Add my race's increases for me" — ticked, because that is what the array
+   * helper has always quietly done and what a first-time player expects.
+   *
+   * Unticking it is for the table whose race is not this table's race: a
+   * homebrew people with a +2 nobody wrote down, a game running the 2024
+   * rules where the increases come off the background instead, a DM who has
+   * handed out the six numbers already. The race's own line stays on the page
+   * either way — it says what the book would have added, and then says that
+   * it is not adding it.
+   */
+  const [applyRaceAsi, setApplyRaceAsi] = useState(true);
   /**
    * "By hand" through the server render *and* through hydration, and only
    * promoted to the array helper afterwards, by the effect below.
@@ -175,11 +222,28 @@ export function BuilderForm({
     };
 
     const writtenKlass = read("klass");
-    setKlassSlug(
-      (CLASS_SLUGS as readonly string[]).includes(writtenKlass)
-        ? (writtenKlass as ClassSlug)
-        : ""
-    );
+    const slug = (CLASS_SLUGS as readonly string[]).includes(writtenKlass)
+      ? (writtenKlass as ClassSlug)
+      : "";
+    setKlassSlug(slug);
+    // The plain suggestion box the server drew is about to be replaced by a
+    // list, and this is the moment its answer is carried across: a name the
+    // class publishes becomes that row of the list, and anything else becomes
+    // "write your own" with the words still in it. Read here rather than a
+    // render later because the box itself does not survive the swap.
+    const writtenSubclass = read("subclass");
+    const published = slug ? CLASSES[slug].subclasses : [];
+    if (!writtenSubclass) {
+      setSubclassChoice("");
+    } else if (published.includes(writtenSubclass)) {
+      setSubclassChoice(writtenSubclass);
+    } else {
+      setSubclassChoice(CUSTOM_SUBCLASS);
+      setCustomSubclass(writtenSubclass);
+    }
+    // An unticked box sends nothing at all, which is the whole signal — the
+    // same reading the sheet's "custom" ticks get on the server.
+    setApplyRaceAsi(data.get("raceAsi") !== null);
     setRaceValue(read("race"));
     setLevelText(read("level") || "1");
     setSkills(data.getAll("skills").filter((name) => typeof name === "string"));
@@ -201,6 +265,19 @@ export function BuilderForm({
   const race = custom ? null : raceBySlug(raceValue);
   const arrayMode = enhanced && mode === "array";
   const level = Math.min(Math.max(Number.parseInt(levelText, 10) || 1, 1), 20);
+  /**
+   * A path belongs to a character who has lived long enough to choose one.
+   *
+   * Held shut rather than hidden, because "there is a question here and it is
+   * not yours yet" is the thing a first-time player needs told — a section
+   * that simply vanished would read as a section this app does not have. The
+   * action makes the same ruling on its own account, so a level 1 sheet posted
+   * around this lock still arrives pathless.
+   */
+  const pathLocked = info !== null && level < info.subclassLevel;
+  const homebrewPath = subclassChoice === CUSTOM_SUBCLASS;
+  /** What the race would add, where the player has left it switched on. */
+  const raceAsi = (key: AbilityKey) => (applyRaceAsi ? (race?.asi[key] ?? 0) : 0);
 
   /**
    * The six numbers this form will actually post — the *finished* scores,
@@ -211,16 +288,23 @@ export function BuilderForm({
    * a hidden field, and the by-hand grid is the player writing that same sum
    * themselves. Nothing downstream ever adds a racial bonus a second time, and
    * the sheet that opens after the redirect reads exactly these.
+   *
+   * The increase is added in exactly one place, and this is it — so the switch
+   * that turns it off has exactly one place to reach, and a player who turned
+   * it off gets the numbers they handed out, untouched.
+   *
+   * Computed on every render rather than memoised: six `parseInt`s cost less
+   * than the array they would be cached in, and the memo that used to stand
+   * here had to hand the race's table of increases out to a function, which is
+   * the shape the compiler cannot prove safe.
    */
-  const finals = useMemo(() => {
-    const out = {} as Record<AbilityKey, number | null>;
-    for (const key of ABILITIES) {
-      const raw = arrayMode ? array[key] : manual[key];
-      const n = raw ? Number.parseInt(raw, 10) : Number.NaN;
-      out[key] = Number.isFinite(n) ? n + (arrayMode ? (race?.asi[key] ?? 0) : 0) : null;
-    }
-    return out;
-  }, [arrayMode, array, manual, race]);
+  const finals = finalScores(
+    arrayMode ? array : manual,
+    // Two ways of arriving at "add nothing": the by-hand grid, where the
+    // player is writing the finished number themselves, and the switch in the
+    // race card. They mean the same thing here.
+    arrayMode && applyRaceAsi ? (race?.asi ?? null) : null
+  );
 
   const handedOut = ABILITIES.map((key) => array[key]).filter(Boolean);
   const duplicate = new Set(handedOut).size !== handedOut.length;
@@ -329,7 +413,15 @@ export function BuilderForm({
             <Select
               name="klass"
               defaultValue={klassSlug}
-              onChange={(e) => setKlassSlug(e.target.value as ClassSlug | "")}
+              onChange={(e) => {
+                setKlassSlug(e.target.value as ClassSlug | "");
+                // A path belongs to a class, so changing the class puts the
+                // list beside it out of date — and a Champion left standing
+                // under Wizard is a wrong answer nobody typed. Dropped here,
+                // where the player can see it go. A path they wrote out by
+                // hand is their own and survives the change.
+                setSubclassChoice((current) => (current === CUSTOM_SUBCLASS ? current : ""));
+              }}
               className="min-h-11"
             >
               <option value="">{t("character.builder.klassNone")}</option>
@@ -340,25 +432,81 @@ export function BuilderForm({
               ))}
             </Select>
           </label>
-          <label className="block">
+          <div>
             <Label>{t("character.builder.subclassLabel")}</Label>
-            {/* A text box with a suggestion attached, rather than a select
-                with an "other" branch: the SRD publishes exactly one path per
-                class, so the choice really is "the published one, or your
-                own", and a datalist says that in a control which is still a
-                plain text box when the list is empty — which is what it is
-                with no script to fill it. */}
-            <Input
-              name="subclass"
-              maxLength={80}
-              list="builder-subclass"
-              placeholder={info ? info.srdSubclass : t("character.builder.subclassPh")}
-              className="min-h-11"
-            />
-            <datalist id="builder-subclass">
-              {info && <option value={info.srdSubclass} />}
-            </datalist>
-          </label>
+            {/* Three controls wearing one name, and which of them is on the
+                page is decided by how much the form knows. With a class
+                chosen and a script running it is the class's own list of
+                paths, ending in "write your own" — the branch a player
+                actually meets. Below third level that list is a note instead,
+                because the answer is not theirs to give yet. And with no class
+                or no script it falls back to what this field has always been:
+                a text box, which is the only one of the three that can be
+                drawn before either fact is known. */}
+            {enhanced && info ? (
+              pathLocked ? (
+                <p className="flex min-h-11 items-center rounded-sm border border-dashed border-ink-600 px-3 text-xs leading-relaxed text-parchment-500">
+                  {t("character.builder.subclassLocked", { n: info.subclassLevel })}
+                </p>
+              ) : (
+                <>
+                  {/* Controlled, unlike the fields above it, and allowed to
+                      be: this select is never drawn before hydration — it
+                      needs a class, and a class needs a script to have been
+                      chosen — so there is no pre-script answer for it to
+                      overwrite. */}
+                  <Select
+                    name={homebrewPath ? undefined : "subclass"}
+                    value={subclassChoice}
+                    onChange={(e) => setSubclassChoice(e.target.value)}
+                    aria-label={t("character.builder.subclassLabel")}
+                    className="min-h-11"
+                  >
+                    <option value="">{t("character.builder.subclassNone")}</option>
+                    {info.subclasses.map((path) => (
+                      <option key={path} value={path}>
+                        {path === info.srdSubclass
+                          ? `${path} ${t("character.builder.subclassSrdMark")}`
+                          : path}
+                      </option>
+                    ))}
+                    <option value={CUSTOM_SUBCLASS}>
+                      {t("character.builder.subclassCustom")}
+                    </option>
+                  </Select>
+                  {/* The name moves onto the box, and the select stops posting
+                      — two live fields called `subclass` would hand the action
+                      the sentinel and throw the written path away. The same
+                      trade the race section makes. */}
+                  {homebrewPath && (
+                    <Input
+                      name="subclass"
+                      maxLength={80}
+                      value={customSubclass}
+                      onChange={(e) => setCustomSubclass(e.target.value)}
+                      aria-label={t("character.builder.subclassCustomLabel")}
+                      placeholder={t("character.builder.subclassCustomPh")}
+                      className="mt-2 min-h-11"
+                    />
+                  )}
+                </>
+              )
+            ) : (
+              <>
+                <Input
+                  name="subclass"
+                  maxLength={80}
+                  list="builder-subclass"
+                  aria-label={t("character.builder.subclassLabel")}
+                  placeholder={t("character.builder.subclassPh")}
+                  className="min-h-11"
+                />
+                <datalist id="builder-subclass">
+                  {info?.subclasses.map((path) => <option key={path} value={path} />)}
+                </datalist>
+              </>
+            )}
+          </div>
         </div>
         {info && (
           <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 border-t border-ink-700 pt-3">
@@ -425,7 +573,30 @@ export function BuilderForm({
             </label>
           )}
         </div>
-        {race && <RaceFacts race={race} t={t} />}
+        {race && <RaceFacts race={race} t={t} applied={applyRaceAsi} />}
+        {/* Uncontrolled and posted like every other field, so that whatever
+            state the box is in survives a back button, a restored tab and the
+            window before the script lands — the seeding pass reads it back off
+            the form rather than assuming it is still ticked. The action never
+            looks at `raceAsi`: the increase is added here or nowhere, and what
+            reaches the server is six finished numbers either way. */}
+        <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-2 border-t border-ink-700 pt-3">
+          <input
+            type="checkbox"
+            name="raceAsi"
+            defaultChecked={applyRaceAsi}
+            onChange={(e) => setApplyRaceAsi(e.target.checked)}
+            className="size-4 shrink-0 accent-gold-500"
+          />
+          <span className="text-sm text-parchment-200">
+            {t("character.builder.raceAsiToggle")}
+          </span>
+        </label>
+        <p className="mt-1 text-xs leading-relaxed text-parchment-500">
+          {applyRaceAsi
+            ? t("character.builder.raceAsiOnHint")
+            : t("character.builder.raceAsiOffHint")}
+        </p>
         {custom && (
           <p className="mt-2 text-xs leading-relaxed text-parchment-500">
             {t("character.builder.raceCustomHint")}
@@ -436,7 +607,7 @@ export function BuilderForm({
       {/* 4. Level & background */}
       <Card>
         <SectionTitle>{t("character.builder.basicsSection")}</SectionTitle>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <label className="block">
             <Label>{t("character.builder.levelLabel")}</Label>
             <Input
@@ -451,22 +622,30 @@ export function BuilderForm({
           </label>
           <label className="block">
             <Label>{t("character.builder.backgroundLabel")}</Label>
+            {/* The thirteen the book prints, offered rather than imposed. A
+                datalist is a suggestion attached to a text box, so "Retired
+                Hexblood Cartographer" is typed straight over it — and the
+                thirteen are a constant, which means this list is filled in on
+                the server and works before a single byte of script lands. */}
             <Input
               name="background"
               maxLength={80}
+              list="builder-background"
               placeholder={t("character.builder.backgroundPh")}
               className="min-h-11"
             />
+            <datalist id="builder-background">
+              {BACKGROUNDS.map((entry) => (
+                <option key={entry} value={entry} />
+              ))}
+            </datalist>
           </label>
-          <label className="block">
-            <Label>{t("character.builder.alignmentLabel")}</Label>
-            <Input
-              name="alignment"
-              maxLength={40}
-              placeholder={t("character.builder.alignmentPh")}
-              className="min-h-11"
-            />
-          </label>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-parchment-500">
+          {t("character.builder.backgroundHint")}
+        </p>
+        <div className="mt-4 border-t border-ink-700 pt-4">
+          <AlignmentWheel t={t} />
         </div>
       </Card>
 
@@ -491,7 +670,7 @@ export function BuilderForm({
           <>
             <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
               {ABILITIES.map((key) => {
-                const bonus = race?.asi[key] ?? 0;
+                const bonus = raceAsi(key);
                 const final = finals[key];
                 return (
                   <label key={key} className="block">
@@ -556,7 +735,7 @@ export function BuilderForm({
         ) : (
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {ABILITIES.map((key) => {
-              const bonus = race?.asi[key] ?? 0;
+              const bonus = raceAsi(key);
               return (
                 <label key={key} className="block">
                   <span className="mb-1 block text-center text-[11px] font-bold uppercase tracking-wider text-parchment-500">
@@ -589,9 +768,6 @@ export function BuilderForm({
             })}
           </div>
         )}
-        <p className="mt-3 border-t border-ink-700 pt-3 text-xs leading-relaxed text-gold-300/90">
-          {t("character.builder.scoresFinalNote")}
-        </p>
       </Card>
 
       {/* 6. Skills */}
@@ -711,8 +887,16 @@ function Fact({ label, value }: { label: string; value: ReactNode }) {
   );
 }
 
-/** Speed and score increases, said in the same breath as the race is chosen. */
-function RaceFacts({ race, t }: { race: RaceInfo; t: T }) {
+/**
+ * Speed and score increases, said in the same breath as the race is chosen.
+ *
+ * `applied` does not change a word of what the book says — the row still reads
+ * "+2 CON", because that is what a dwarf is. It changes whether the row is a
+ * promise or a note: switched off, the increases are struck through and the
+ * line underneath says out loud that nothing is being added, which is a better
+ * answer than quietly removing the fact from the page.
+ */
+function RaceFacts({ race, t, applied }: { race: RaceInfo; t: T; applied: boolean }) {
   const increases = ABILITIES.filter((key) => race.asi[key]).map(
     (key) => `${fmt(race.asi[key] as number)} ${ABILITY_LABELS[key]}`
   );
@@ -723,12 +907,21 @@ function RaceFacts({ race, t }: { race: RaceInfo; t: T }) {
           label={t("character.builder.speedLabel")}
           value={`${race.speed} ${t("character.builder.speedUnit")}`}
         />
-        <Fact label={t("character.builder.asiLabel")} value={increases.join(", ")} />
+        <Fact
+          label={t("character.builder.asiLabel")}
+          value={
+            <span className={applied ? undefined : "text-parchment-500 line-through"}>
+              {increases.join(", ")}
+            </span>
+          }
+        />
       </dl>
       {/* The half-elf's two loose +1s are told, not applied: which two is a
           decision, and a decision belongs to the player rather than to a
-          table of numbers. */}
-      {race.floatingAsi ? (
+          table of numbers. Told only while the fixed ones are being added,
+          though — a page that is adding nothing has no business asking the
+          player to place two more of nothing. */}
+      {applied && race.floatingAsi ? (
         <p className="mt-1 text-xs text-parchment-500">
           {t("character.builder.asiFloating", { n: race.floatingAsi })}
         </p>

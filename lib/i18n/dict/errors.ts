@@ -13,7 +13,7 @@ export const errors = {
       emailMissing: "There is no address on this account yet.",
       resetLinkInvalid: "This reset link has expired or has already been used.",
       // Deliberately says nothing about which limit was hit or when it lifts.
-      tooManyAttempts: "Too many attempts. Please try again later.",
+      tooManyAttempts: "Too many attempts. Try again later.",
     },
     join: {
       emptyCode: "Enter a join code.",
@@ -35,7 +35,7 @@ export const errors = {
       badType: "Use a PNG, JPG, or WebP image.",
       // The map goes to storage from the browser, so this covers every step
       // of that trip that can fail without the app learning anything useful.
-      uploadFailed: "Upload failed. Please try again.",
+      uploadFailed: "Upload failed. Try again.",
     },
     portrait: {
       notAllowed: "You cannot edit this character sheet.",
@@ -73,14 +73,14 @@ export const errors = {
     auth: {
       usernameFormat: "Kullanıcı adı 3-20 karakter olmalı: harf, rakam, alt çizgi.",
       passwordTooShort: "Şifre en az 6 karakter olmalı.",
-      passwordTooLong: "Parola en fazla 128 karakter olabilir.",
+      passwordTooLong: "Şifre en fazla 128 karakter olabilir.",
       usernameTaken: "Bu kullanıcı adı alınmış.",
       badCredentials: "Kullanıcı adı veya şifre hatalı.",
       emailInvalid: "Geçerli bir e-posta adresi gir.",
       emailTaken: "Bu e-posta adresi başka bir hesapta kayıtlı.",
       emailMissing: "Bu hesapta henüz bir adres yok.",
       resetLinkInvalid: "Bu sıfırlama bağlantısının süresi dolmuş ya da daha önce kullanılmış.",
-      tooManyAttempts: "Çok fazla deneme yapıldı. Lütfen daha sonra tekrar deneyin.",
+      tooManyAttempts: "Çok fazla denedin. Biraz sonra tekrar dene.",
     },
     join: {
       emptyCode: "Katılım kodu gir.",

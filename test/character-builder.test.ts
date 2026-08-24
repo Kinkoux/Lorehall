@@ -17,8 +17,12 @@ vi.mock("@/lib/auth", () => ({
 }));
 
 import { buildCharacter, upsertCharacter } from "@/lib/character-actions";
+// The builder's own arithmetic, exported the way MapViewer exports its pan and
+// zoom: the component is not renderable here, but the sum it posts is.
+import { finalScores } from "@/components/character/BuilderForm";
 import { campaignEvents, characterSpellSlots, characters } from "@/lib/db/schema";
 import { castingAbilityFor, CLASSES, spellcasting } from "@/lib/srd-classes";
+import { BACKGROUNDS } from "@/lib/srd-backgrounds";
 import { SKILL_NAMES } from "@/lib/skill-index";
 import { raceBySlug, RACES } from "@/lib/srd-races";
 import { applySchema, db, truncateAll } from "./support/db";
@@ -113,6 +117,8 @@ describe("buildCharacter fills in what the book would", () => {
     expect(row.race).toBe("Tiefling");
     expect(row.speed).toBe(30);
     expect(row.background).toBe("Charlatan");
+    // The alignment grid posts the canonical English of whichever of the nine
+    // squares is ticked, whatever language the labels were drawn in.
     expect(row.alignment).toBe("Chaotic Neutral");
     expect(row.level).toBe(3);
     expect(row.cha).toBe(16);
@@ -177,6 +183,160 @@ describe("buildCharacter fills in what the book would", () => {
   it("refuses a nameless hero", async () => {
     await buildCharacter(builderForm({ klass: "wizard" }));
     expect(await onRoster()).toHaveLength(0);
+  });
+});
+
+/**
+ * A path is chosen at third level, and the form draws that as a lock.
+ *
+ * A lock drawn in a browser is a courtesy rather than a rule, though: the
+ * field is an ordinary POST away from being sent anyway, from a stale tab, a
+ * curl, or a level box edited after the section opened. So the action makes
+ * the same ruling on its own account, and these are the tests that say it
+ * still does — the counterpart to the skill sieve and the score clamps above.
+ */
+describe("buildCharacter and the third-level path", () => {
+  const subclassOf = async () => (await onRoster())[0].subclass;
+
+  it("drops a path posted onto a character too young for one", async () => {
+    await landedOn(
+      buildCharacter(
+        builderForm({ name: "Ashen", klass: "fighter", level: "2", subclass: "Battle Master" })
+      )
+    );
+    expect(await subclassOf()).toBeNull();
+  });
+
+  it("keeps it from the level the class chooses at", async () => {
+    await landedOn(
+      buildCharacter(
+        builderForm({ name: "Ashen", klass: "fighter", level: "3", subclass: "Battle Master" })
+      )
+    );
+    expect(await subclassOf()).toBe("Battle Master");
+  });
+
+  it("holds every class to the same level, whatever the book staggers", async () => {
+    // Cleric, sorcerer and warlock choose at 1st in the book and wizard at
+    // 2nd; this app asks all twelve at 3rd, and the table says so out loud.
+    for (const info of Object.values(CLASSES)) expect(info.subclassLevel).toBe(3);
+    await landedOn(
+      buildCharacter(
+        builderForm({ name: "Ashen", klass: "cleric", level: "1", subclass: "Life Domain" })
+      )
+    );
+    expect(await subclassOf()).toBeNull();
+  });
+
+  it("leaves a homebrew class's own path alone", async () => {
+    // No entry in the table, so no level to hold it to: when a path arrives
+    // for a Blood Hunter is the business of whoever wrote the Blood Hunter.
+    await landedOn(
+      buildCharacter(
+        builderForm({
+          name: "Ashen",
+          klass: "Blood Hunter",
+          level: "1",
+          subclass: "Order of the Ghostslayer",
+        })
+      )
+    );
+    expect(await subclassOf()).toBe("Order of the Ghostslayer");
+  });
+
+  it("is still the sheet form's business afterwards", async () => {
+    // The lock is a *creation* rule and nothing more. A DM who rules that
+    // their level 1 cleric already has a domain writes it on the sheet, and
+    // nothing here argues with them.
+    await landedOn(buildCharacter(builderForm({ name: "Ashen", klass: "cleric", level: "1" })));
+    const [row] = await onRoster();
+    await upsertCharacter(
+      null,
+      fx.player,
+      formData({ characterId: row.id, name: "Ashen", subclass: "Life Domain" })
+    );
+    expect(await subclassOf()).toBe("Life Domain");
+  });
+});
+
+/**
+ * The nine squares, and the tenth answer that is no answer.
+ *
+ * The grid posts canonical English — "Chaotic Good", never "Kaotik İyi" —
+ * because the column is read back by a sheet drawn in either language, and a
+ * value in one of them is a value the other cannot render.
+ */
+describe("buildCharacter and the alignment grid", () => {
+  it("writes down whichever of the nine was ticked", async () => {
+    const nine = [
+      "Lawful Good",
+      "Neutral Good",
+      "Chaotic Good",
+      "Lawful Neutral",
+      "True Neutral",
+      "Chaotic Neutral",
+      "Lawful Evil",
+      "Neutral Evil",
+      "Chaotic Evil",
+    ];
+    for (const alignment of nine) {
+      // Nine characters on one roster rather than nine rosters: the redirect
+      // names the sheet it made, which is a sharper handle than "the row".
+      const to = await landedOn(buildCharacter(builderForm({ name: alignment, alignment })));
+      const id = to.slice(to.lastIndexOf("/") + 1);
+      const [row] = await db.select().from(characters).where(eq(characters.id, id));
+      expect(row.alignment).toBe(alignment);
+    }
+  });
+
+  it("leaves the column blank for a player who has not decided", async () => {
+    // The tenth radio carries an empty value and is the one that starts
+    // ticked, so "no answer" is what an untouched grid posts.
+    await landedOn(buildCharacter(builderForm({ name: "Ashen", alignment: "" })));
+    expect((await onRoster())[0].alignment).toBeNull();
+  });
+});
+
+/**
+ * The builder's one piece of arithmetic that can be quietly wrong.
+ *
+ * `finalScores` is what the six boxes come to, and the only place a race's
+ * increase is ever added — so "added twice" and "added when the player asked
+ * for it not to be" are both questions asked here and nowhere else.
+ */
+describe("finalScores", () => {
+  const handedOut = { str: "15", dex: "14", con: "13", intel: "12", wis: "10", cha: "8" };
+
+  it("adds the race's increase to what the player handed out", () => {
+    expect(finalScores(handedOut, raceBySlug("half-orc")?.asi ?? null)).toEqual({
+      str: 17,
+      dex: 14,
+      con: 14,
+      intel: 12,
+      wis: 10,
+      cha: 8,
+    });
+  });
+
+  it("adds nothing at all with the increases switched off", () => {
+    // The same six, the same race, the switch in the race card unticked: what
+    // was handed out is what gets posted, down to the number.
+    expect(finalScores(handedOut, null)).toEqual({
+      str: 15,
+      dex: 14,
+      con: 13,
+      intel: 12,
+      wis: 10,
+      cha: 8,
+    });
+  });
+
+  it("leaves an unanswered box unanswered rather than calling it zero", () => {
+    const half = { ...handedOut, wis: "", cha: "" };
+    const out = finalScores(half, raceBySlug("human")?.asi ?? null);
+    expect(out.str).toBe(16);
+    expect(out.wis).toBeNull();
+    expect(out.cha).toBeNull();
   });
 });
 
@@ -493,5 +653,22 @@ describe("the SRD tables themselves", () => {
       expect(info.srdSubclass.length).toBeGreaterThan(0);
       expect(info.skillChoices.from.length).toBeGreaterThanOrEqual(info.skillChoices.n);
     }
+  });
+
+  it("offers every class a list of paths with the SRD's own among them", () => {
+    // The badge in the form reads "(SRD)" off exactly this comparison, so a
+    // published path spelled two ways here is a badge that lands on nothing.
+    for (const [slug, info] of Object.entries(CLASSES)) {
+      expect(info.subclasses.length, `${slug} offers no paths`).toBeGreaterThan(1);
+      expect(info.subclasses, `${slug} omits its own SRD path`).toContain(info.srdSubclass);
+      expect(new Set(info.subclasses).size).toBe(info.subclasses.length);
+    }
+  });
+
+  it("counts the thirteen backgrounds the book prints", () => {
+    expect(BACKGROUNDS).toHaveLength(13);
+    // The one the SRD publishes, and the reason the rest are names only.
+    expect(BACKGROUNDS).toContain("Acolyte");
+    expect(new Set(BACKGROUNDS).size).toBe(BACKGROUNDS.length);
   });
 });

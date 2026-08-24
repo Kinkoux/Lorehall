@@ -38,8 +38,7 @@ export const session = {
       yourRoll: "Your roll",
       joinAs: "Character",
       join: "Join the initiative",
-      joinHint:
-        "Rolled a real d20 at the table? Type the result. Leave it empty and the app rolls for you.",
+      joinHint: "Type your d20 result, or leave it blank and the app rolls.",
     },
     combatant: {
       you: "you",
@@ -165,8 +164,7 @@ export const session = {
       yourRoll: "Senin zarın",
       joinAs: "Karakter",
       join: "İnisiyatife katıl",
-      joinHint:
-        "Masada gerçek d20 mi attın? Sonucu yaz. Boş bırakırsan zarı uygulama atar.",
+      joinHint: "Attığın d20 sonucunu yaz; boş bırakırsan zarı uygulama atar.",
     },
     combatant: {
       you: "sen",

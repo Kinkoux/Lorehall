@@ -15,7 +15,6 @@ export const common = {
     confirm: {
       areYouSure: "This cannot be undone.",
       yesDelete: "Yes, delete",
-      cancelHint: "Fold this back up to keep it.",
     },
     back: "Back",
     save: "Save",
@@ -41,7 +40,6 @@ export const common = {
     confirm: {
       areYouSure: "Bu geri alınamaz.",
       yesDelete: "Evet, sil",
-      cancelHint: "Vazgeçmek için kapağı geri kapat.",
     },
     back: "Geri",
     save: "Kaydet",

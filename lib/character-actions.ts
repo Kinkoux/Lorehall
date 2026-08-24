@@ -308,10 +308,21 @@ export async function buildCharacter(formData: FormData) {
     typedHp ??
     (info && scores.con !== null ? averageHp(info.hitDie, level, mod(scores.con)) : null);
 
+  // A path is chosen at 3rd level, and the form says so by locking the section
+  // until the level box agrees. That lock is a courtesy drawn in a browser,
+  // though, and this is the same sentence said where it counts: a level 1
+  // character posted with a subclass attached is written down without one.
+  //
+  // Only a class the book speaks for is held to it. A homebrew class's own
+  // ruling about when its path arrives belongs to the table that invented it,
+  // and there is nothing here to check it against anyway.
+  const writtenSubclass = cap(str(formData, "subclass"), 80) || null;
+  const subclass = info && level < info.subclassLevel ? null : writtenSubclass;
+
   const values = {
     name: cap(name, 150),
     klass: klass || null,
-    subclass: cap(str(formData, "subclass"), 80) || null,
+    subclass,
     race: race ? race.name : cap(rawRace, 80) || null,
     speed: race?.speed ?? null,
     background: cap(str(formData, "background"), 80) || null,
@@ -1676,9 +1687,9 @@ export async function deleteAbility(abilityId: string) {
 // ---------- spell slots ----------
 
 /**
- * Write a whole slot table in one go: the levels named are inserted or
- * retuned, and every level *not* named is dropped — the table on screen is
- * exactly the rows that come back.
+ * Write a whole slot table in one go, inside the caller's transaction: the
+ * levels named are inserted or retuned, and every level *not* named is
+ * dropped — the table on screen is exactly the rows that come back.
  *
  * Spent slots survive a retune, which is the only behaviour that makes sense
  * mid-session: a wizard who has already burned two of four level-1 slots and
@@ -1686,32 +1697,39 @@ export async function deleteAbility(abilityId: string) {
  * below what is spent pulls `used` down with it (LEAST), so the row can never
  * read "3/2".
  */
-async function writeSlotRows(characterId: string, rows: SlotRow[]) {
-  await db.transaction(async (tx) => {
-    const levels = rows.map((row) => row.level);
+async function applySlotRows(tx: Tx, characterId: string, rows: SlotRow[]) {
+  const levels = rows.map((row) => row.level);
+  await tx
+    .delete(characterSpellSlots)
+    .where(
+      levels.length === 0
+        ? eq(characterSpellSlots.characterId, characterId)
+        : and(
+            eq(characterSpellSlots.characterId, characterId),
+            notInArray(characterSpellSlots.level, levels)
+          )
+    );
+  for (const row of rows) {
     await tx
-      .delete(characterSpellSlots)
-      .where(
-        levels.length === 0
-          ? eq(characterSpellSlots.characterId, characterId)
-          : and(
-              eq(characterSpellSlots.characterId, characterId),
-              notInArray(characterSpellSlots.level, levels)
-            )
-      );
-    for (const row of rows) {
-      await tx
-        .insert(characterSpellSlots)
-        .values({ characterId, level: row.level, total: row.total, used: 0 })
-        .onConflictDoUpdate({
-          target: [characterSpellSlots.characterId, characterSpellSlots.level],
-          set: {
-            total: row.total,
-            used: sql`LEAST(${characterSpellSlots.used}, ${row.total})`,
-          },
-        });
-    }
-  });
+      .insert(characterSpellSlots)
+      .values({ characterId, level: row.level, total: row.total, used: 0 })
+      .onConflictDoUpdate({
+        target: [characterSpellSlots.characterId, characterSpellSlots.level],
+        set: {
+          total: row.total,
+          used: sql`LEAST(${characterSpellSlots.used}, ${row.total})`,
+        },
+      });
+  }
+}
+
+/**
+ * The same retune, for a caller that has no transaction of its own. Levelling
+ * up does — the new table and the new level are one change — and reaches for
+ * `applySlotRows` directly rather than opening a second one inside the first.
+ */
+async function writeSlotRows(characterId: string, rows: SlotRow[]) {
+  await db.transaction((tx) => applySlotRows(tx, characterId, rows));
 }
 
 /**
@@ -1802,4 +1820,111 @@ export async function restoreSpellSlot(characterId: string, level: number) {
       )
     );
   revalidateSheetOnly(character);
+}
+
+// ---------- levelling ----------
+
+/**
+ * Where the game itself stops. The sheet form still accepts 1–30, because a
+ * table running epic levels is running them whatever this app thinks; what a
+ * *button* may do is narrower, since every table the button consults — hit
+ * points, spell slots, proficiency — is written to twenty and no further.
+ */
+const MAX_CHARACTER_LEVEL = 20;
+
+/**
+ * One press for the four things that happen together at the end of a session.
+ *
+ * A level-up is not a new fact so much as four old ones moving at once: the
+ * level, the hit points, the spell slot table, and — the first time — the path
+ * the character walks. Every one of them is already editable by hand on this
+ * sheet, and every one of them is the sort of thing a table forgets until the
+ * fight where it mattered. So this is a convenience and never an authority:
+ * it writes ordinary columns, and the sheet form may rub any of them out five
+ * minutes later.
+ *
+ * Hit points are the number the player owns. Typed, it is theirs — that is
+ * what a die roll is for. Left blank, the book's fixed-value option is offered
+ * instead: half the die, rounded up, plus Constitution. The Constitution read
+ * here is the *stored* score rather than the effective one, and deliberately:
+ * an amulet raising CON raises the modifier while it is worn, but hit points
+ * gained on levelling are kept when it comes off, and a sheet that quietly
+ * banked a borrowed +1 forever would be wrong in the direction nobody audits.
+ * The panel's placeholder shows this same number, so what is offered is what
+ * is written.
+ *
+ * A sheet with neither a class nor a Constitution has no average to offer, and
+ * then nothing is added at all: an invented hit point is worse than a blank
+ * one. Current hit points move by exactly what the maximum moved by — a
+ * level-up is not a heal, but neither should it leave a character one short of
+ * a full night's sleep.
+ */
+export async function levelUpCharacter(characterId: string, formData: FormData) {
+  const user = await requireUser();
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character) return;
+  // Silent at the ceiling, like every other refusal here: the panel is not
+  // drawn for a level 20 sheet, so nobody honest arrives with this request.
+  if (character.level >= MAX_CHARACTER_LEVEL) return;
+
+  const newLevel = character.level + 1;
+  const info = classInfo(character.klass);
+
+  const typed = clampOpt(int(formData, "hpGain"), 0, 99);
+  const average =
+    info && character.con !== null
+      ? Math.max(0, Math.floor(info.hitDie / 2) + 1 + mod(character.con))
+      : null;
+  const hpGain = typed ?? average;
+
+  // A sheet that has never been given a maximum starts the sum at zero, which
+  // is the same arithmetic the builder does. Null gain leaves both columns
+  // exactly as they were.
+  const maxHp =
+    hpGain === null ? character.maxHp : Math.min((character.maxHp ?? 0) + hpGain, HP_CEILING);
+  const currentHp =
+    hpGain === null || character.currentHp === null
+      ? character.currentHp
+      : Math.min(character.currentHp + hpGain, maxHp ?? HP_CEILING);
+
+  // The panel offers the class's own paths in a list and a blank line beside
+  // it for a table whose path nobody printed; a written line wins, because it
+  // is the one somebody typed on purpose.
+  const picked = cap(str(formData, "subclassCustom"), 80) || cap(str(formData, "subclass"), 80);
+  // The same sentence the builder says: a path arrives at the level the class
+  // says it does, and a class the book does not speak for is held to nothing.
+  // A path already written is never overwritten — this button adds a level,
+  // and rewriting a Champion into a Battle Master is a decision with a form
+  // of its own.
+  const tooEarly = info !== null && newLevel < info.subclassLevel;
+  const subclass =
+    picked && !tooEarly && !character.subclass ? picked : character.subclass;
+
+  // What the book would deal at the new level. Null is a class the tables do
+  // not speak for — a barbarian, a homebrew name — and writes nothing rather
+  // than clearing a table somebody keeps by hand. Totals come from the new
+  // row set; spent slots survive it, so levelling mid-session hands out no
+  // free casts.
+  const slots = suggestSlots(character.klass, newLevel);
+
+  // One write: a character who gained a level but not the slots that come
+  // with it is a sheet the player has to repair before they can play. The
+  // arithmetic is done in JavaScript rather than in SQL because this is a
+  // once-an-evening press with a form in front of it, not a counter two
+  // people tap at the same instant.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(characters)
+      .set({ level: newLevel, maxHp, currentHp, subclass, updatedAt: Date.now() })
+      .where(eq(characters.id, characterId));
+    if (slots && slots.length > 0) await applySlotRows(tx, characterId, slots);
+  });
+
+  await logSheet(character, user.id, "leveledUp", {
+    character: character.name,
+    n: newLevel,
+  });
+  // Wider than the sheet: proficiency rises on the fours, and the hub and the
+  // party list both print numbers computed from it.
+  revalidateSheet(character);
 }

@@ -19,7 +19,6 @@ export const compendium = {
       title: "Search the library",
       label: "Search spells, monsters and items",
       placeholder: "Search the whole library…",
-      prompt: "Type a name to search spells, monsters and items at once.",
       heading: "Results for “{q}”",
       empty: "Nothing in the library matches “{q}”.",
       seeAll: "See all {n}",
@@ -47,7 +46,7 @@ export const compendium = {
       ritualShort: "ritual",
       higherLevels: "At higher levels.",
       addToSheet: "Add to your sheet",
-      addNote: "Adds it under Spells & abilities with a one-line summary.",
+      addNote: "Lands under Spells & abilities.",
     },
     monsters: {
       title: "Monsters",
@@ -100,7 +99,7 @@ export const compendium = {
       count: "Count",
       throwIntoSession: "Throw into live session (rolls initiative)",
       deploy: "Deploy",
-      encounterHint: "Create encounters on your campaign page to prep monster groups in advance.",
+      encounterHint: "Prep monster groups as encounters on your campaign page.",
     },
     items: {
       title: "Items",
@@ -135,7 +134,7 @@ export const compendium = {
       addToSheet: "Add to a character",
       character: "Character",
       qty: "Qty",
-      addNote: "Adds it to that character's inventory with a one-line summary.",
+      addNote: "Goes into that character's inventory.",
     },
     worlds: {
       heading: "My worlds",
@@ -169,7 +168,6 @@ export const compendium = {
       title: "Kütüphanede ara",
       label: "Büyü, canavar ve eşyalarda ara",
       placeholder: "Tüm kütüphanede ara…",
-      prompt: "Büyü, canavar ve eşyalarda aynı anda aramak için bir isim yaz.",
       heading: "“{q}” için sonuçlar",
       empty: "Kütüphanede “{q}” ile eşleşen yok.",
       seeAll: "Tümünü gör ({n})",
@@ -197,7 +195,7 @@ export const compendium = {
       ritualShort: "ritüel",
       higherLevels: "Yüksek seviyelerde.",
       addToSheet: "Karakter sayfana ekle",
-      addNote: "Büyüler ve yetenekler bölümüne tek satırlık özetle eklenir.",
+      addNote: "Büyüler ve yetenekler bölümüne eklenir.",
     },
     monsters: {
       title: "Canavarlar",
@@ -250,7 +248,7 @@ export const compendium = {
       count: "Adet",
       throwIntoSession: "Canlı oturuma sür (inisiyatif atar)",
       deploy: "Sahaya sür",
-      encounterHint: "Canavar gruplarını önceden hazırlamak için macera sayfanda karşılaşma oluştur.",
+      encounterHint: "Canavar gruplarını macera sayfanda karşılaşma olarak hazırla.",
     },
     items: {
       title: "Eşyalar",
@@ -285,7 +283,7 @@ export const compendium = {
       addToSheet: "Bir karaktere ekle",
       character: "Karakter",
       qty: "Adet",
-      addNote: "O karakterin envanterine tek satırlık özetle eklenir.",
+      addNote: "O karakterin envanterine eklenir.",
     },
     worlds: {
       heading: "Dünyalarım",
