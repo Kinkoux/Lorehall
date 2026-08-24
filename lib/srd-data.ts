@@ -294,9 +294,17 @@ function crValue(label: string) {
   return Number(label);
 }
 
-export const getSpell = (index: string) => SPELLS.find((s) => s.index === index);
-export const getMonster = (index: string) => MONSTERS.find((m) => m.index === index);
-export const getItem = (index: string) => ITEMS.find((i) => i.index === index);
+// Indexed once at module load rather than scanned per lookup: a character
+// sheet asks `getItem` for every line in the backpack and again for every worn
+// piece, and a linear walk of a few hundred entries per question is a cost
+// paid on the server for no reason at all.
+const SPELL_BY_INDEX = new Map(SPELLS.map((s) => [s.index, s] as const));
+const MONSTER_BY_INDEX = new Map(MONSTERS.map((m) => [m.index, m] as const));
+const ITEM_BY_INDEX = new Map(ITEMS.map((i) => [i.index, i] as const));
+
+export const getSpell = (index: string) => SPELL_BY_INDEX.get(index);
+export const getMonster = (index: string) => MONSTER_BY_INDEX.get(index);
+export const getItem = (index: string) => ITEM_BY_INDEX.get(index);
 
 /**
  * Turkish *names* for the SRD's own entries, keyed by index — and names only.

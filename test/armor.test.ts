@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { effectiveAc, type WornForAc } from "@/lib/armor";
-import { acGearBonus, acTitle } from "@/lib/dnd";
+import { acGearBonus, acTitle, weaponAttack } from "@/lib/dnd";
 import { ITEMS, armorAcFor, getItem, parseArmorAc, type SrdItem } from "@/lib/srd-data";
 
 /**
@@ -245,5 +245,59 @@ describe("effectiveAc with a base typed onto the line", () => {
     // Nothing to say and no compendium entry either: the sheet's own field.
     expect(effectiveAc({ armorClass: 15, dex: 16 }, [typed(plain("Rags", "armor"), null)]).value)
       .toBe(15);
+  });
+});
+
+/**
+ * The offensive half of the same question: what a worn weapon comes to.
+ *
+ * `weaponAttack` lives in lib/dnd.ts rather than in the card that draws it,
+ * which is what makes these four lines testable at all — the ladder used to be
+ * a conditional nested inside a React component and could only be checked by
+ * rendering one.
+ */
+describe("weaponAttack", () => {
+  /** A level 5 character: proficiency 3, strong arm, quicker hands. */
+  const mods = { str: 1, dex: 3 };
+  const pb = 3;
+
+  it("reads a ranged weapon off Dexterity whatever the arm behind it", () => {
+    const bow = weaponAttack(getItem("longbow"), { str: 4, dex: 3 }, pb);
+    expect(bow.ability).toBe("dex");
+    expect(bow.bonus).toBe(6);
+    expect(bow.damage).toBe("1d8 piercing");
+  });
+
+  it("lets a finesse weapon take whichever hand is better", () => {
+    // STR 8 (−1) against DEX 16 (+3): the dagger swings with the wrist.
+    const quick = weaponAttack(getItem("dagger"), { str: -1, dex: 3 }, pb);
+    expect(quick.ability).toBe("dex");
+    expect(quick.bonus).toBe(6);
+    // And the same dagger in a barbarian's fist goes back to the shoulder.
+    const strong = weaponAttack(getItem("dagger"), { str: 4, dex: 0 }, pb);
+    expect(strong.ability).toBe("str");
+    expect(strong.bonus).toBe(7);
+  });
+
+  it("falls to Strength for a weapon that says nothing", () => {
+    const sword = weaponAttack(getItem("longsword"), mods, pb);
+    expect(sword.ability).toBe("str");
+    expect(sword.bonus).toBe(4);
+  });
+
+  it("says nothing at all when the six scores are not all in", () => {
+    // A dash beats a +0: a blank sheet has no attack bonus, and printing one
+    // would read as a fact rather than as an absence.
+    const half = weaponAttack(getItem("longsword"), { str: null, dex: 3 }, pb);
+    expect(half.ability).toBeNull();
+    expect(half.bonus).toBeNull();
+    expect(half.damage).toBe("1d8 slashing");
+  });
+
+  it("carries a hand-typed line to Strength and a dash", () => {
+    const heirloom = weaponAttack(null, mods, pb);
+    expect(heirloom.ability).toBe("str");
+    expect(heirloom.bonus).toBe(4);
+    expect(heirloom.damage).toBe("—");
   });
 });

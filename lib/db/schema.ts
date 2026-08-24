@@ -307,7 +307,32 @@ export const characters = pgTable("characters", {
     .references(() => users.id),
   name: text("name").notNull(),
   klass: text("klass"),
+  // The archetype taken at level 3 — a Champion, a College of Lore, a Thief.
+  // Its own column rather than a suffix on `klass` because everything that
+  // reads the class reads it to *match* it (lib/class-match.ts), and
+  // "Fighter (Champion)" is a string those matchers have to survive rather
+  // than a shape they want.
+  subclass: text("subclass"),
   race: text("race"),
+  // Where the character came from before the adventuring: Acolyte, Soldier,
+  // Urchin. Free text, because a table's own inventions outnumber the book's.
+  background: text("background"),
+  alignment: text("alignment"),
+  // Walking speed in feet. NULL is "nobody has said", and the sheet answers it
+  // by looking the race up (lib/srd-races.ts) rather than by assuming the
+  // ordinary 30: a dwarf walks 25, and a homebrew ancestry walks a distance
+  // this table has no business inventing, so it shows a dash instead. The
+  // builder writes the race's number in at creation; clearing the field
+  // afterwards is a deliberate way back to the derived answer, not a delete
+  // the fallback quietly undoes.
+  speed: integer("speed"),
+  // The four lines of the official sheet's personality box, kept apart rather
+  // than folded into `notes`: they are prompts a player answers once and reads
+  // back for years, and a printed sheet gives each of them its own ruled box.
+  traits: text("traits"),
+  ideals: text("ideals"),
+  bonds: text("bonds"),
+  flaws: text("flaws"),
   level: integer("level").notNull().default(1),
   maxHp: integer("max_hp"),
   // Hit points that survive the session they were lost in. NULL means nobody

@@ -31,7 +31,7 @@ import {
   Select,
   SectionTitle,
 } from "@/components/ui";
-import { IconQuill, IconSkull, IconX } from "@/components/Icons";
+import { IconHelm, IconQuill, IconSkull, IconX } from "@/components/Icons";
 
 export async function generateMetadata() {
   const { t } = await getT();
@@ -198,6 +198,39 @@ export default async function CharactersPage() {
 
         <section className="mt-10 space-y-4">
           <SectionTitle>{t("character.hub.create")}</SectionTitle>
+
+          {/* The builder goes first and wears the gilt, because it is the door
+              that answers the question a first-time player actually has —
+              "what *is* a saving throw proficiency, and which ones do I get?".
+              It carries the roster/adventure choice inside it, so this card is
+              a link rather than a fourth picker.
+
+              The two name-only forms below it stay. A player who already has
+              the character in their head wants a sheet and a name, not twelve
+              questions, and taking that door away to make this one look
+              primary would have been a demotion dressed as a simplification.
+              Being second on the page is demotion enough. */}
+          <Card className="border-gold-500/50">
+            <div className="flex flex-wrap items-center gap-4">
+              <IconHelm size={28} className="shrink-0 text-gold-400" />
+              <div className="min-w-52 flex-1">
+                <h3 className="font-display text-base text-gold-300">
+                  {t("character.hub.builderTitle")}
+                </h3>
+                <p className="mt-1 text-sm leading-relaxed text-parchment-300">
+                  {t("character.hub.builderHint")}
+                </p>
+              </div>
+              <Link
+                href="/characters/new"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-sm bg-gold-500 px-4 py-2 text-sm font-bold text-ink-900 transition hover:bg-gold-400 active:translate-y-px focus-visible:outline-2 focus-visible:outline-gold-400"
+              >
+                {t("character.hub.builderButton")}
+              </Link>
+            </div>
+          </Card>
+
+          <p className="text-xs text-parchment-500">{t("character.hub.quickHint")}</p>
 
           {/* No membership required, which is the whole point: a player who has
               not been handed a join code yet can still make the character they

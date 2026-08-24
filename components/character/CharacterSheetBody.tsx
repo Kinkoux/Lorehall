@@ -6,21 +6,20 @@ import {
 import {
   ABILITIES,
   ABILITY_LABELS,
-  acGearBonus,
-  acTitle,
-  fmt,
   hasScores,
   statBlock,
+  type AbilityKey,
   type AcBreakdown,
 } from "@/lib/dnd";
 import { effectiveAc } from "@/lib/armor";
 import { SKILLS } from "@/lib/srd";
+import { classInfo, spellcasting } from "@/lib/srd-classes";
+import { raceBySlug } from "@/lib/srd-races";
 import { matchClass } from "@/lib/class-match";
-import { sumStatBonuses, type StatBonuses } from "@/lib/world-items";
+import { sumStatBonuses } from "@/lib/world-items";
 import {
   addAbility,
   addItem,
-  adjustCharacterHp,
   adjustItemQty,
   approveCharacter,
   deleteAbility,
@@ -42,6 +41,14 @@ import { EquipControl } from "@/components/character/EquipControl";
 import { EquipmentPanel, type EquippedPiece } from "@/components/character/EquipmentPanel";
 import { ItemStatsEditor } from "@/components/character/ItemStatsEditor";
 import { SpellSlotTracker } from "@/components/character/SpellSlotTracker";
+import {
+  AbilityScoresCard,
+  PassivePerceptionPlate,
+  SavesAndSkills,
+} from "@/components/character/AbilityColumn";
+import { HitPointsBlock, Plate, VitalsStrip } from "@/components/character/SheetVitals";
+import { AttacksCard, SpellcastingCard } from "@/components/character/AttacksCard";
+import { PersonalityCard } from "@/components/character/PersonalityCard";
 import { DragItem, InventoryDrop } from "@/components/character/DragEquip";
 import { itemArtSrc, slotCategory } from "@/components/character/item-art";
 import { itemPreview, PreviewLink, spellPreview } from "@/components/character/PreviewCard";
@@ -59,6 +66,14 @@ import {
   Select,
   Textarea,
 } from "@/components/ui";
+
+/**
+ * The four personality boxes, in the order the printed sheet rules them — and
+ * spelled exactly as `readSheetExtras` in lib/character-actions.ts reads them
+ * off the form, which is also exactly as the columns are named. One list, so a
+ * fifth prompt is one line rather than a hunt through four files.
+ */
+const PERSONALITY_FIELDS = ["traits", "ideals", "bonds", "flaws"] as const;
 
 const KIND_STYLES: Record<string, string> = {
   spell: "bg-sky-100 text-sky-900 border-sky-700/50",
@@ -136,7 +151,55 @@ export function CharacterSheetBody({
   // formula, the sheet's own field is the fallback, and the shield and the
   // flat bonuses land on top of whichever won.
   const ac: AcBreakdown = effectiveAc(character, equipped, wornBonuses);
-  const acBonus = acGearBonus(ac);
+
+  // The whole left rail in one call, worn gear already folded in. Null is a
+  // sheet whose six scores are not all filled in yet — a state the page has
+  // always had to survive, and everything derived from a modifier below reads
+  // that null as "say nothing" rather than as a zero.
+  const stats = hasScores(character) ? statBlock(character, wornBonuses) : null;
+  const modOf = (key: AbilityKey) =>
+    stats?.abilities.find((ability) => ability.key === key)?.mod ?? null;
+  // Spell save DCs are read off the score the character is *playing* with, so
+  // an amulet that pins a cleric's Wisdom moves the number their enemies roll
+  // against — which is precisely the arithmetic tables get wrong at midnight.
+  const casting = stats
+    ? spellcasting(
+        character.klass,
+        character.level,
+        Object.fromEntries(
+          stats.abilities.map((ability) => [ability.key, ability.score])
+        ) as Record<AbilityKey, number>
+      )
+    : null;
+  const hitDie = classInfo(character.klass)?.hitDie ?? null;
+  // What the player wrote, else what their people walk at, else nothing — a
+  // homebrew ancestry has a speed the sheet has no business inventing.
+  const speed = character.speed ?? raceBySlug(character.race)?.speed ?? null;
+  const hasPersonality = [
+    character.traits,
+    character.ideals,
+    character.bonds,
+    character.flaws,
+  ].some((line) => (line ?? "").trim() !== "");
+
+  const classLine = [
+    character.klass
+      ? character.subclass
+        ? `${character.klass} (${character.subclass})`
+        : character.klass
+      : null,
+    t("character.sheet.levelN", { n: character.level }),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const metaLine = [
+    character.background,
+    character.race,
+    character.alignment,
+    ownerName ? t("character.sheet.playedBy", { name: ownerName }) : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <>
@@ -170,114 +233,28 @@ export function CharacterSheetBody({
         </div>
       )}
 
-      <div className="mt-2 mb-2 flex flex-wrap items-end justify-between gap-3">
-        <div className="flex items-center gap-4">
-          <Portrait
-            src={portraitSrc(character.id, character.imageFile)}
-            alt={character.name}
-            size={96}
-            eager
-            fallbackSrc={classArtMidFor(character.klass)}
-          />
-          <div>
-            <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
-              {character.name}
-            </h1>
-            <p className="mt-1 text-sm text-parchment-500">
-              {[
-                t("character.sheet.levelN", { n: character.level }),
-                character.race,
-                character.klass,
-                ownerName ? t("character.sheet.playedBy", { name: ownerName }) : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-          </div>
-        </div>
-        {/*
-          Both numbers read as the value that matters at the table — what
-          the character actually has right now — with the equipment's
-          share spelled out beside it so nobody wonders where it came from.
-
-          Hit points read "current / maximum", and the maximum is the
-          sheet's own field: `currentHp` is clamped to it, so pairing the
-          pool with the equipment-inflated number would show a character
-          at full health as though they were wounded. The worn share stays
-          the parenthetical it always was.
-        */}
-        <div className="flex flex-col items-end gap-2">
-          <div className="flex gap-2 font-mono text-sm font-bold">
-            {character.maxHp !== null && (
-              <span
-                title={t("character.hp.title")}
-                className="rounded-md border border-blood-500/50 bg-blood-500/10 px-3 py-1.5 text-blood-400"
-              >
-                {character.currentHp ?? character.maxHp} / {character.maxHp}{" "}
-                {t("character.hp.label")}
-                {hpBonus !== 0 && (
-                  <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
-                    ({fmt(hpBonus)})
-                  </span>
-                )}
-              </span>
-            )}
-            {ac.value !== null && (
-              <span
-                title={acTitle(ac)}
-                className="rounded-md border border-ink-600 px-3 py-1.5 text-parchment-300"
-              >
-                AC {ac.value}
-                {acBonus !== 0 && (
-                  <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
-                    ({fmt(acBonus)})
-                  </span>
-                )}
-              </span>
-            )}
-          </div>
-          {/* The wounds taken away from the live screen: a trap in the
-              corridor, a night that went badly, a table that never opens
-              the session view at all.
-
-              The box starts empty with a 1 written faintly in it: the
-              common press is a number typed over whatever was there, and a
-              prefilled 1 is a digit to clear before the real one can be
-              typed — on a phone, a fiddly one. Blank submits as 1 anyway
-              (adjustCharacterHp reads a missing amount as one point), so
-              the hint is the truth rather than a placeholder's promise. */}
-          {editable && character.maxHp !== null && (
-            <form
-              action={adjustCharacterHp.bind(null, character.id)}
-              className="flex items-center gap-1"
-            >
-              <Input
-                name="amount"
-                type="number"
-                min={0}
-                max={999}
-                placeholder="1"
-                aria-label={t("character.hp.amount")}
-                className="!w-16 min-h-11 !py-1"
-              />
-              <button
-                type="submit"
-                name="op"
-                value="damage"
-                className="inline-flex min-h-11 items-center rounded border border-blood-500 px-3 py-1 text-xs font-bold text-blood-400 transition hover:bg-blood-500/15 cursor-pointer"
-              >
-                {t("character.hp.damage")}
-              </button>
-              <button
-                type="submit"
-                name="op"
-                value="heal"
-                className="inline-flex min-h-11 items-center rounded border border-emerald-700/60 px-3 py-1 text-xs font-bold text-emerald-800 transition hover:bg-emerald-200/60 cursor-pointer"
-              >
-                {t("character.hp.heal")}
-              </button>
-            </form>
-          )}
+      {/*
+        The masthead, in the two lines the printed sheet puts beside the name:
+        what the character *is* (class, the archetype taken at third level, and
+        how far along they are), and where they came from (background, people,
+        alignment) — plus, at a table, whose hands the sheet is in. Empty
+        fields simply do not appear; a sheet three minutes old shows a name and
+        a level, which is all it has to say.
+      */}
+      <div className="mt-2 mb-4 flex items-center gap-4">
+        <Portrait
+          src={portraitSrc(character.id, character.imageFile)}
+          alt={character.name}
+          size={96}
+          eager
+          fallbackSrc={classArtMidFor(character.klass)}
+        />
+        <div className="min-w-0">
+          <h1 className="font-display text-3xl font-bold tracking-wide text-parchment-100">
+            {character.name}
+          </h1>
+          <p className="mt-1 text-sm font-semibold text-parchment-300">{classLine}</p>
+          {metaLine && <p className="text-sm text-parchment-500">{metaLine}</p>}
         </div>
       </div>
 
@@ -328,39 +305,167 @@ export function CharacterSheetBody({
             </form>
           )
         ))}
-      {character.notes && (
-        <p className="mb-6 whitespace-pre-wrap text-sm leading-relaxed text-parchment-300">
-          {character.notes}
-        </p>
-      )}
 
-      {hasScores(character) ? (
-        <StatBlockCard character={character} bonuses={wornBonuses} t={t} />
-      ) : (
-        editable && (
-          <p className="mb-6 rounded-md border border-ink-700 bg-ink-900/60 px-3 py-2 text-xs text-parchment-500">
-            {t("character.sheet.fillScoresHint")}
-          </p>
-        )
-      )}
+      {/*
+        The sheet itself, laid out the way the printed one has been laid out
+        since the game had a printed one: three columns, and each of them
+        answering a different question. The left is what the character *is* and
+        can therefore roll; the middle is what happens to them and what they do
+        back; the right is who they are and what they can call on. Nothing here
+        is new information — it is the same document as before, in the
+        arrangement its readers already know by heart.
 
-      {/* An all-empty doll is only worth drawing for someone who can fill it. */}
-      {(editable || equipped.length > 0) && (
-        <EquipmentPanel
-          equipped={equipped}
-          portrait={{
-            src: portraitSrc(character.id, character.imageFile),
-            alt: character.name,
-            fallbackSrc: classArtMidFor(character.klass),
-          }}
-          ac={ac}
-          editable={editable}
-          t={t}
-        />
-      )}
+        Below `lg` the grid dissolves into one flowing column and the three
+        column wrappers become `display: contents`, which lets every block
+        become a flex item of the page itself and take its place in an order
+        chosen for a phone held at a table: the numbers a round of combat needs
+        first, the doll under them, the long ruled lists folded away behind a
+        summary, the reading matter last.
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <section className="space-y-4">
+        The markup is written in *that* order — middle column, doll, left rail,
+        backpack, right column — rather than in left-to-right order, and the
+        wide layout is the one that reorders. That is the way round it has to
+        be, because `order` moves what the eye sees and never what the Tab key
+        follows: written this way, every control on a phone is reached in the
+        order it appears, and the price is paid at `lg`, where the left rail
+        holds no controls at all and the only thing out of step is that the
+        right column's rest buttons come last in the markup instead of second.
+
+        The two ladders of numbers, so neither has to be reconstructed by
+        reading the whole file:
+
+          phone, `order-*` on each block —
+            (none) vitals · hit points · hit dice, in markup order
+            4  paper doll          8  attacks
+            5  ability scores      9  spellcasting
+            6  saves & skills     10  backpack
+            7  passive perception 11  spells & abilities
+                                  12  personality
+                                  13  notes
+
+          `lg`, `lg:order-*` on each column —
+            1  left rail   2  middle   3  right   4  doll   5  backpack
+
+        The first three carry no number at all: `order` defaults to 0, they are
+        already first in the markup, and a 1-2-3 written out only invites the
+        belief that the rest of the ladder is dense.
+
+        Within each of the five stretches the markup runs in the phone's order;
+        the stretches themselves are grouped by column, which is why 8 and 9 —
+        the middle column's own combat blocks — are written above the doll they
+        appear beneath. That is the one place the two orders part company, and
+        it costs nothing: neither block sits between a control and the control
+        that follows it.
+      */}
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-3 lg:items-start lg:gap-6">
+        {/* The middle: what a round of combat asks for, in the order it
+            asks for it. */}
+        <div className="contents lg:order-2 lg:flex lg:flex-col lg:gap-6">
+          <div>
+            <VitalsStrip ac={ac} initiative={modOf("dex")} speed={speed} t={t} />
+          </div>
+          {character.maxHp !== null && (
+            <div>
+              <HitPointsBlock
+                character={character}
+                hpBonus={hpBonus}
+                editable={editable}
+                t={t}
+              />
+            </div>
+          )}
+          {/* Only drawn for a class the book knows: a homebrew class levels on
+              a die nobody here can name, and "—d—" is worse than silence. */}
+          {hitDie !== null && (
+            <div>
+              <Plate
+                label={t("character.sheet.hitDice")}
+                value={`${character.level}d${hitDie}`}
+              />
+            </div>
+          )}
+          <section className="order-8 space-y-4 lg:order-none">
+            <SectionTitle>{t("character.sheet.attacks")}</SectionTitle>
+            <AttacksCard
+              equipped={equipped}
+              strMod={modOf("str")}
+              dexMod={modOf("dex")}
+              profBonus={stats?.profBonus ?? 0}
+              casting={casting}
+              t={t}
+            />
+          </section>
+          {casting && (
+            <section className="order-9 space-y-4 lg:order-none">
+              <SectionTitle>{t("character.sheet.spellcasting")}</SectionTitle>
+              <SpellcastingCard casting={casting} t={t} />
+            </section>
+          )}
+        </div>
+
+        {/* The paper doll, which needs the whole width: it is a figure with
+            a column of squares down either side, and a third of the page
+            turns that into a smear. On a phone it rides up to just under the
+            hit points — a player checks what they are holding far more often
+            than they read their own backstory. Its own bottom margin is
+            cancelled, because the spacing here is the layout's gap and the
+            two together would double it. */}
+        {(editable || equipped.length > 0) && (
+          <div className="order-4 [&>section]:mb-0 lg:col-span-3">
+            <EquipmentPanel
+              equipped={equipped}
+              portrait={{
+                src: portraitSrc(character.id, character.imageFile),
+                alt: character.name,
+                fallbackSrc: classArtMidFor(character.klass),
+              }}
+              ac={ac}
+              editable={editable}
+              t={t}
+            />
+          </div>
+        )}
+
+        {/* The left rail: six scores, the bonus, and the twenty-four ruled
+            lines a player reads off all evening. */}
+        <div className="contents lg:order-1 lg:flex lg:flex-col lg:gap-6">
+          {stats ? (
+            <>
+              <div className="order-5 lg:order-none">
+                <AbilityScoresCard stats={stats} t={t} />
+              </div>
+              {/* The fold and the flat copy are the same two lists written
+                  twice: `open` is an attribute and no media query can reach
+                  it, so the phone gets a summary to press and the wide screen
+                  gets the lists standing open. Whichever is not wanted is
+                  `display:none`, and therefore out of the accessibility tree
+                  rather than merely out of sight. */}
+              <details className="order-6 rounded-sm border border-ink-600/80 bg-ink-900/85 px-4 py-1 lg:hidden">
+                <summary className="min-h-11 cursor-pointer py-3 font-display text-sm uppercase tracking-wide text-gold-300 hover:text-gold-400">
+                  {t("character.sheet.savesAndSkills")}
+                </summary>
+                <div className="space-y-4 pb-3">
+                  <SavesAndSkills stats={stats} t={t} />
+                </div>
+              </details>
+              <div className="hidden lg:block lg:space-y-6">
+                <SavesAndSkills stats={stats} t={t} />
+              </div>
+              <div className="order-7 lg:order-none">
+                <PassivePerceptionPlate stats={stats} t={t} />
+              </div>
+            </>
+          ) : (
+            editable && (
+              <p className="order-5 rounded-md border border-ink-700 bg-ink-900/60 px-3 py-2 text-xs text-parchment-500 lg:order-none">
+                {t("character.sheet.fillScoresHint")}
+              </p>
+            )
+          )}
+        </div>
+
+        {/* The backpack, under the doll that it fills. */}
+        <section className="order-10 space-y-4 lg:order-5 lg:col-span-3">
           <SectionTitle>{t("character.sheet.inventory")}</SectionTitle>
           <Card>
             {items.length === 0 && (
@@ -413,167 +518,190 @@ export function CharacterSheetBody({
           </Card>
         </section>
 
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <SectionTitle>{t("character.sheet.spellsAbilities")}</SectionTitle>
-            <div className="flex items-center gap-2">
-              {/* Short rest is a warlock's button and nobody else's: an hour by
-                  the fire refills pact slots and hands every other class
-                  nothing at all. Drawn only when the written class reads as a
-                  warlock — the alternative is a control that is always there
-                  and silently does nothing eleven times out of twelve, which
-                  teaches a player that the sheet's buttons are decorative.
-                  Reading the class from free text is the same match the class
-                  plate and "suggest from class" already make, so "Level 5
-                  Warlock (Fiend)" gets the button. */}
-              {editable && spellSlots.length > 0 && matchClass(character.klass) === "warlock" && (
-                <form action={shortRest.bind(null, character.id)}>
-                  <GhostButton
-                    type="submit"
-                    title={t("character.sheet.shortRestHint")}
-                    className="!px-3 !py-1.5 text-xs"
-                  >
-                    <IconHourglass size={14} /> {t("character.sheet.shortRest")}
-                  </GhostButton>
-                </form>
-              )}
-              {/* A rest is worth offering to anyone with something to refill:
-                  a limited-use ability, a spell slot, or both. */}
-              {editable &&
-                (abilities.some((a) => a.usesMax !== null) || spellSlots.length > 0) && (
-                  <form action={longRest.bind(null, character.id)}>
-                    <GhostButton type="submit" className="!px-3 !py-1.5 text-xs">
-                      <IconMoon size={14} /> {t("character.sheet.longRest")}
+        {/* The right: the person, their powers, and whatever else was
+            written down about them. */}
+        <div className="contents lg:order-3 lg:flex lg:flex-col lg:gap-6">
+          <section className="order-11 space-y-4 lg:order-none">
+            <div className="flex items-center justify-between gap-2">
+              <SectionTitle>{t("character.sheet.spellsAbilities")}</SectionTitle>
+              <div className="flex items-center gap-2">
+                {/* Short rest is a warlock's button and nobody else's: an hour by
+                    the fire refills pact slots and hands every other class
+                    nothing at all. Drawn only when the written class reads as a
+                    warlock — the alternative is a control that is always there
+                    and silently does nothing eleven times out of twelve, which
+                    teaches a player that the sheet's buttons are decorative.
+                    Reading the class from free text is the same match the class
+                    plate and "suggest from class" already make, so "Level 5
+                    Warlock (Fiend)" gets the button. */}
+                {editable && spellSlots.length > 0 && matchClass(character.klass) === "warlock" && (
+                  <form action={shortRest.bind(null, character.id)}>
+                    <GhostButton
+                      type="submit"
+                      title={t("character.sheet.shortRestHint")}
+                      className="!px-3 !py-1.5 text-xs"
+                    >
+                      <IconHourglass size={14} /> {t("character.sheet.shortRest")}
                     </GhostButton>
                   </form>
                 )}
-            </div>
-          </div>
-          <Card>
-            {/*
-              Slots first: they are the resource a caster spends between
-              one line of this list and the next, and the list below is
-              what they are spent *on*.
-            */}
-            <SpellSlotTracker
-              characterId={character.id}
-              slots={spellSlots}
-              editable={editable}
-              t={t}
-            />
-            {abilities.length === 0 && (
-              <>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={EMPTY_ART.spells}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className="mx-auto mb-3 w-24 opacity-70"
-                />
-                <p className="text-sm text-parchment-500">
-                  {t("character.sheet.noAbilities")}
-                </p>
-              </>
-            )}
-            <ul className="divide-y divide-ink-700">
-              {abilities.map((ability) => (
-                <li key={ability.id} className="py-2.5 first:pt-0 last:pb-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase ${KIND_STYLES[ability.kind]}`}
-                    >
-                      {t(`character.sheet.kind.${ability.kind}`)}
-                    </span>
-                    {/* A div rather than a paragraph: the name carries its
-                        preview card along with it, and a card is not phrasing
-                        content — inside a <p> the parser would close the
-                        paragraph early and rearrange the row around it. */}
-                    <div className="min-w-0 flex-1 font-semibold text-parchment-100">
-                      <AbilityName ability={ability} t={t} />
-                    </div>
-                    {ability.usesMax !== null && (
-                      <span className="font-mono text-sm font-bold text-gold-300">
-                        {ability.usesLeft}/{ability.usesMax}
-                      </span>
-                    )}
-                    {editable && (
-                      <div className="flex items-center gap-1">
-                        {ability.usesMax !== null && (
-                          <form action={useAbility.bind(null, ability.id)}>
-                            <button
-                              type="submit"
-                              disabled={ability.usesLeft === 0}
-                              className="rounded border border-gold-500 px-2 py-1 text-xs font-bold text-gold-300 transition hover:bg-gold-500/10 disabled:opacity-40 cursor-pointer"
-                            >
-                              {t("character.sheet.use")}
-                            </button>
-                          </form>
-                        )}
-                        {/* A line struck off a sheet is gone — the notes,
-                            the uses counter, all of it — so it takes two
-                            presses. The rows share a fold group, so the
-                            one opened before folds itself away. */}
-                        <ConfirmButton
-                          label={<DeleteMark />}
-                          confirmLabel={
-                            <span className="flex min-h-9 items-center">
-                              {t("common.confirm.yesDelete")}
-                            </span>
-                          }
-                          warnText={t("common.confirm.areYouSure")}
-                          action={deleteAbility.bind(null, ability.id)}
-                          danger
-                          size="sm"
-                          group="ability-delete"
-                          ariaLabel={t("character.sheet.deleteAbility", {
-                            name: ability.name,
-                          })}
-                        />
-                      </div>
-                    )}
-                  </div>
-                  {ability.notes && (
-                    <p className="mt-1 text-xs text-parchment-500">{ability.notes}</p>
+                {/* A rest is worth offering to anyone with something to refill:
+                    a limited-use ability, a spell slot, or both. */}
+                {editable &&
+                  (abilities.some((a) => a.usesMax !== null) || spellSlots.length > 0) && (
+                    <form action={longRest.bind(null, character.id)}>
+                      <GhostButton type="submit" className="!px-3 !py-1.5 text-xs">
+                        <IconMoon size={14} /> {t("character.sheet.longRest")}
+                      </GhostButton>
+                    </form>
                   )}
-                </li>
-              ))}
-            </ul>
-            {editable && (
-              <form action={addAbility.bind(null, character.id)} className="mt-4 space-y-2 border-t border-ink-700 pt-4">
-                <div className="flex gap-2">
-                  <AutocompleteInput
-                    characterId={character.id}
-                    kind="spell"
-                    name="name"
-                    required
-                    locale={locale}
-                    placeholder={t("character.sheet.abilityNamePh")}
+              </div>
+            </div>
+            <Card>
+              {/*
+                Slots first: they are the resource a caster spends between
+                one line of this list and the next, and the list below is
+                what they are spent *on*.
+              */}
+              <SpellSlotTracker
+                characterId={character.id}
+                slots={spellSlots}
+                editable={editable}
+                t={t}
+              />
+              {abilities.length === 0 && (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={EMPTY_ART.spells}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="mx-auto mb-3 w-24 opacity-70"
                   />
-                  <Select name="kind" className="!w-28">
-                    <option value="spell">{t("character.sheet.kind.spell")}</option>
-                    <option value="ability">{t("character.sheet.kind.ability")}</option>
-                    <option value="trait">{t("character.sheet.kind.trait")}</option>
-                  </Select>
-                  <Input name="usesMax" type="number" min={1} max={99} placeholder={t("character.sheet.usesPh")} className="!w-20" />
-                </div>
-                <Input name="notes" placeholder={t("character.sheet.abilityNotesPh")} />
-                {/* Same tick as the inventory form: a homebrew power
-                    named after a book spell stays homebrew. */}
-                <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-parchment-300">
-                  <input
-                    type="checkbox"
-                    name="custom"
-                    value="1"
-                    className="h-5 w-5 accent-[#8a6516]"
-                  />
-                  {t("character.custom")}
-                </label>
-                <Button type="submit">{t("common.add")}</Button>
-              </form>
-            )}
-          </Card>
-        </section>
+                  <p className="text-sm text-parchment-500">
+                    {t("character.sheet.noAbilities")}
+                  </p>
+                </>
+              )}
+              <ul className="divide-y divide-ink-700">
+                {abilities.map((ability) => (
+                  <li key={ability.id} className="py-2.5 first:pt-0 last:pb-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase ${KIND_STYLES[ability.kind]}`}
+                      >
+                        {t(`character.sheet.kind.${ability.kind}`)}
+                      </span>
+                      {/* A div rather than a paragraph: the name carries its
+                          preview card along with it, and a card is not phrasing
+                          content — inside a <p> the parser would close the
+                          paragraph early and rearrange the row around it. */}
+                      <div className="min-w-0 flex-1 font-semibold text-parchment-100">
+                        <AbilityName ability={ability} t={t} />
+                      </div>
+                      {ability.usesMax !== null && (
+                        <span className="font-mono text-sm font-bold text-gold-300">
+                          {ability.usesLeft}/{ability.usesMax}
+                        </span>
+                      )}
+                      {editable && (
+                        <div className="flex items-center gap-1">
+                          {ability.usesMax !== null && (
+                            <form action={useAbility.bind(null, ability.id)}>
+                              <button
+                                type="submit"
+                                disabled={ability.usesLeft === 0}
+                                className="rounded border border-gold-500 px-2 py-1 text-xs font-bold text-gold-300 transition hover:bg-gold-500/10 disabled:opacity-40 cursor-pointer"
+                              >
+                                {t("character.sheet.use")}
+                              </button>
+                            </form>
+                          )}
+                          {/* A line struck off a sheet is gone — the notes,
+                              the uses counter, all of it — so it takes two
+                              presses. The rows share a fold group, so the
+                              one opened before folds itself away. */}
+                          <ConfirmButton
+                            label={<DeleteMark />}
+                            confirmLabel={
+                              <span className="flex min-h-9 items-center">
+                                {t("common.confirm.yesDelete")}
+                              </span>
+                            }
+                            warnText={t("common.confirm.areYouSure")}
+                            action={deleteAbility.bind(null, ability.id)}
+                            danger
+                            size="sm"
+                            group="ability-delete"
+                            ariaLabel={t("character.sheet.deleteAbility", {
+                              name: ability.name,
+                            })}
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {ability.notes && (
+                      <p className="mt-1 text-xs text-parchment-500">{ability.notes}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {editable && (
+                <form action={addAbility.bind(null, character.id)} className="mt-4 space-y-2 border-t border-ink-700 pt-4">
+                  <div className="flex gap-2">
+                    <AutocompleteInput
+                      characterId={character.id}
+                      kind="spell"
+                      name="name"
+                      required
+                      locale={locale}
+                      placeholder={t("character.sheet.abilityNamePh")}
+                    />
+                    <Select name="kind" className="!w-28">
+                      <option value="spell">{t("character.sheet.kind.spell")}</option>
+                      <option value="ability">{t("character.sheet.kind.ability")}</option>
+                      <option value="trait">{t("character.sheet.kind.trait")}</option>
+                    </Select>
+                    <Input name="usesMax" type="number" min={1} max={99} placeholder={t("character.sheet.usesPh")} className="!w-20" />
+                  </div>
+                  <Input name="notes" placeholder={t("character.sheet.abilityNotesPh")} />
+                  {/* Same tick as the inventory form: a homebrew power
+                      named after a book spell stays homebrew. */}
+                  <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm text-parchment-300">
+                    <input
+                      type="checkbox"
+                      name="custom"
+                      value="1"
+                      className="h-5 w-5 accent-[#8a6516]"
+                    />
+                    {t("character.custom")}
+                  </label>
+                  <Button type="submit">{t("common.add")}</Button>
+                </form>
+              )}
+            </Card>
+          </section>
+          {/* Below the powers rather than above them, because that is where a
+              phone puts it — and the rule this file keeps is that the markup
+              runs in the phone's order, so that Tab follows the eye. */}
+          {hasPersonality && (
+            <section className="order-12 space-y-4 lg:order-none">
+              <SectionTitle>{t("character.sheet.personality")}</SectionTitle>
+              <PersonalityCard character={character} t={t} />
+            </section>
+          )}
+          {character.notes && (
+            <section className="order-[13] space-y-4 lg:order-none">
+              <SectionTitle>{t("character.sheet.notes")}</SectionTitle>
+              <Card className="!p-4">
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-parchment-300">
+                  {character.notes}
+                </p>
+              </Card>
+            </section>
+          )}
+        </div>
       </div>
 
       {editable && (
@@ -832,80 +960,6 @@ function hoverText(preview: string | null | undefined, hint: string) {
   return `${clipped}\n${hint}`;
 }
 
-
-function StatBlockCard({
-  character,
-  bonuses,
-  t,
-}: {
-  character: Character;
-  bonuses: StatBonuses;
-  t: T;
-}) {
-  const stats = statBlock(character, bonuses);
-  return (
-    <Card className="mb-6">
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-        {stats.abilities.map((ability) => (
-          <div
-            key={ability.key}
-            className={`rounded-md border bg-ink-950/60 px-2 py-2 text-center ${
-              ability.bonus !== 0 ? "border-gold-500/50" : "border-ink-700"
-            }`}
-          >
-            <p className="text-[10px] font-bold uppercase tracking-wide text-parchment-500">
-              {ability.label}
-            </p>
-            {/* The modifier is the number in play, so it is the one folded. */}
-            <p className="font-display text-xl font-bold text-parchment-100">{fmt(ability.mod)}</p>
-            <p className="text-[11px] text-parchment-500">
-              {ability.score}
-              {ability.bonus !== 0 && (
-                <span className="ml-1 text-gold-300" title={t("character.equipment.bonusTitle")}>
-                  {fmt(ability.bonus)}
-                </span>
-              )}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        <span className="rounded-md border border-gold-500/60 bg-gold-500/10 px-2 py-0.5 font-bold text-gold-300">
-          {t("character.sheet.passivePerception", { n: stats.passivePerception })}
-        </span>
-        <span className="text-parchment-500">
-          {t("character.sheet.proficiency")}{" "}
-          <strong className="text-parchment-100">{fmt(stats.profBonus)}</strong>
-        </span>
-        <span className="text-parchment-500">
-          {t("character.sheet.saves")}{" "}
-          {stats.saves.map((save, i) => (
-            <span key={save.label}>
-              {i > 0 && " · "}
-              <span className={save.proficient ? "font-bold text-parchment-100" : ""}>
-                {save.label} {fmt(save.bonus)}
-              </span>
-            </span>
-          ))}
-        </span>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-1 border-t border-ink-700 pt-3 sm:grid-cols-3">
-        {stats.skills.map((skill) => (
-          <p key={skill.name} className="flex justify-between text-sm">
-            <span className={skill.proficient ? "font-bold text-parchment-100" : "text-parchment-300"}>
-              {skill.proficient && <span className="mr-1 text-gold-400">●</span>}
-              {skill.name}
-            </span>
-            <span className="font-mono text-parchment-100">{fmt(skill.bonus)}</span>
-          </p>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
 /**
  * A one-glyph submit — the quantity knobs. Square, and square at the size a
  * finger is: 44px is the smallest box a thumb reliably lands in, and these two
@@ -975,13 +1029,58 @@ export function SheetForm({
           <Label>{t("character.sheet.form.classLabel")}</Label>
           <Input name="klass" defaultValue={character?.klass ?? ""} placeholder={t("character.sheet.form.classPh")} />
         </label>
+        {/*
+          The eight fields below arrived with the official sheet's information
+          architecture, and every one of them is carried by this form on every
+          save — including the ones left blank. `readSheetExtras` keeps a
+          column it is not sent and clears one it is sent empty, which is the
+          contract that lets a player delete an alignment they regret by
+          rubbing it out rather than by finding another door.
+        */}
+        <label className="block">
+          <Label>{t("character.sheet.form.subclassLabel")}</Label>
+          <Input name="subclass" defaultValue={character?.subclass ?? ""} placeholder={t("character.sheet.form.subclassPh")} />
+        </label>
         <label className="block">
           <Label>{t("character.sheet.form.raceLabel")}</Label>
           <Input name="race" defaultValue={character?.race ?? ""} placeholder={t("character.sheet.form.racePh")} />
         </label>
         <label className="block">
+          <Label>{t("character.sheet.form.backgroundLabel")}</Label>
+          <Input name="background" defaultValue={character?.background ?? ""} placeholder={t("character.sheet.form.backgroundPh")} />
+        </label>
+        <label className="block">
+          <Label>{t("character.sheet.form.alignmentLabel")}</Label>
+          <Input name="alignment" defaultValue={character?.alignment ?? ""} placeholder={t("character.sheet.form.alignmentPh")} />
+        </label>
+        <label className="block">
+          <Label>{t("character.sheet.form.speedLabel")}</Label>
+          {/* The placeholder is the number the sheet is *showing* — the same
+              `speed ?? race ?? nothing` the vitals strip reads — so a dwarf
+              whose tile says 25 does not open the editor onto an empty box and
+              conclude the app forgot. Left blank the column stays NULL, which
+              is the documented way back to the race's own answer rather than a
+              deletion the fallback quietly undoes. */}
+          <Input
+            name="speed"
+            type="number"
+            min={0}
+            max={120}
+            defaultValue={character?.speed ?? ""}
+            placeholder={String(
+              character?.speed ?? raceBySlug(character?.race)?.speed ?? ""
+            )}
+          />
+          <span className="mt-1 block text-xs leading-relaxed text-parchment-500">
+            {t("character.sheet.form.speedHint")}
+          </span>
+        </label>
+        <label className="block">
           <Label>{t("character.sheet.form.maxHp")}</Label>
-          <Input name="maxHp" type="number" min={1} max={9999} defaultValue={character?.maxHp ?? ""} />
+          {/* Zero, not one: `readSheetExtras` accepts it and the builder
+              offers it, and a floor of 1 here would leave a sheet saved at 0
+              unable to be saved again without inventing a hit point. */}
+          <Input name="maxHp" type="number" min={0} max={9999} defaultValue={character?.maxHp ?? ""} />
         </label>
         <label className="block">
           <Label>{t("character.sheet.form.armorClass")}</Label>
@@ -1052,6 +1151,28 @@ export function SheetForm({
           ))}
         </div>
       </div>
+      {/* Four prompts rather than one blank page: the book asks the four
+          questions separately because that is what gets them answered, and the
+          sheet keeps them apart for the same reason. */}
+      <div>
+        <Label>{t("character.sheet.form.personalityLabel")}</Label>
+        <div className="mt-1 grid gap-3 sm:grid-cols-2">
+          {PERSONALITY_FIELDS.map((key) => (
+            <label key={key} className="block">
+              <span className="mb-0.5 block text-[10px] font-bold uppercase tracking-wide text-parchment-500">
+                {t(`character.sheet.${key}`)}
+              </span>
+              <Textarea
+                name={key}
+                rows={3}
+                defaultValue={character?.[key] ?? ""}
+                placeholder={t(`character.sheet.form.${key}Ph`)}
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
       <label className="block">
         <Label>{t("character.sheet.form.notesLabel")}</Label>
         <Textarea name="notes" rows={5} defaultValue={character?.notes ?? ""} />

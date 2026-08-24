@@ -23,12 +23,15 @@ import {
   suggestSlots,
   type SlotRow,
 } from "@/lib/spell-slots";
-import { matchClass } from "@/lib/class-match";
+import { CLASS_SLUGS, matchClass, type ClassSlug } from "@/lib/class-match";
+import { averageHp, classInfo, CLASSES } from "@/lib/srd-classes";
+import { raceBySlug } from "@/lib/srd-races";
+import { SKILLS } from "@/lib/srd";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { campaignLog } from "@/lib/campaign-log";
 import { logSheet, revalidateSheet, revalidateSheetOnly } from "@/lib/sheet-refresh";
-import { fmt } from "@/lib/dnd";
+import { fmt, mod } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
 import {
@@ -218,6 +221,150 @@ export async function createUnboundCharacter(formData: FormData) {
   redirect(`/characters/${id}`);
 }
 
+/** The names the skill picker is allowed to send, as a set to sieve with. */
+const SKILL_NAMES = new Set(SKILLS.map((skill) => skill.name));
+
+/**
+ * The character builder's one write: a whole hero, invented in a single form.
+ *
+ * `createCharacter` and `createUnboundCharacter` take a name and land the
+ * player on an empty sheet to fill in by hand, which is fine for someone who
+ * already knows what a saving throw proficiency is and merciless for someone
+ * meeting the game this evening. This door asks the questions the book asks —
+ * class, subclass, race, background, six scores, a handful of skills — and
+ * then does the looking-up itself: the saves come off the class, the speed off
+ * the race, the hit points off the die, the spell slots off the table.
+ *
+ * Every one of those is a *default*, written into ordinary columns the sheet
+ * form may overwrite five minutes later. Nothing here is enforced afterwards,
+ * because a rule the app enforces is a rule the table cannot break, and tables
+ * break rules constantly and on purpose.
+ *
+ * `campaignId` decides which of two doors this is. Named, and the character
+ * walks into a campaign under the same admission rule the other two doors
+ * obey; blank, and it lands on the player's roster with no table and no DM to
+ * wait for.
+ */
+export async function buildCharacter(formData: FormData) {
+  const user = await requireUser();
+  const name = str(formData, "name");
+  if (!name) return;
+
+  const campaignId = str(formData, "campaignId");
+  if (campaignId) {
+    const access = await getCampaignAccess(campaignId, user.id);
+    // Silent, like every other refusal here — the id came off a form.
+    if (!access?.canParticipate) return;
+  }
+
+  // The builder posts a slug; a player who typed over it posts whatever they
+  // typed. Only an exact slug is translated into the book's display name —
+  // reading "Fighter (Champion)" as the slug it contains would quietly throw
+  // away the half the player cared about, and the class matchers downstream
+  // are happy with either spelling anyway.
+  const rawClass = str(formData, "klass");
+  const slug = (CLASS_SLUGS as readonly string[]).includes(rawClass.toLowerCase())
+    ? (rawClass.toLowerCase() as ClassSlug)
+    : null;
+  const klass = slug ? CLASSES[slug].name : cap(rawClass, 80);
+  const info = classInfo(klass);
+
+  // Same bargain for the race: a known slug brings its display name and its
+  // walking speed with it, and anything else is carried exactly as written by
+  // a player whose world has peoples this app has never heard of.
+  const rawRace = str(formData, "race");
+  const race = raceBySlug(rawRace);
+
+  const level = Math.min(Math.max(int(formData, "level") ?? 1, 1), 20);
+  // 3 to 20 is what a character *rolls or buys*; the sheet form's own 1–30
+  // stays wider, because a curse or a wish can put a score outside this range
+  // later and only creation is being narrowed here.
+  const score = (key: string) => clampOpt(int(formData, key), 3, 20);
+  const scores = {
+    str: score("str"),
+    dex: score("dex"),
+    con: score("con"),
+    intel: score("intel"),
+    wis: score("wis"),
+    cha: score("cha"),
+  };
+
+  // Only skills the compendium actually names: the checkbox list is forgeable,
+  // and a proficiency in "Bribery" would render nowhere while still sitting in
+  // the CSV forever.
+  const skills = formData
+    .getAll("skills")
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter((value) => SKILL_NAMES.has(value));
+
+  // Hit points are the one number a beginner cannot guess and a veteran will
+  // not accept from us. Typed, it is theirs; left blank with a class and a
+  // Constitution to work from, the book's average is a better first answer
+  // than an empty box; blank with neither, it stays blank rather than becoming
+  // a confident zero.
+  const typedHp = clampOpt(int(formData, "maxHp"), 0, 9999);
+  const maxHp =
+    typedHp ??
+    (info && scores.con !== null ? averageHp(info.hitDie, level, mod(scores.con)) : null);
+
+  const values = {
+    name: cap(name, 150),
+    klass: klass || null,
+    subclass: cap(str(formData, "subclass"), 80) || null,
+    race: race ? race.name : cap(rawRace, 80) || null,
+    speed: race?.speed ?? null,
+    background: cap(str(formData, "background"), 80) || null,
+    alignment: cap(str(formData, "alignment"), 40) || null,
+    level,
+    maxHp,
+    ...scores,
+    profSkills: skills.join(",") || null,
+    // The two the class is proficient in, spelled the way lib/dnd.ts reads
+    // them back: a CSV of ability keys.
+    profSaves: info ? info.saves.join(",") : null,
+    updatedAt: Date.now(),
+  };
+
+  // What the book would deal this class and level. Null for a martial and for
+  // a name the tables do not speak for, which writes no rows at all rather
+  // than an empty tracker.
+  const slots = suggestSlots(klass, level) ?? [];
+
+  const id = nanoid(12);
+  // Sheet and slots in one write, for the same reason the roster copy is one
+  // write: a wizard who arrived without their slots is a sheet the player has
+  // to repair by hand before they can play. writeSlotRows() is deliberately
+  // not reused — it opens a transaction of its own, and this character is one
+  // second old, so there is nothing of theirs to reconcile against.
+  await db.transaction(async (tx) => {
+    const admitted = campaignId
+      ? await admitCharacter(tx, campaignId, user.id, values.name, null)
+      : null;
+    await tx.insert(characters).values({
+      id,
+      campaignId: campaignId || null,
+      userId: user.id,
+      ...values,
+      // No DM on the roster means nobody to wait for.
+      approval: admitted?.approval ?? "approved",
+    });
+    if (slots.length > 0) {
+      await tx
+        .insert(characterSpellSlots)
+        .values(slots.map((row) => ({ characterId: id, level: row.level, total: row.total })));
+    }
+  });
+
+  if (campaignId) {
+    await campaignLog(campaignId, user.id, "characterCreated", { name: values.name });
+    redirect(`/c/${campaignId}/ch/${user.id}?ch=${id}`);
+  }
+  // The roster sits in no campaign's history, so nothing is logged — exactly
+  // as when a character is invented from the quick form.
+  redirect(`/characters/${id}`);
+}
+
 /**
  * Take a roster character to a table — by copy, never by move.
  *
@@ -244,6 +391,10 @@ export async function createUnboundCharacter(formData: FormData) {
  * the next column added to a character would simply not reach the copy, and
  * nothing would say so. Spreading the master and overriding the four
  * exceptions makes the exceptions the only thing anyone has to read.
+ *
+ * The eight columns the official sheet layout brought in — subclass,
+ * background, alignment, speed and the four personality lines — reached tables
+ * without a word of this function changing, which is the promise being kept.
  */
 export async function useCharacterInCampaign(characterId: string, campaignId: string) {
   const user = await requireUser();
@@ -472,6 +623,46 @@ export async function setCharacterStatus(characterId: string, status: "alive" | 
   revalidateSheet(character);
 }
 
+/** The eight columns the official sheet layout added, as a save may set them. */
+type SheetExtras = Partial<
+  Pick<
+    typeof characters.$inferInsert,
+    "subclass" | "background" | "alignment" | "speed" | "traits" | "ideals" | "bonds" | "flaws"
+  >
+>;
+
+/**
+ * The rest of the printed sheet, read only from the fields a form actually
+ * carries.
+ *
+ * The `has()` check is the whole point, and it is not the same question as
+ * "is it blank". A form *carrying* an empty subclass box is a player saying
+ * "no subclass", and it must clear the column; a form that never had the box
+ * at all is saying nothing, and clearing the column on its word would delete
+ * a Champion the moment somebody saved from an older screen — a stale tab, a
+ * narrower editor, a mobile form that only ever showed four fields. `str()`
+ * cannot tell those apart, because both hand it back an empty string.
+ *
+ * So absence is silence: a key that is not in the submission is not in the
+ * returned object either, and drizzle's `set()` leaves the column exactly as
+ * it found it. The same reading protects an item's ability floors a few
+ * hundred lines below, and for the same reason.
+ */
+function readSheetExtras(formData: FormData): SheetExtras {
+  const extras: SheetExtras = {};
+  if (formData.has("subclass")) extras.subclass = cap(str(formData, "subclass"), 80) || null;
+  if (formData.has("background")) extras.background = cap(str(formData, "background"), 80) || null;
+  if (formData.has("alignment")) extras.alignment = cap(str(formData, "alignment"), 40) || null;
+  // Nothing walks backwards and nothing outruns a teleport: 0–120 feet covers
+  // every speed in the book with room for a homebrew boot to spare.
+  if (formData.has("speed")) extras.speed = clampOpt(int(formData, "speed"), 0, 120);
+  if (formData.has("traits")) extras.traits = cap(str(formData, "traits"), 2000) || null;
+  if (formData.has("ideals")) extras.ideals = cap(str(formData, "ideals"), 2000) || null;
+  if (formData.has("bonds")) extras.bonds = cap(str(formData, "bonds"), 2000) || null;
+  if (formData.has("flaws")) extras.flaws = cap(str(formData, "flaws"), 2000) || null;
+  return extras;
+}
+
 /**
  * The sheet form's save, for a sheet that exists and for one that does not.
  *
@@ -508,6 +699,7 @@ export async function upsertCharacter(
     name: cap(name, 150),
     klass: cap(str(formData, "klass"), 80) || null,
     race: cap(str(formData, "race"), 80) || null,
+    ...readSheetExtras(formData),
     level: Math.min(Math.max(int(formData, "level") ?? 1, 1), 30),
     maxHp: clampOpt(int(formData, "maxHp"), 0, 9999),
     armorClass: clampOpt(int(formData, "armorClass"), 0, 40),

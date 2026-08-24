@@ -450,6 +450,24 @@ ALTER TABLE characters ALTER COLUMN campaign_id DROP NOT NULL;
 ALTER TABLE characters ADD COLUMN IF NOT EXISTS origin_character_id TEXT REFERENCES characters(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_characters_user ON characters(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS characters_one_copy_per_campaign ON characters (campaign_id, origin_character_id) WHERE origin_character_id IS NOT NULL;
+
+-- The rest of the official character sheet: the archetype, where the hero came
+-- from, how fast they walk, and the four personality lines the printed sheet
+-- gives ruled boxes of their own. All nullable, because every sheet written
+-- before this paragraph existed is still a complete character — a blank
+-- subclass is a level 2 fighter, not a broken row.
+--
+-- Nothing has to be taught to copy them: useCharacterInCampaign() spreads the
+-- master row and overrides its four exceptions, so a column added here rides
+-- along to a table on the next press without anyone touching the copy.
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS subclass TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS background TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS alignment TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS speed INTEGER;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS traits TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS ideals TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS bonds TEXT;
+ALTER TABLE characters ADD COLUMN IF NOT EXISTS flaws TEXT;
 `;
 
 const sql = postgres(url, { prepare: false, connect_timeout: 15 });

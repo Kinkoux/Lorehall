@@ -1,5 +1,11 @@
 import type { Character } from "@/lib/db";
-import { SKILLS } from "@/lib/srd";
+// The leaf index rather than lib/srd.ts's full entries: every skill this
+// module touches is touched for its name and its ability, and the compendium's
+// own entries carry two locales of description apiece. Client components
+// import this file for `mod` and `fmt` alone, and a bundler cannot drop a
+// field off an object it is handed whole — so the prose would ride along into
+// the browser to compute an integer.
+import { SKILL_INDEX } from "@/lib/skill-index";
 import { STAT_LABELS, type AbilityFloors, type StatBonuses } from "@/lib/world-items";
 
 export const ABILITIES = ["str", "dex", "con", "intel", "wis", "cha"] as const;
@@ -176,7 +182,7 @@ export function statBlock(
   // quietly contradicts itself about what the character can do.
   const modByAbility = new Map(abilities.map((a) => [a.key, a.mod] as const));
 
-  const skills = SKILLS.map((skill) => {
+  const skills = SKILL_INDEX.map((skill) => {
     const key = SKILL_ABILITY_KEY[skill.ability];
     const base = modByAbility.get(key) ?? 0;
     const proficient = profSkills.has(skill.name);
@@ -196,4 +202,68 @@ export function statBlock(
     skills,
     passivePerception: 10 + (perception?.bonus ?? 0),
   };
+}
+
+/**
+ * The compendium fields a weapon's attack line is read off — a structural
+ * shape rather than `SrdItem` itself, so this module stays clear of
+ * lib/srd-data.ts and its megabyte of JSON. A hand-typed line has no entry at
+ * all and passes null, which is a case the rules below answer rather than
+ * refuse.
+ */
+export type WeaponRef = {
+  /** The subcategory line: "Simple Melee", "Martial Ranged". */
+  sub?: string | null;
+  /** Comma-joined properties; "Finesse" is the one that changes the answer. */
+  properties?: string | null;
+  /** The dice line as the book writes it — "1d8 slashing". */
+  damage?: string | null;
+};
+
+export type WeaponAttack = {
+  /** Which ability the swing is read off, or null with no modifiers to read. */
+  ability: "str" | "dex" | null;
+  /** Proficiency plus that modifier, or null when the scores are not all in. */
+  bonus: number | null;
+  /** The book's damage line, or a dash for a weapon nothing has heard of. */
+  damage: string;
+};
+
+/**
+ * Which ability a weapon swings with, and what that comes to on the die.
+ *
+ * The ladder is the book's, in the order the book applies it:
+ *
+ *   ranged  — anything whose subcategory says so is Dexterity, full stop;
+ *   finesse — the wielder picks, which the sheet reads as the better of two;
+ *   else    — Strength, the default a weapon has when it says nothing.
+ *
+ * `mods` wants the *worn* modifiers rather than the stored ones, the way
+ * `statBlock` hands them out: a belt of giant strength moves the greataxe row
+ * with the tile above it. Either being null means the sheet's six scores are
+ * not all filled in, and the answer is silence — a `+0` on a blank sheet reads
+ * as a fact rather than as an absence.
+ *
+ * Proficiency is counted in unconditionally, because the SRD grants weapon
+ * proficiency by class and background and this sheet models neither. A monk
+ * holding a halberd is a conversation with a DM, not a number to withhold.
+ *
+ * Lives here rather than in the card that draws it because it is arithmetic
+ * about a character and a weapon, which is this module's whole subject, and
+ * because the next surface that wants an attack line — a statistics block, a
+ * table view — should not have to copy a four-branch conditional to get one.
+ */
+export function weaponAttack(
+  weapon: WeaponRef | null | undefined,
+  mods: { str: number | null; dex: number | null },
+  profBonus: number
+): WeaponAttack {
+  const damage = weapon?.damage ?? "—";
+  const { str, dex } = mods;
+  if (str === null || dex === null) return { ability: null, bonus: null, damage };
+
+  const ranged = (weapon?.sub ?? "").includes("Ranged");
+  const finesse = (weapon?.properties ?? "").toLowerCase().includes("finesse");
+  const ability: "str" | "dex" = ranged || (finesse && dex > str) ? "dex" : "str";
+  return { ability, bonus: profBonus + (ability === "dex" ? dex : str), damage };
 }

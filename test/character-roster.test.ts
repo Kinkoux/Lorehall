@@ -179,6 +179,37 @@ describe("useCharacterInCampaign copies the sheet whole", () => {
     expect(to).toBe(`/c/${fx.campaignId}/ch/${fx.player}?ch=${copy?.id}`);
   });
 
+  it("carries columns nobody taught it about, which is the whole design", async () => {
+    // Spreading the master instead of listing its columns is what makes the
+    // rest of the printed sheet travel: not one line of the copy was changed
+    // when subclass, speed and the personality boxes were added.
+    await db
+      .update(characters)
+      .set({
+        subclass: "College of Lore",
+        background: "Sage",
+        alignment: "Neutral Good",
+        speed: 25,
+        traits: "Hums while thinking.",
+        ideals: "Knowledge is owed to everyone.",
+        bonds: "The library that raised me.",
+        flaws: "Cannot leave a riddle alone.",
+      })
+      .where(eq(characters.id, master));
+
+    await landedOn(useCharacterInCampaign(master, fx.campaignId));
+
+    const copy = await copyOf(master);
+    expect(copy?.subclass).toBe("College of Lore");
+    expect(copy?.background).toBe("Sage");
+    expect(copy?.alignment).toBe("Neutral Good");
+    expect(copy?.speed).toBe(25);
+    expect(copy?.traits).toBe("Hums while thinking.");
+    expect(copy?.ideals).toBe("Knowledge is owed to everyone.");
+    expect(copy?.bonds).toBe("The library that raised me.");
+    expect(copy?.flaws).toBe("Cannot leave a riddle alone.");
+  });
+
   it("arrives rested and faceless", async () => {
     await db
       .update(characters)

@@ -6,156 +6,101 @@
  * Names stay English (game terms); descriptions carry both locales.
  */
 
+import { SKILL_INDEX } from "@/lib/skill-index";
+
 export type LocalizedText = { en: string; tr: string };
 
 export type SkillRef = { name: string; ability: string; description: LocalizedText };
 
-export const SKILLS: SkillRef[] = [
-  {
-    name: "Athletics",
-    ability: "STR",
-    description: {
-      en: "Climbing, jumping, swimming, grappling — any feat of raw physical power, like scaling a cliff mid-storm or shoving someone off a ledge.",
-      tr: "Tırmanma, atlama, yüzme, boğuşma — fırtınanın ortasında kayalık tırmanmak ya da birini çıkıntıdan itmek gibi kaba kuvvet isteyen her iş.",
-    },
+/**
+ * What each skill is actually *for*, in both languages — the half of a skill
+ * entry that is prose rather than arithmetic.
+ *
+ * Kept here and keyed by name, with lib/skill-index.ts holding the names and
+ * the abilities, so that the character builder can draw eighteen tick boxes
+ * without shipping thirty-six sentences to the browser to do it. The map is
+ * private; `SKILLS` below is the shape every reader has always used.
+ */
+const SKILL_DESCRIPTIONS: Record<string, LocalizedText> = {
+  Athletics: {
+    en: "Climbing, jumping, swimming, grappling — any feat of raw physical power, like scaling a cliff mid-storm or shoving someone off a ledge.",
+    tr: "Tırmanma, atlama, yüzme, boğuşma — fırtınanın ortasında kayalık tırmanmak ya da birini çıkıntıdan itmek gibi kaba kuvvet isteyen her iş.",
   },
-  {
-    name: "Acrobatics",
-    ability: "DEX",
-    description: {
-      en: "Keeping your footing and balance: tightropes, icy decks, tumbling out of a grapple, landing tricky jumps.",
-      tr: "Ayakta ve dengede kalmak: ip üstünde yürümek, buzlu güvertede tutunmak, boğuşmadan yuvarlanarak sıyrılmak, zor atlayışları oturtmak.",
-    },
+  Acrobatics: {
+    en: "Keeping your footing and balance: tightropes, icy decks, tumbling out of a grapple, landing tricky jumps.",
+    tr: "Ayakta ve dengede kalmak: ip üstünde yürümek, buzlu güvertede tutunmak, boğuşmadan yuvarlanarak sıyrılmak, zor atlayışları oturtmak.",
   },
-  {
-    name: "Sleight of Hand",
-    ability: "DEX",
-    description: {
-      en: "Manual trickery — picking pockets, palming an object, planting something on someone without being noticed.",
-      tr: "El çabukluğu — cep karıştırmak, bir nesneyi avuçta gizlemek, fark ettirmeden birinin üstüne bir şey yerleştirmek.",
-    },
+  "Sleight of Hand": {
+    en: "Manual trickery — picking pockets, palming an object, planting something on someone without being noticed.",
+    tr: "El çabukluğu — cep karıştırmak, bir nesneyi avuçta gizlemek, fark ettirmeden birinin üstüne bir şey yerleştirmek.",
   },
-  {
-    name: "Stealth",
-    ability: "DEX",
-    description: {
-      en: "Hiding and moving silently: slipping past guards, sneaking up on prey, vanishing into a crowd.",
-      tr: "Saklanmak ve sessiz hareket etmek: nöbetçilerin yanından süzülmek, ava sezdirmeden yaklaşmak, kalabalıkta kaybolmak.",
-    },
+  Stealth: {
+    en: "Hiding and moving silently: slipping past guards, sneaking up on prey, vanishing into a crowd.",
+    tr: "Saklanmak ve sessiz hareket etmek: nöbetçilerin yanından süzülmek, ava sezdirmeden yaklaşmak, kalabalıkta kaybolmak.",
   },
-  {
-    name: "Arcana",
-    ability: "INT",
-    description: {
-      en: "Lore about spells, magic items, planes of existence, and magical creatures or symbols.",
-      tr: "Büyüler, büyülü eşyalar, varoluş düzlemleri ve büyülü yaratıklar ya da semboller hakkında bilgi.",
-    },
+  Arcana: {
+    en: "Lore about spells, magic items, planes of existence, and magical creatures or symbols.",
+    tr: "Büyüler, büyülü eşyalar, varoluş düzlemleri ve büyülü yaratıklar ya da semboller hakkında bilgi.",
   },
-  {
-    name: "History",
-    ability: "INT",
-    description: {
-      en: "Recalling legends, ancient kingdoms, past wars, and the stories behind people and places.",
-      tr: "Efsaneleri, kadim krallıkları, eski savaşları ve kişilerle mekânların ardındaki hikâyeleri hatırlamak.",
-    },
+  History: {
+    en: "Recalling legends, ancient kingdoms, past wars, and the stories behind people and places.",
+    tr: "Efsaneleri, kadim krallıkları, eski savaşları ve kişilerle mekânların ardındaki hikâyeleri hatırlamak.",
   },
-  {
-    name: "Investigation",
-    ability: "INT",
-    description: {
-      en: "Deduction from clues: finding a hidden mechanism, spotting the weak point in a wall, working out how someone died.",
-      tr: "İpuçlarından çıkarım yapmak: gizli bir mekanizmayı bulmak, duvarın zayıf noktasını görmek, birinin nasıl öldüğünü çözmek.",
-    },
+  Investigation: {
+    en: "Deduction from clues: finding a hidden mechanism, spotting the weak point in a wall, working out how someone died.",
+    tr: "İpuçlarından çıkarım yapmak: gizli bir mekanizmayı bulmak, duvarın zayıf noktasını görmek, birinin nasıl öldüğünü çözmek.",
   },
-  {
-    name: "Nature",
-    ability: "INT",
-    description: {
-      en: "Knowledge of terrain, plants, animals, weather, and natural cycles.",
-      tr: "Arazi, bitkiler, hayvanlar, hava ve doğa döngüleri hakkında bilgi.",
-    },
+  Nature: {
+    en: "Knowledge of terrain, plants, animals, weather, and natural cycles.",
+    tr: "Arazi, bitkiler, hayvanlar, hava ve doğa döngüleri hakkında bilgi.",
   },
-  {
-    name: "Religion",
-    ability: "INT",
-    description: {
-      en: "Lore about deities, rites, holy symbols, cults, and the practices of temples.",
-      tr: "Tanrılar, ayinler, kutsal semboller, tarikatlar ve tapınak gelenekleri hakkında bilgi.",
-    },
+  Religion: {
+    en: "Lore about deities, rites, holy symbols, cults, and the practices of temples.",
+    tr: "Tanrılar, ayinler, kutsal semboller, tarikatlar ve tapınak gelenekleri hakkında bilgi.",
   },
-  {
-    name: "Animal Handling",
-    ability: "WIS",
-    description: {
-      en: "Calming, controlling, or reading animals — steadying a spooked horse, sensing a beast's intentions.",
-      tr: "Hayvanları sakinleştirmek, yönetmek ya da okumak — ürken atı yatıştırmak, bir yaratığın niyetini sezmek.",
-    },
+  "Animal Handling": {
+    en: "Calming, controlling, or reading animals — steadying a spooked horse, sensing a beast's intentions.",
+    tr: "Hayvanları sakinleştirmek, yönetmek ya da okumak — ürken atı yatıştırmak, bir yaratığın niyetini sezmek.",
   },
-  {
-    name: "Insight",
-    ability: "WIS",
-    description: {
-      en: "Reading people: detecting lies, predicting someone's next move from body language and tone.",
-      tr: "İnsan okumak: yalanı yakalamak, beden dilinden ve ses tonundan karşındakinin bir sonraki hamlesini kestirmek.",
-    },
+  Insight: {
+    en: "Reading people: detecting lies, predicting someone's next move from body language and tone.",
+    tr: "İnsan okumak: yalanı yakalamak, beden dilinden ve ses tonundan karşındakinin bir sonraki hamlesini kestirmek.",
   },
-  {
-    name: "Medicine",
-    ability: "WIS",
-    description: {
-      en: "Stabilizing the dying and diagnosing illness or cause of death.",
-      tr: "Ölmek üzere olanı stabilize etmek; hastalığı ya da ölüm nedenini teşhis etmek.",
-    },
+  Medicine: {
+    en: "Stabilizing the dying and diagnosing illness or cause of death.",
+    tr: "Ölmek üzere olanı stabilize etmek; hastalığı ya da ölüm nedenini teşhis etmek.",
   },
-  {
-    name: "Perception",
-    ability: "WIS",
-    description: {
-      en: "Noticing things with your senses — hearing whispers behind a door, spotting an ambush or a hidden creature.",
-      tr: "Duyularınla fark etmek — kapının ardındaki fısıltıyı duymak, pusuyu ya da gizlenmiş bir yaratığı seçmek.",
-    },
+  Perception: {
+    en: "Noticing things with your senses — hearing whispers behind a door, spotting an ambush or a hidden creature.",
+    tr: "Duyularınla fark etmek — kapının ardındaki fısıltıyı duymak, pusuyu ya da gizlenmiş bir yaratığı seçmek.",
   },
-  {
-    name: "Survival",
-    ability: "WIS",
-    description: {
-      en: "Tracking, foraging, navigating the wild, predicting weather, and avoiding natural hazards.",
-      tr: "İz sürmek, yiyecek toplamak, vahşi doğada yön bulmak, havayı tahmin etmek ve doğal tehlikelerden kaçınmak.",
-    },
+  Survival: {
+    en: "Tracking, foraging, navigating the wild, predicting weather, and avoiding natural hazards.",
+    tr: "İz sürmek, yiyecek toplamak, vahşi doğada yön bulmak, havayı tahmin etmek ve doğal tehlikelerden kaçınmak.",
   },
-  {
-    name: "Deception",
-    ability: "CHA",
-    description: {
-      en: "Convincing lies — misleading with words, disguises, or false confidence; conning and fast-talking.",
-      tr: "İkna edici yalanlar — sözle, kılık değiştirerek ya da sahte özgüvenle yanıltmak; dolandırmak, laf cambazlığı.",
-    },
+  Deception: {
+    en: "Convincing lies — misleading with words, disguises, or false confidence; conning and fast-talking.",
+    tr: "İkna edici yalanlar — sözle, kılık değiştirerek ya da sahte özgüvenle yanıltmak; dolandırmak, laf cambazlığı.",
   },
-  {
-    name: "Intimidation",
-    ability: "CHA",
-    description: {
-      en: "Influencing through threats, hostility, and menace — spoken or implied.",
-      tr: "Tehdit, düşmanlık ve gözdağıyla etkilemek — açık açık ya da imayla.",
-    },
+  Intimidation: {
+    en: "Influencing through threats, hostility, and menace — spoken or implied.",
+    tr: "Tehdit, düşmanlık ve gözdağıyla etkilemek — açık açık ya da imayla.",
   },
-  {
-    name: "Performance",
-    ability: "CHA",
-    description: {
-      en: "Delighting an audience with music, dance, acting, or storytelling.",
-      tr: "Müzik, dans, oyunculuk ya da hikâye anlatımıyla seyirciyi mest etmek.",
-    },
+  Performance: {
+    en: "Delighting an audience with music, dance, acting, or storytelling.",
+    tr: "Müzik, dans, oyunculuk ya da hikâye anlatımıyla seyirciyi mest etmek.",
   },
-  {
-    name: "Persuasion",
-    ability: "CHA",
-    description: {
-      en: "Influencing with tact, good faith, and social grace — negotiating, requesting aid, inspiring trust.",
-      tr: "İncelik, iyi niyet ve sosyal zarafetle etkilemek — pazarlık etmek, yardım istemek, güven uyandırmak.",
-    },
+  Persuasion: {
+    en: "Influencing with tact, good faith, and social grace — negotiating, requesting aid, inspiring trust.",
+    tr: "İncelik, iyi niyet ve sosyal zarafetle etkilemek — pazarlık etmek, yardım istemek, güven uyandırmak.",
   },
-];
+};
+
+/** The compendium's own skill entries: the index, with the prose folded in. */
+export const SKILLS: SkillRef[] = SKILL_INDEX.map((skill) => ({
+  ...skill,
+  description: SKILL_DESCRIPTIONS[skill.name],
+}));
 
 export type ConditionRef = { name: string; description: LocalizedText };
 
