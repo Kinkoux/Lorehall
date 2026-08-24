@@ -51,6 +51,11 @@ const CLASS_ALIASES: Array<[needle: string, slug: ClassSlug]> = [
   ["sorcerer", "sorcerer"],
   ["warlock", "warlock"],
   ["wizard", "wizard"],
+  // Compounds before the words they contain: `includes` has no word borders,
+  // so "kara büyücü" left below "büyücü" would be read as a wizard — which is
+  // exactly what it did until the short-rest button made warlocks matter.
+  ["kara büyücü", "warlock"],
+  ["doğuştan büyücü", "sorcerer"],
   ["büyücü", "wizard"],
   ["sihirbaz", "wizard"],
   ["savaşçı", "fighter"],

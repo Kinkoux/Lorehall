@@ -19,6 +19,7 @@ vi.mock("@/lib/auth", () => ({
 import { addItem, equipItem, setItemStats, unequipItem } from "@/lib/character-actions";
 import { characterItems } from "@/lib/db/schema";
 import { effectiveAc, loadWornFor, wornSetFor } from "@/lib/armor";
+import { abilityScore } from "@/lib/dnd";
 import { sumStatBonuses } from "@/lib/world-items";
 import { applySchema, db, sqlState, truncateAll } from "./support/db";
 import {
@@ -313,11 +314,12 @@ describe("addItem takes a reference, never the numbers", () => {
     expect(rows[1].statBonuses).toBeNull();
   });
 
-  it("keeps a stated score when the line editor rewrites the flat bonuses", async () => {
+  it("keeps a stated score the line editor posts back alongside the flat bonuses", async () => {
     await addItem(sheet, formData({ name: "Amulet of Health", srdIndex: "amulet-of-health" }));
     const [row] = await rowsOf(sheet);
-    await setItemStats(row.id, {}, formData({ slot: "neck", bonus_ac: "1" }));
-    // The editor has no field for a floor, so its silence is not a deletion.
+    // The editor's floor fields arrive filled in from the line, so an ordinary
+    // save carries them back unchanged while the flat bonuses are rewritten.
+    await setItemStats(row.id, {}, formData({ slot: "neck", bonus_ac: "1", floor_con: "19" }));
     expect(sumStatBonuses([(await rowOf(row.id))?.statBonuses])).toEqual({
       ac: 1,
       floors: { con: 19 },
@@ -366,6 +368,61 @@ describe("setItemStats", () => {
     await setItemStats(cheat, {}, formData({ slot: "armor", acBase: "-5", bonus_dex: "-40" }));
     expect((await rowOf(cheat))?.acBase).toBe(0);
     expect(sumStatBonuses([(await rowOf(cheat))?.statBonuses])).toEqual({ dex: -10 });
+  });
+
+  it("writes the scores the line states, and they reach the sheet as floors", async () => {
+    const gloves = await seedItem(sheet, 1, "Gauntlets of Ogre Power", {
+      slot: "hands",
+      equipped: 1,
+    });
+    await setItemStats(
+      gloves,
+      {},
+      formData({ slot: "hands", floor_str: "21", floor_con: "19", bonus_ac: "1" })
+    );
+    const worn = sumStatBonuses([(await rowOf(gloves))?.statBonuses]);
+    expect(worn).toEqual({ ac: 1, floors: { str: 21, con: 19 } });
+    // The point of a floor, and the reason it is not a flat bonus: it states
+    // the score rather than adding to it, and does nothing at all to a
+    // character who is already stronger than the sentence.
+    expect(abilityScore(8, worn.str ?? 0, worn.floors?.str)).toBe(21);
+    expect(abilityScore(22, worn.str ?? 0, worn.floors?.str)).toBe(22);
+  });
+
+  it("clamps a floor to a score a creature could have", async () => {
+    const stone = await seedItem(sheet, 1, "Ioun Stone", { slot: "head" });
+    await setItemStats(stone, {}, formData({ slot: "head", floor_wis: "99", floor_dex: "-4" }));
+    expect(sumStatBonuses([(await rowOf(stone))?.statBonuses])).toEqual({
+      floors: { wis: 30, dex: 1 },
+    });
+  });
+
+  it("leaves the floors key out entirely when every floor field is blank", async () => {
+    const ring = await seedItem(sheet, 1, "Plain Ring", { slot: "ring" });
+    await setItemStats(
+      ring,
+      {},
+      formData({ slot: "ring", bonus_ac: "1", floor_str: "", floor_cha: "" })
+    );
+    // The stored JSON is the flat half and nothing else — no empty `floors`
+    // object riding along for a line that states no score.
+    expect((await rowOf(ring))?.statBonuses).toBe(JSON.stringify({ ac: 1 }));
+    // And a form blank end to end is a plain item again, not an item granting
+    // an empty promise.
+    await setItemStats(ring, {}, formData({ slot: "ring" }));
+    expect((await rowOf(ring))?.statBonuses).toBeNull();
+  });
+
+  it("takes a cleared floor field as the deletion it now is", async () => {
+    // The behaviour that changed with the floor fields: the form used to be
+    // silent about floors and the action carried the stored one through. The
+    // form states them now, so a player who empties the box means it.
+    const amulet = await seedItem(sheet, 1, "Amulet of Health", {
+      slot: "neck",
+      statBonuses: JSON.stringify({ floors: { con: 19 } }),
+    });
+    await setItemStats(amulet, {}, formData({ slot: "neck", bonus_ac: "1" }));
+    expect(sumStatBonuses([(await rowOf(amulet))?.statBonuses])).toEqual({ ac: 1 });
   });
 
   it("refuses a DEX rule that is not one of the three, and blanks that say nothing", async () => {

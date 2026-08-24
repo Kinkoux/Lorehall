@@ -114,6 +114,96 @@ details[open] > *:not(summary) {
   animation: log-entry-in 0.25s ease-out;
 }
 
+/*
+ * Preview cards on a character sheet (components/character/PreviewCard.tsx).
+ *
+ * The browser opens and closes these by itself — `popovertarget` is the whole
+ * mechanism, and light dismiss, Escape and the top layer all come with it — so
+ * the only things left for a stylesheet to settle are where the card lands and
+ * what a browser that has never heard of any of this should be shown instead.
+ *
+ * THE FLOOR IS THE DEFAULT, deliberately. Everything is off until a browser
+ * proves, by answering `selector(:popover-open)`, that it can actually run the
+ * thing: until then the card and its press are struck out and the plain link
+ * the sheet has always had is drawn in their place, with the same one-line
+ * `title` preview it has always carried. Written the other way round — cards
+ * on by default, hidden where unsupported — a browser too old to understand
+ * the test would drop the rule that hides them and unfold every card on the
+ * sheet at once, in the flow, permanently.
+ *
+ * WHERE IT LANDS, by default: pinned to the foot of the viewport, centred, a
+ * thumb's reach above the edge. That is the right answer on the phone this app
+ * is read on at a table, and it is the one answer that cannot be got wrong —
+ * a fixed position needs no measurement, so it can never be clipped by a
+ * scroll container or shoved off the side of a narrow screen.
+ *
+ * WHERE IT LANDS, where the browser can do better: from `sm` up, and only
+ * where anchor positioning exists, the card hangs off the name that opened it,
+ * the way a reference card should, with `position-try-fallbacks` to flip it
+ * above or to the other side rather than let it run off the page. A browser
+ * without anchor positioning never enters that block and keeps the foot of the
+ * screen — a plainer answer, not a broken one.
+ */
+[data-preview],
+[data-preview-invoker] {
+  display: none;
+}
+
+@supports selector(:popover-open) {
+  [data-preview-fallback] {
+    display: none;
+  }
+
+  /* Inline, so the 44px of vertical padding the press carries widens what a
+     thumb can land on without giving the line it sits in a taller line box. */
+  [data-preview-invoker] {
+    display: inline;
+  }
+
+  [data-preview] {
+    /* Back to the user agent's own answer, which is the one that already knows
+       a closed popover is `none` and an open one is not. */
+    display: revert;
+    position: fixed;
+    inset: auto;
+    left: 50%;
+    bottom: max(0.75rem, env(safe-area-inset-bottom, 0px));
+    translate: -50% 0;
+    margin: 0;
+    /* The card fades up. `@starting-style` is what gives a top-layer element
+       something to animate *from*; the two discrete transitions are what keep
+       it on screen long enough to fade back out. The reduced-motion block at
+       the foot of this file cuts all of it to nothing. */
+    opacity: 0;
+    transition:
+      opacity 0.14s ease-out,
+      display 0.14s allow-discrete,
+      overlay 0.14s allow-discrete;
+  }
+
+  [data-preview]:popover-open {
+    opacity: 1;
+  }
+
+  @starting-style {
+    [data-preview]:popover-open {
+      opacity: 0;
+    }
+  }
+
+  @supports (anchor-name: --a) {
+    @media (min-width: 40rem) {
+      [data-preview]:popover-open {
+        position-area: block-end span-inline-end;
+        position-try-fallbacks: flip-block, flip-inline, block-end span-inline-start;
+        inset: auto;
+        translate: none;
+        margin: 0.4rem 0;
+      }
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -66,11 +66,19 @@ export const character = {
       addItem: "Add item",
       openInCompendium: "Open in the compendium",
       openInLibrary: "Open in the world's item library",
+      // The tooltip under a preview card's press. It says what the press does,
+      // not where it goes — the going is the link inside the card.
+      previewHint: "Tap the name for a quick look.",
+      closePreview: "Close the preview",
       // Spoken names for the two-press delete knobs, whose face is a bare ✕.
       deleteItem: "Delete {name} from the backpack",
       deleteAbility: "Delete {name} from the sheet",
       spellsAbilities: "Spells & abilities",
       longRest: "Long rest",
+      // Offered to warlocks alone: an hour by the fire gives nobody else a
+      // spell slot back, and a button that would do nothing is not drawn.
+      shortRest: "Short rest",
+      shortRestHint: "An hour's rest — your pact slots come back.",
       noAbilities: "Nothing here yet — spells, class features, homebrew powers all welcome.",
       use: "Use",
       kind: {
@@ -150,6 +158,10 @@ export const character = {
       },
       bonusesLabel: "Bonuses",
       bonusesHint: "Flat bonuses this line grants while worn, −10 to +10. Leave a field blank for none.",
+      floorsLabel: "Scores this sets",
+      floorsHint:
+        "For a piece that states a score outright — “your Constitution is 19 while you wear this”. It pins the score to at least that number and does nothing to a character who is already higher; a blank field states nothing. Saving with a field cleared removes what was there.",
+      floorsPh: "—",
       save: "Save stats",
     },
     // Spell slots are the caster's own resource, not any one spell's, so they
@@ -238,10 +250,14 @@ export const character = {
       addItem: "Eşya ekle",
       openInCompendium: "Kütüphanede aç",
       openInLibrary: "Dünyanın eşya kütüphanesinde aç",
+      previewHint: "Hızlıca bakmak için ada dokun.",
+      closePreview: "Önizlemeyi kapat",
       deleteItem: "{name} eşyasını çantadan sil",
       deleteAbility: "{name} satırını sayfadan sil",
       spellsAbilities: "Büyüler ve yetenekler",
       longRest: "Uzun dinlenme",
+      shortRest: "Kısa mola",
+      shortRestHint: "Bir saatlik mola — pakt yuvaların geri gelir.",
       noAbilities: "Henüz bir şey yok — büyü, sınıf özelliği, homebrew güç; ne varsa buraya.",
       use: "Kullan",
       kind: {
@@ -315,6 +331,10 @@ export const character = {
       },
       bonusesLabel: "Bonuslar",
       bonusesHint: "Bu satır kuşanılıyken verdiği düz bonuslar, −10 ile +10 arası. Olmayanı boş bırak.",
+      floorsLabel: "Sabitlediği skorlar",
+      floorsHint:
+        "Skoru doğrudan söyleyen parçalar için — “bunu takarken Dayanıklılığın 19'dur”. Skoru en az o değere sabitler; zaten daha yüksek olan karaktere hiçbir şey yapmaz, boş alan bir şey söylemez. Alanı boşaltıp kaydetmek oradakini siler.",
+      floorsPh: "—",
       save: "Statları kaydet",
     },
     spellSlots: {

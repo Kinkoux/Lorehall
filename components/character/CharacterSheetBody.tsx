@@ -1,4 +1,3 @@
-import Link from "next/link";
 import {
   type Character,
   type CharacterAbility,
@@ -16,7 +15,7 @@ import {
 } from "@/lib/dnd";
 import { effectiveAc } from "@/lib/armor";
 import { SKILLS } from "@/lib/srd";
-import { getItem, getSpell, itemNameTr, itemSummary, spellSummary } from "@/lib/srd-data";
+import { matchClass } from "@/lib/class-match";
 import { sumStatBonuses, type StatBonuses } from "@/lib/world-items";
 import {
   addAbility,
@@ -29,6 +28,7 @@ import {
   longRest,
   rejectCharacter,
   setCharacterStatus,
+  shortRest,
   unequipItem,
   upsertCharacter,
   useAbility,
@@ -44,8 +44,9 @@ import { ItemStatsEditor } from "@/components/character/ItemStatsEditor";
 import { SpellSlotTracker } from "@/components/character/SpellSlotTracker";
 import { DragItem, InventoryDrop } from "@/components/character/DragEquip";
 import { itemArtSrc, slotCategory } from "@/components/character/item-art";
+import { itemPreview, PreviewLink, spellPreview } from "@/components/character/PreviewCard";
 import type { InventoryLineShape } from "@/components/character/sheet-data";
-import { IconMoon, IconSkull } from "@/components/Icons";
+import { IconHourglass, IconMoon, IconSkull } from "@/components/Icons";
 import {
   Button,
   Card,
@@ -413,18 +414,40 @@ export function CharacterSheetBody({
         </section>
 
         <section className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <SectionTitle>{t("character.sheet.spellsAbilities")}</SectionTitle>
-            {/* A rest is worth offering to anyone with something to refill:
-                a limited-use ability, a spell slot, or both. */}
-            {editable &&
-              (abilities.some((a) => a.usesMax !== null) || spellSlots.length > 0) && (
-                <form action={longRest.bind(null, character.id)}>
-                  <GhostButton type="submit" className="!px-3 !py-1.5 text-xs">
-                    <IconMoon size={14} /> {t("character.sheet.longRest")}
+            <div className="flex items-center gap-2">
+              {/* Short rest is a warlock's button and nobody else's: an hour by
+                  the fire refills pact slots and hands every other class
+                  nothing at all. Drawn only when the written class reads as a
+                  warlock — the alternative is a control that is always there
+                  and silently does nothing eleven times out of twelve, which
+                  teaches a player that the sheet's buttons are decorative.
+                  Reading the class from free text is the same match the class
+                  plate and "suggest from class" already make, so "Level 5
+                  Warlock (Fiend)" gets the button. */}
+              {editable && spellSlots.length > 0 && matchClass(character.klass) === "warlock" && (
+                <form action={shortRest.bind(null, character.id)}>
+                  <GhostButton
+                    type="submit"
+                    title={t("character.sheet.shortRestHint")}
+                    className="!px-3 !py-1.5 text-xs"
+                  >
+                    <IconHourglass size={14} /> {t("character.sheet.shortRest")}
                   </GhostButton>
                 </form>
               )}
+              {/* A rest is worth offering to anyone with something to refill:
+                  a limited-use ability, a spell slot, or both. */}
+              {editable &&
+                (abilities.some((a) => a.usesMax !== null) || spellSlots.length > 0) && (
+                  <form action={longRest.bind(null, character.id)}>
+                    <GhostButton type="submit" className="!px-3 !py-1.5 text-xs">
+                      <IconMoon size={14} /> {t("character.sheet.longRest")}
+                    </GhostButton>
+                  </form>
+                )}
+            </div>
           </div>
           <Card>
             {/*
@@ -462,9 +485,13 @@ export function CharacterSheetBody({
                     >
                       {t(`character.sheet.kind.${ability.kind}`)}
                     </span>
-                    <p className="min-w-0 flex-1 font-semibold text-parchment-100">
+                    {/* A div rather than a paragraph: the name carries its
+                        preview card along with it, and a card is not phrasing
+                        content — inside a <p> the parser would close the
+                        paragraph early and rearrange the row around it. */}
+                    <div className="min-w-0 flex-1 font-semibold text-parchment-100">
                       <AbilityName ability={ability} t={t} />
-                    </p>
+                    </div>
                     {ability.usesMax !== null && (
                       <span className="font-mono text-sm font-bold text-gold-300">
                         {ability.usesLeft}/{ability.usesMax}
@@ -657,7 +684,9 @@ function InventoryGrid({
           </summary>
 
           <div className="mt-3 space-y-2">
-            <p className="font-semibold text-parchment-100">
+            {/* A div rather than a paragraph, for the reason the ability row
+                gives above: the name brings a card with it. */}
+            <div className="font-semibold text-parchment-100">
               <ItemName item={item} t={t} locale={locale} />
               {item.qty > 1 && (
                 <span className="ml-1.5 text-sm text-parchment-500">×{item.qty}</span>
@@ -667,7 +696,7 @@ function InventoryGrid({
                   {t("character.equipment.worn")}
                 </span>
               )}
-            </p>
+            </div>
             {item.notes && <p className="text-xs text-parchment-500">{item.notes}</p>}
             {editable && (
               <>
@@ -724,15 +753,16 @@ function InventoryGrid({
 }
 
 /**
- * The inventory line's name, which is a link whenever the row remembers where
- * it came from: an SRD index opens the compendium entry, a library reference
- * jumps to the card in the world's own forge. A hand-typed line is just a
+ * The inventory line's name, which opens a card whenever the row remembers
+ * where it came from: an SRD index shows the compendium entry in miniature, a
+ * library reference shows the piece as its own world forged it, and either
+ * card carries the way through to the full page. A hand-typed line is just a
  * name, and stays plain text rather than pretending to lead somewhere.
  *
  * A roster line never carries the second of those: the library belongs to a
  * world, a roster sheet belongs to none, and the copy a table stamps drops the
- * reference on the way in. So the link disappears by itself here, with no flag
- * saying so — the row simply has nothing to point at.
+ * reference on the way in. So the card disappears by itself here, with no flag
+ * saying so — the row simply has nothing to show.
  */
 function ItemName({
   item,
@@ -743,72 +773,52 @@ function ItemName({
   t: T;
   locale: Locale;
 }) {
-  const linkClass = "text-parchment-100 underline decoration-ink-600 underline-offset-2 transition hover:text-gold-300 hover:decoration-gold-500";
-  if (item.srdIndex) {
-    const srd = getItem(item.srdIndex);
-    /**
-     * The row's name is the one that was written down — the English the whole
-     * of this app resolves names against — and it stays that way in the
-     * database. A locale with its own word for the thing gets to *say* that
-     * word here, and only where we actually have one: an untranslated entry
-     * keeps the player's own spelling rather than being tidied into the SRD's.
-     */
-    const shown = (locale === "tr" && itemNameTr(item.srdIndex)) || item.name;
-    return (
-      <Link
-        href={`/compendium/items/${item.srdIndex}`}
-        title={hoverText(
-          item.notes?.trim() || (srd ? itemSummary(srd) : null),
-          t("character.sheet.openInCompendium")
-        )}
-        className={linkClass}
-      >
-        {shown}
-      </Link>
-    );
-  }
-  if (item.worldItemId && item.sourceWorldId) {
-    return (
-      <Link
-        href={`/w/${item.sourceWorldId}#wi-${item.worldItemId}`}
-        title={hoverText(item.sourceDescription, t("character.sheet.openInLibrary"))}
-        className={linkClass}
-      >
-        {item.name}
-      </Link>
-    );
-  }
-  return <>{item.name}</>;
+  const facts = itemPreview(item, locale, t);
+  if (!facts) return <>{item.name}</>;
+  // The tooltip layer that was here before the cards were, kept because it is
+  // the one thing that still works when everything else has been switched off.
+  // What the player typed on this copy outranks the book: they wrote it down
+  // for a reason, and it is the sentence they were reaching for.
+  const preview = item.notes?.trim() || facts.summary || facts.detail;
+  return (
+    <PreviewLink
+      id={item.id}
+      name={facts.title}
+      facts={facts}
+      title={hoverText(preview, t("character.sheet.previewHint"))}
+      linkTitle={hoverText(preview, facts.linkLabel)}
+      t={t}
+    />
+  );
 }
 
 /** Same rule for a spell line — the SRD is the only source one can name. */
 function AbilityName({ ability, t }: { ability: CharacterAbility; t: T }) {
-  if (!ability.srdIndex) return <>{ability.name}</>;
-  const spell = getSpell(ability.srdIndex);
+  const facts = spellPreview(ability, t);
+  if (!facts) return <>{ability.name}</>;
+  const preview = ability.notes?.trim() || facts.summary;
   return (
-    <Link
-      href={`/compendium/spells/${ability.srdIndex}`}
-      title={hoverText(
-        ability.notes?.trim() || (spell ? spellSummary(spell) : null),
-        t("character.sheet.openInCompendium")
-      )}
-      className="text-parchment-100 underline decoration-ink-600 underline-offset-2 transition hover:text-gold-300 hover:decoration-gold-500"
-    >
-      {ability.name}
-    </Link>
+    <PreviewLink
+      id={ability.id}
+      name={ability.name}
+      facts={facts}
+      title={hoverText(preview, t("character.sheet.previewHint"))}
+      linkTitle={hoverText(preview, facts.linkLabel)}
+      t={t}
+    />
   );
 }
 
 /**
- * The touch of information the link itself can give, without going anywhere.
+ * The touch of information the name itself can give, without opening anything.
  *
- * A line that came from the compendium already carries its one-line summary in
- * its notes — that is what `itemSummary`/`spellSummary` wrote there when it was
- * added — so the note is read first and the summary regenerated only when
- * somebody has since typed over it or blanked it. A library piece answers with
- * the opening of its own description instead.
+ * This was the whole feature before the cards were, and it is kept because it
+ * is the layer underneath them: a hovering mouse reads it without pressing,
+ * and a browser too old for a popover has nothing else. The line is the same
+ * one the card leads with — what the player typed on this copy, else the
+ * entry's own summary, else the opening of a library piece's description.
  *
- * The hint about where the link leads keeps its place on a second line: the
+ * The hint about what the press does keeps its place on a second line: the
  * preview is the addition, not the replacement. Everything is one clipped
  * paragraph, because a `title` is a tooltip, not a page.
  */

@@ -23,6 +23,7 @@ import {
   suggestSlots,
   type SlotRow,
 } from "@/lib/spell-slots";
+import { matchClass } from "@/lib/class-match";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { campaignLog } from "@/lib/campaign-log";
@@ -31,13 +32,16 @@ import { fmt } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
 import {
+  ABILITY_FLOOR_MAX,
+  ABILITY_FLOOR_MIN,
+  ABILITY_STATS,
   AC_BASE_MAX,
   AC_BASE_MIN,
-  parseStatFloors,
   readSlotName,
   STAT_BONUS_MAX,
   STAT_BONUS_MIN,
   stringifyStatBonuses,
+  type AbilityFloors,
   type StatBonuses,
 } from "@/lib/world-items";
 import type { FormState } from "@/lib/actions";
@@ -664,18 +668,44 @@ function readAcDex(formData: FormData): AcDexRule | null {
 }
 
 /**
- * The eight bonus fields off the line editor, rebuilt the way the library form
- * rebuilds its own: only the allowed keys, each clamped to ±10, blanks and
- * zeroes left out, and an all-blank form storing NULL rather than `{}` — so a
- * line the player cleared is a plain item again, not an item granting nothing.
- *
- * A score the item *sets* survives the rebuild untouched. The editor has eight
- * number fields and no ninth for floors, so a form submission is silent about
- * them rather than saying they are gone — and reading that silence as a
- * deletion would quietly turn an amulet of health into a necklace the first
- * time somebody typed an armour class onto its line.
+ * The six floor fields off the line editor: the scores this copy of the thing
+ * *sets* rather than adds to. A blank states nothing; a number outside 5e's
+ * 1–30 is clamped to the nearest score a creature could actually have, which
+ * is how the reader in lib/world-items.ts treats a stored one.
  */
-function readItemBonuses(formData: FormData, stored: string | null): string | null {
+function readItemFloors(formData: FormData): AbilityFloors {
+  const floors: AbilityFloors = {};
+  for (const stat of ABILITY_STATS) {
+    const raw = str(formData, `floor_${stat}`);
+    if (!raw) continue;
+    const n = Number.parseInt(raw, 10);
+    if (!Number.isFinite(n)) continue;
+    floors[stat] = Math.min(Math.max(n, ABILITY_FLOOR_MIN), ABILITY_FLOOR_MAX);
+  }
+  return floors;
+}
+
+/**
+ * The bonus and floor fields off the line editor, rebuilt the way the library
+ * form rebuilds its own: only the allowed keys, each clamped, blanks and
+ * zeroes left out, and a form that states nothing at all storing NULL rather
+ * than `{}` — so a line the player cleared is a plain item again, not an item
+ * granting nothing.
+ *
+ * The floors used to survive this rebuild untouched, because the editor had
+ * eight number fields and no ninth for them: a submission was *silent* about
+ * floors rather than saying they were gone, and reading that silence as a
+ * deletion would have turned an amulet of health into a necklace the first
+ * time somebody typed an armour class onto its line.
+ *
+ * The editor states them now, six fields filled in from what the line already
+ * carries — so the form is no longer silent, and a field cleared by hand is a
+ * player saying "this thing does not set that score", which is a sentence they
+ * are entitled to say. The cost of the new field is the old safety: leaving
+ * one blank deletes it. That is the deal every other field on this form has
+ * always offered.
+ */
+function readItemBonuses(formData: FormData): string | null {
   const bonuses: StatBonuses = {};
   for (const stat of WORLD_ITEM_STATS) {
     const raw = str(formData, `bonus_${stat}`);
@@ -684,7 +714,7 @@ function readItemBonuses(formData: FormData, stored: string | null): string | nu
     if (!Number.isFinite(n) || n === 0) continue;
     bonuses[stat] = Math.min(Math.max(n, STAT_BONUS_MIN), STAT_BONUS_MAX);
   }
-  return stringifyStatBonuses(bonuses, parseStatFloors(stored));
+  return stringifyStatBonuses(bonuses, readItemFloors(formData));
 }
 
 /**
@@ -1094,7 +1124,14 @@ export async function unequipItem(itemId: string) {
  * insists on — a breastplate is body armour however the select was tampered
  * with), the base is clamped to 0..30, the DEX rule must be one of the three,
  * and the eight bonuses go through the same ±10 clamp the library form uses.
- * A form with every bonus blank stores NULL, not `{}`.
+ * The six floors are read the same way, clamped to 1..30. A form with every
+ * number blank stores NULL, not `{}`.
+ *
+ * The floors are a *behaviour change*, not just a new field: the form used to
+ * say nothing about them and the action used to carry the stored ones through
+ * untouched. Now the form states them — filled in from the line — so clearing
+ * one is a deletion the player meant. See readItemBonuses for the whole
+ * argument.
  *
  * Moving a worn piece to a different square takes it off on the way: the row
  * cannot sit in `ring` while the sheet still counts it as the worn helm, and
@@ -1142,7 +1179,7 @@ export async function setItemStats(
       equipped: item.equipped === 1 && slot === item.slot ? 1 : 0,
       acBase: clampOpt(int(formData, "acBase"), AC_BASE_MIN, AC_BASE_MAX),
       acDex: readAcDex(formData),
-      statBonuses: readItemBonuses(formData, item.statBonuses),
+      statBonuses: readItemBonuses(formData),
     })
     .where(eq(characterItems.id, itemId));
 
@@ -1383,6 +1420,49 @@ export async function longRest(characterId: string) {
     n: refilled.length,
   });
   revalidateSheet(character);
+}
+
+/**
+ * Short rest: the warlock's hour with a book and a fire, after which the pact
+ * slots are full again.
+ *
+ * The narrow rule is the whole feature. An hour's rest in 5e gives most of the
+ * party hit dice and a class feature or two, and gives *nobody else* a spell
+ * slot back — so this button refills the slot table only for a sheet whose
+ * written class reads as a warlock, and does nothing whatsoever otherwise. The
+ * class is read the same way the portrait's class plate and the slot table's
+ * "suggest" button read it (lib/class-match.ts) — found *inside* the written
+ * line rather than matched against it — so "Level 5 Warlock (Fiend)" counts.
+ *
+ * The silent return is deliberate rather than lazy: the id is forgeable and a
+ * caller who reaches this action for a barbarian gets the same nothing an
+ * unauthorised one gets. The sheet does not draw the button for a class it
+ * would do nothing for, so nobody honest arrives here by accident.
+ *
+ * Hit points and limited-use abilities stay where they are: hit dice are spent
+ * one at a time and by choice, and "recharges on a short rest" is a per-feature
+ * sentence the sheet has no column for. Long rest remains the button that
+ * refills everything.
+ *
+ * Known rough edge: the slot table has no pact/spell column, so a multiclass
+ * warlock's wizard slots come back with the pact ones. The table for that
+ * character is hand-kept anyway (suggestSlots refuses multiclass lines), and
+ * refilling a slot the book would not is a kinder wrong answer than a button
+ * that refuses the warlock it was drawn for.
+ */
+export async function shortRest(characterId: string) {
+  const user = await requireUser();
+  const character = await getEditableCharacter(characterId, user.id);
+  if (!character) return;
+  if (matchClass(character.klass) !== "warlock") return;
+  await db
+    .update(characterSpellSlots)
+    .set({ used: 0 })
+    .where(eq(characterSpellSlots.characterId, characterId));
+  await logSheet(character, user.id, "shortRest", { character: character.name });
+  // Slots are pips on this sheet and a number nobody else reads — the hub and
+  // the party list carry an armour class, which an hour by the fire does not move.
+  revalidateSheetOnly(character);
 }
 
 export async function deleteAbility(abilityId: string) {

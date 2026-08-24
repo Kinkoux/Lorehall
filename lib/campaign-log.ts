@@ -31,6 +31,7 @@ const KIND_BY_EVENT = {
   abilityAdded: "ability",
   abilityRemoved: "ability",
   longRest: "ability",
+  shortRest: "ability",
   spellAdded: "ability",
   statusChanged: "status",
   characterCreated: "character",

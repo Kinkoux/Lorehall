@@ -93,6 +93,17 @@ export function IconMoon(props: IconProps) {
   );
 }
 
+/** Hourglass (short rest) — an hour set aside, next to the moon's whole night. */
+export function IconHourglass(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M7 3h10M7 21h10" />
+      <path d="M7.5 3v3.2c0 1.1.5 2.1 1.4 2.8L12 12l-3.1 3c-.9.7-1.4 1.7-1.4 2.8V21" />
+      <path d="M16.5 3v3.2c0 1.1-.5 2.1-1.4 2.8L12 12l3.1 3c.9.7 1.4 1.7 1.4 2.8V21" />
+    </Svg>
+  );
+}
+
 /** Shield. */
 export function IconShield(props: IconProps) {
   return (

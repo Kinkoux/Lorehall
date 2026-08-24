@@ -50,6 +50,11 @@ export function schoolArtThumb(school: string): string {
   return ART(`t/school-${school.toLowerCase()}`);
 }
 
+/** The same sigil at 256px, for the preview card's 64–80px plate. */
+export function schoolArtMid(school: string): string {
+  return ART(`m/school-${school.toLowerCase()}`);
+}
+
 /** The class plate at 96px, for a party row standing in for a portrait. */
 export function classArtThumbFor(klass: string | null | undefined): string | null {
   const slug = matchClass(klass);

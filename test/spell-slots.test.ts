@@ -21,6 +21,7 @@ import {
   rejectCharacter,
   restoreSpellSlot,
   setSpellSlots,
+  shortRest,
   spendSpellSlot,
   suggestFromClass,
 } from "@/lib/character-actions";
@@ -252,6 +253,79 @@ describe("longRest", () => {
     auth.userId = fx.stranger;
     await longRest(sheet);
     expect((await rowAt(sheet, 1))?.used).toBe(4);
+  });
+});
+
+/**
+ * The hour by the fire, which in 5e is a warlock's refill and nobody else's.
+ */
+describe("shortRest", () => {
+  const warlock = () =>
+    seedCharacter(fx.campaignId, fx.player, 20, { klass: "Warlock (Fiend)", level: 5 });
+
+  it("gives a warlock every pact slot back", async () => {
+    const pact = await warlock();
+    await seedSpellSlot(pact, 3, 2, 2);
+    await shortRest(pact);
+    expect((await rowAt(pact, 3))?.used).toBe(0);
+  });
+
+  it("finds the class inside whatever the player wrote", async () => {
+    const written = await seedCharacter(fx.campaignId, fx.player, 20, {
+      klass: "Level 3 WARLOCK of the Great Old One",
+      level: 3,
+    });
+    await seedSpellSlot(written, 2, 2, 1);
+    await shortRest(written);
+    expect((await rowAt(written, 2))?.used).toBe(0);
+  });
+
+  it("hands nothing back to a class the rule does not speak for", async () => {
+    // A wizard's slots are a long rest's business, and a homebrew name is not
+    // a warlock however many pacts its player has narrated.
+    for (const klass of ["Wizard", "Barbarian", "Rune Cannoneer"]) {
+      const other = await seedCharacter(fx.campaignId, fx.player, 20, { klass, level: 5 });
+      await seedSpellSlot(other, 1, 4, 3);
+      await shortRest(other);
+      expect((await rowAt(other, 1))?.used, klass).toBe(3);
+    }
+    // A sheet that never named a class is one of those too.
+    const blank = await seedCharacter(fx.campaignId, fx.player);
+    await seedSpellSlot(blank, 1, 2, 2);
+    await shortRest(blank);
+    expect((await rowAt(blank, 1))?.used).toBe(2);
+  });
+
+  it("leaves the hit points and the limited-use abilities where they are", async () => {
+    const pact = await warlock();
+    const ability = await seedAbility(pact, 3, 0);
+    await seedSpellSlot(pact, 3, 2, 2);
+    await db.update(characters).set({ currentHp: 4 }).where(eq(characters.id, pact));
+    await shortRest(pact);
+    // Only the slots. Hit dice are spent by choice and one at a time, and
+    // "recharges on a short rest" is a per-feature sentence the sheet has no
+    // column for.
+    expect(
+      (
+        await db.query.characterAbilities.findFirst({
+          where: eq(characterAbilities.id, ability),
+        })
+      )?.usesLeft
+    ).toBe(0);
+    expect(
+      (await db.query.characters.findFirst({ where: eq(characters.id, pact) }))?.currentHp
+    ).toBe(4);
+  });
+
+  it("refuses a stranger, and lets the DM call the rest", async () => {
+    const pact = await warlock();
+    await seedSpellSlot(pact, 3, 2, 2);
+    auth.userId = fx.stranger;
+    await shortRest(pact);
+    expect((await rowAt(pact, 3))?.used).toBe(2);
+    auth.userId = fx.dm;
+    await shortRest(pact);
+    expect((await rowAt(pact, 3))?.used).toBe(0);
   });
 });
 
