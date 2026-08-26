@@ -4,11 +4,13 @@ import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import {
   getMonsterArt,
+  isExtraSpell,
   localizedItemName,
   localizedMonsterName,
   searchItems,
   searchMonsters,
   searchSpells,
+  spellAliasHit,
   srdItemArt,
 } from "@/lib/srd-data";
 import { schoolArtThumb } from "@/lib/ui-art";
@@ -31,6 +33,7 @@ function ResultRow({
   badge,
   name,
   original,
+  aside,
   meta,
 }: {
   href: string;
@@ -39,6 +42,12 @@ function ResultRow({
   name: string;
   /** The SRD's own name, when `name` above it is a translation of it. */
   original?: string | null;
+  /**
+   * Anything else the row has to say about itself beside its name — which
+   * shelf it came off, what a book prints it as. Free-form, because the three
+   * collections have different things to admit to.
+   */
+  aside?: ReactNode;
   meta: string;
 }) {
   return (
@@ -53,6 +62,7 @@ function ResultRow({
           {original && original !== name && (
             <span className="text-xs text-parchment-500">{original}</span>
           )}
+          {aside}
         </span>
         <span className="hidden text-xs text-parchment-500 sm:block">{meta}</span>
       </Link>
@@ -171,20 +181,40 @@ export default async function CompendiumSearchPage({
             >
               {/* `Thumb` draws 40px, so the school sigil comes in its 96px cut
                   — the same one the spell list takes, for the same reason. */}
-              {spells.slice(0, PREVIEW).map((spell) => (
-                <ResultRow
-                  key={spell.index}
-                  href={`/compendium/spells/${spell.index}`}
-                  art={<Thumb src={schoolArtThumb(spell.school)} />}
-                  badge={
-                    <span className="text-gold-300">
-                      {spell.level === 0 ? t("compendium.spells.cantrip") : spell.level}
-                    </span>
-                  }
-                  name={spell.name}
-                  meta={`${spell.school} · ${spell.classes.join(", ")}`}
-                />
-              ))}
+              {spells.slice(0, PREVIEW).map((spell) => {
+                const source = isExtraSpell(spell) ? spell.source : null;
+                const alias = source ? null : spellAliasHit(spell.index, needle);
+                return (
+                  <ResultRow
+                    key={spell.index}
+                    href={`/compendium/spells/${spell.index}`}
+                    art={<Thumb src={schoolArtThumb(spell.school)} />}
+                    badge={
+                      <span className="text-gold-300">
+                        {spell.level === 0 ? t("compendium.spells.cantrip") : spell.level}
+                      </span>
+                    }
+                    name={spell.name}
+                    // Which book, and — for a row found under a name this
+                    // library does not file it by — which name found it.
+                    aside={
+                      source ? (
+                        <span
+                          title={t(`compendium.spells.sources.${source}`)}
+                          className="text-xs text-parchment-500"
+                        >
+                          {source} · {t("compendium.spells.textInBookShort")}
+                        </span>
+                      ) : alias ? (
+                        <span className="text-xs text-parchment-500">
+                          {t("compendium.spells.alsoPrintedAs", { names: alias })}
+                        </span>
+                      ) : null
+                    }
+                    meta={`${spell.school} · ${spell.classes.join(", ")}`}
+                  />
+                );
+              })}
             </ResultGroup>
 
             <ResultGroup

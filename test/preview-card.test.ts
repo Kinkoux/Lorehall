@@ -136,4 +136,42 @@ describe("spellPreview", () => {
     // The classes are the subtitle's whole job: spellSummary never names them.
     expect(facts?.subtitle).toContain("Sorcerer");
   });
+
+  it("gives a spell outside the SRD its facts and a signpost, not its text", () => {
+    const facts = spellPreview(
+      spellLine({ name: "Booming Blade", srdIndex: "x-booming-blade", notes: null }),
+      en
+    );
+    expect(facts?.href).toBe("/compendium/spells/x-booming-blade");
+    expect(facts?.summary).toContain("Cantrip evocation");
+    expect(facts?.subtitle).toContain("TCE");
+    // The card sends the reader to their own copy rather than paraphrasing it.
+    expect(facts?.detail).toBe(en("compendium.spells.textInYourBook", { source: "TCE" }));
+  });
+
+  it("lets the player's own note outrank the signpost", () => {
+    // The legitimate route to the full wording: somebody who owns the book
+    // types what they need onto their own line, and the card shows that.
+    const facts = spellPreview(
+      spellLine({
+        name: "Booming Blade",
+        srdIndex: "x-booming-blade",
+        notes: "Melee attack, then thunder on the move — p.219 of my copy.",
+      }),
+      en
+    );
+    expect(facts?.detail).toBe("Melee attack, then thunder on the move — p.219 of my copy.");
+  });
+
+  it("does not mistake the stocked header line for something the player wrote", () => {
+    const summary = spellPreview(
+      spellLine({ name: "Booming Blade", srdIndex: "x-booming-blade" }),
+      en
+    )?.summary;
+    const facts = spellPreview(
+      spellLine({ name: "Booming Blade", srdIndex: "x-booming-blade", notes: summary }),
+      en
+    );
+    expect(facts?.detail).toBe(en("compendium.spells.textInYourBook", { source: "TCE" }));
+  });
 });

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
 import {
+  isExtraSpell,
   searchSpells,
+  spellAliasHit,
   SPELL_CLASSES,
   SPELL_SCHOOLS,
   SUBCLASS_FILTERS,
@@ -160,58 +162,87 @@ export default async function SpellsPage({
         )}
 
         <ul className="mt-3 divide-y divide-ink-700 rounded-sm border border-ink-700 bg-ink-900/85">
-          {shown.map((spell) => (
-            <li key={spell.index}>
-              <Link
-                href={`/compendium/spells/${spell.index}`}
-                className="group flex items-center gap-3 px-4 py-2.5"
-              >
-                {/* The 96px cut: the mark is drawn 40px wide, which a doubled
-                    screen
-                    wants 80 pixels for. The full plate is 512px and near 45KB,
-                    and a page of sixty rows shows eight different schools —
-                    most of a third of a megabyte, spent on detail no row is
-                    large enough to show. */}
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={schoolArtThumb(spell.school)}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
-                />
-                <span className="w-14 shrink-0 text-xs font-bold text-gold-300">
-                  {spell.level === 0 ? t("compendium.spells.cantrip") : `${spell.level}`}
-                </span>
-                {/* The marks are chips, not suffixes: run against the name they
-                    read as one word ("Dancing Lightsconc"). */}
-                <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-                  <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
-                    {spell.name}
+          {shown.map((spell) => {
+            const source = isExtraSpell(spell) ? spell.source : null;
+            // The printed name that found this row, where it was not the row's
+            // own: somebody who typed "Bigby's Hand" should be told, in the
+            // row, that the entry they are looking at is the same spell.
+            const alias = source ? null : spellAliasHit(spell.index, q);
+            return (
+              <li key={spell.index}>
+                <Link
+                  href={`/compendium/spells/${spell.index}`}
+                  className="group flex items-center gap-3 px-4 py-2.5"
+                >
+                  {/* The 96px cut: the mark is drawn 40px wide, which a doubled
+                      screen
+                      wants 80 pixels for. The full plate is 512px and near 45KB,
+                      and a page of sixty rows shows eight different schools —
+                      most of a third of a megabyte, spent on detail no row is
+                      large enough to show. */}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={schoolArtThumb(spell.school)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="h-10 w-10 shrink-0 rounded-sm border border-ink-600 object-cover"
+                  />
+                  <span className="w-14 shrink-0 text-xs font-bold text-gold-300">
+                    {spell.level === 0 ? t("compendium.spells.cantrip") : `${spell.level}`}
                   </span>
-                  {spell.concentration && (
-                    <span
-                      title={t("compendium.spells.concentration")}
-                      className="rounded-sm border border-amber-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800"
-                    >
-                      {t("compendium.spells.concShort")}
+                  {/* The marks are chips, not suffixes: run against the name they
+                      read as one word ("Dancing Lightsconc"). */}
+                  <span className="flex flex-1 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-semibold text-parchment-100 transition group-hover:text-gold-400">
+                      {spell.name}
                     </span>
-                  )}
-                  {spell.ritual && (
-                    <span
-                      title={t("compendium.spells.ritual")}
-                      className="rounded-sm border border-purple-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-800"
-                    >
-                      {t("compendium.spells.ritualShort")}
-                    </span>
-                  )}
-                </span>
-                <span className="hidden text-xs text-parchment-500 sm:block">
-                  {spell.school} · {spell.classes.join(", ")}
-                </span>
-              </Link>
-            </li>
-          ))}
+                    {spell.concentration && (
+                      <span
+                        title={t("compendium.spells.concentration")}
+                        className="rounded-sm border border-amber-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800"
+                      >
+                        {t("compendium.spells.concShort")}
+                      </span>
+                    )}
+                    {spell.ritual && (
+                      <span
+                        title={t("compendium.spells.ritual")}
+                        className="rounded-sm border border-purple-800/60 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-purple-800"
+                      >
+                        {t("compendium.spells.ritualShort")}
+                      </span>
+                    )}
+                    {/* The book, and — quietly — the fact that the book is where
+                        the text stayed. A stub is a signpost, and a row that
+                        looked like every other row would be a promise the page
+                        cannot keep. */}
+                    {source && (
+                      <>
+                        <span
+                          title={t(`compendium.spells.sources.${source}`)}
+                          className="rounded-sm border border-gold-500/50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300"
+                        >
+                          {source}
+                        </span>
+                        <span className="text-[11px] italic text-parchment-500">
+                          {t("compendium.spells.textInBookShort")}
+                        </span>
+                      </>
+                    )}
+                    {alias && (
+                      <span className="text-[11px] text-parchment-500">
+                        {t("compendium.spells.alsoPrintedAs", { names: alias })}
+                      </span>
+                    )}
+                  </span>
+                  <span className="hidden text-xs text-parchment-500 sm:block">
+                    {spell.school} · {spell.classes.join(", ")}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
           {shown.length === 0 && (
             <EmptyRow
               art={EMPTY_ART.spells}

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, characters, campaigns } from "@/lib/db";
 import { getCurrentUser } from "@/lib/auth";
 import { getT } from "@/lib/locale";
-import { getSpell } from "@/lib/srd-data";
+import { spellAliases, spellRef } from "@/lib/srd-data";
 import { addSpellToCharacter } from "@/lib/compendium-actions";
 import { schoolArt } from "@/lib/ui-art";
 import { SiteHeader } from "@/components/SiteHeader";
@@ -17,11 +17,18 @@ export default async function SpellPage({
 }) {
   // The lookup before any await that can suspend: once a fallback renders the
   // headers are gone, and a spell that does not exist would answer 200 with a
-  // not-found page streamed into it. `getSpell` reads JSON already in memory,
-  // so the verdict costs nothing and arrives while the status is still ours.
+  // not-found page streamed into it. `spellRef` reads JSON already in memory,
+  // so the verdict costs nothing and arrives while the status is still ours —
+  // and it is the verdict for both shelves, so an invented `x-` index is a 404
+  // by the same rule an invented SRD one is.
   const { index } = await params;
-  const spell = getSpell(index);
-  if (!spell) notFound();
+  const entry = spellRef(index);
+  if (!entry) notFound();
+  const spell = entry.spell;
+  // The whole of the difference below: a book we may reprint, or a book we may
+  // only point at. Held as the source abbreviation so every line that mentions
+  // it can name it.
+  const source = entry.kind === "extra" ? entry.spell.source : null;
 
   const user = await getCurrentUser();
   const { t } = await getT();
@@ -37,6 +44,11 @@ export default async function SpellPage({
         .where(eq(characters.userId, user.id))
     : [];
 
+  // The names a printed book gives this entry, where the SRD dropped a wizard's
+  // name off the front of it. Empty for a fact stub, which is already printed
+  // under the name it is filed by.
+  const aliases = spellAliases(spell.index);
+
   const facts: Array<[string, string]> = [
     [t("compendium.spells.castingTime"), spell.castingTime],
     [t("compendium.spells.range"), spell.range],
@@ -46,6 +58,11 @@ export default async function SpellPage({
       spell.duration + (spell.concentration ? ` (${t("compendium.spells.concentration")})` : ""),
     ],
     [t("compendium.spells.classes"), spell.classes.join(", ")],
+    ...(source
+      ? ([[t("compendium.spells.source"), t(`compendium.spells.sources.${source}`)]] as Array<
+          [string, string]
+        >)
+      : []),
   ];
 
   return (
@@ -68,6 +85,14 @@ export default async function SpellPage({
               · {spell.school}
               {spell.ritual && ` (${t("compendium.spells.ritual")})`}
             </p>
+            {aliases.length > 0 && (
+              // The name on the character sheet somebody is holding: the SRD
+              // strips the wizards' names out of these titles, and a reader who
+              // only knows the printed one should see it said here.
+              <p className="mt-1 text-xs text-parchment-500">
+                {t("compendium.spells.alsoPrintedAs", { names: aliases.join(", ") })}
+              </p>
+            )}
           </div>
           {/* The school plate is ours, so unlike a monster's photo it carries no
               caption. */}
@@ -92,12 +117,33 @@ export default async function SpellPage({
           </dl>
         </Card>
 
-        <div className="whitespace-pre-wrap leading-relaxed text-parchment-100">{spell.desc}</div>
-        {spell.higherLevel && (
-          <p className="mt-4 whitespace-pre-wrap leading-relaxed text-parchment-100">
-            <strong className="text-gold-300">{t("compendium.spells.higherLevels")} </strong>
-            {spell.higherLevel}
-          </p>
+        {entry.kind === "srd" ? (
+          <>
+            <div className="whitespace-pre-wrap leading-relaxed text-parchment-100">
+              {entry.spell.desc}
+            </div>
+            {entry.spell.higherLevel && (
+              <p className="mt-4 whitespace-pre-wrap leading-relaxed text-parchment-100">
+                <strong className="text-gold-300">{t("compendium.spells.higherLevels")} </strong>
+                {entry.spell.higherLevel}
+              </p>
+            )}
+          </>
+        ) : (
+          // Where the prose would be, the reason there is none. This is the
+          // whole bargain of the fact stubs stated in plain words: the header
+          // above is a fact and belongs to nobody, the text is expression and
+          // belongs to the book, and the reader owns the book.
+          <Card className="border-gold-500/25">
+            <h2 className="font-display text-base text-gold-300">
+              {t("compendium.spells.notInSrd")}
+            </h2>
+            <p className="mt-2 leading-relaxed text-parchment-100">
+              {t("compendium.spells.notInSrdBody", {
+                source: t(`compendium.spells.sources.${source}`),
+              })}
+            </p>
+          </Card>
         )}
 
         {myCharacters.length > 0 && (
@@ -117,7 +163,11 @@ export default async function SpellPage({
                 </form>
               ))}
             </div>
-            <p className="mt-2 text-xs text-parchment-500">{t("compendium.spells.addNote")}</p>
+            <p className="mt-2 text-xs text-parchment-500">
+              {entry.kind === "extra"
+                ? t("compendium.spells.addNoteExtra")
+                : t("compendium.spells.addNote")}
+            </p>
           </Card>
         )}
       </main>

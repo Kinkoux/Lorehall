@@ -47,6 +47,24 @@ export const compendium = {
       higherLevels: "At higher levels.",
       addToSheet: "Add to your sheet",
       addNote: "Lands under Spells & abilities.",
+      addNoteExtra: "Lands under Spells & abilities — as its header, not its text.",
+      // The books the compendium can point at but not reprint. The
+      // abbreviation is what a row has space for; this is what it means.
+      source: "Source",
+      sources: {
+        XGE: "Xanathar's Guide to Everything",
+        TCE: "Tasha's Cauldron of Everything",
+        SCAG: "Sword Coast Adventurer's Guide",
+        SCC: "Strixhaven: A Curriculum of Chaos",
+        AI: "Acquisitions Incorporated",
+      },
+      sourceOf: "from {source}",
+      textInBookShort: "text in your own book",
+      textInYourBook: "The wording lives in {source}. Write your own note here off your copy.",
+      notInSrd: "Not in the SRD",
+      notInSrdBody:
+        "The full text of this spell is not part of the SRD, so the hall may not print it. It comes from {source} — read it there, and write whatever you need onto your sheet as your own note.",
+      alsoPrintedAs: "also printed as {names}",
     },
     monsters: {
       title: "Monsters",
@@ -196,6 +214,22 @@ export const compendium = {
       higherLevels: "Yüksek seviyelerde.",
       addToSheet: "Karakter sayfana ekle",
       addNote: "Büyüler ve yetenekler bölümüne eklenir.",
+      addNoteExtra: "Büyüler ve yetenekler bölümüne eklenir — metniyle değil, künyesiyle.",
+      source: "Kaynak",
+      sources: {
+        XGE: "Xanathar's Guide to Everything",
+        TCE: "Tasha's Cauldron of Everything",
+        SCAG: "Sword Coast Adventurer's Guide",
+        SCC: "Strixhaven: A Curriculum of Chaos",
+        AI: "Acquisitions Incorporated",
+      },
+      sourceOf: "kaynak: {source}",
+      textInBookShort: "metni kendi kitabında",
+      textInYourBook: "Metin {source} kitabında. Kendi kopyandan okuyup notunu buraya yaz.",
+      notInSrd: "SRD'de yok",
+      notInSrdBody:
+        "Bu büyünün tam metni SRD'de yer almaz; salon onu basamaz. Kaynağı {source} — metni kendi kitabından okuyabilir, ihtiyacın olanı sheet'ine kendi notun olarak yazabilirsin.",
+      alsoPrintedAs: "{names} adıyla da basılır",
     },
     monsters: {
       title: "Canavarlar",

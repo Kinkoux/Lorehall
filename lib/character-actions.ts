@@ -1474,14 +1474,16 @@ export async function addAbility(characterId: string, formData: FormData) {
   let summary: string | null = null;
   const pickedIndex = str(formData, "srdIndex");
   if (!isCustom(formData)) {
-    const { getSpell, spellSummary, SPELLS } = await import("@/lib/srd-data");
-    const needle = foldName(name);
-    const spell = pickedIndex
-      ? getSpell(pickedIndex)
-      : SPELLS.find((entry) => foldName(entry.name) === needle);
-    if (spell) {
-      srdIndex = spell.index;
-      summary = spellSummary(spell);
+    const { spellRef, findSpellByAnyName, spellSummary } = await import("@/lib/srd-data");
+    // Both shelves answer here, and the name reaches both: the SRD's entries,
+    // the fact stubs for spells printed elsewhere, and the printed names of
+    // SRD spells the book renamed ("Tasha's Hideous Laughter"). A stub's index
+    // is stored exactly like an SRD one — it is a text column, and the `x-`
+    // prefix is the only difference the readers ever need.
+    const found = pickedIndex ? spellRef(pickedIndex) : findSpellByAnyName(name);
+    if (found) {
+      srdIndex = found.spell.index;
+      summary = spellSummary(found.spell);
       // Whatever the dropdown said, a spell from the spell list is a spell.
       kind = "spell";
     }

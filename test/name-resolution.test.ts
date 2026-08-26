@@ -222,4 +222,32 @@ describe("addAbility resolves a spell by name", () => {
     expect(row.srdIndex).toBeNull();
     expect(row.kind).toBe("ability");
   });
+
+  // A spell the SRD does not carry is still a spell the player is holding. The
+  // stub gives the row an index like any other — prefixed, so every reader can
+  // tell which shelf to fetch it off — and a header summary for its note.
+  it("links a spell printed outside the SRD to its fact stub", async () => {
+    await addAbility(sheet, formData({ name: "Booming Blade", kind: "ability" }));
+    const [row] = await abilitiesOf(sheet);
+    expect(row.srdIndex).toBe("x-booming-blade");
+    expect(row.kind).toBe("spell");
+    expect(row.notes).toContain("Cantrip evocation");
+  });
+
+  // The name off a Player's Handbook, resolved into the entry the SRD prints
+  // under its stripped-down title.
+  it("resolves a book's printed name onto the SRD entry", async () => {
+    await addAbility(sheet, formData({ name: "Tasha's Hideous Laughter", kind: "ability" }));
+    const [row] = await abilitiesOf(sheet);
+    expect(row.srdIndex).toBe("hideous-laughter");
+    expect(row.kind).toBe("spell");
+    // The row keeps the spelling the player typed; only the link is the SRD's.
+    expect(row.name).toBe("Tasha's Hideous Laughter");
+  });
+
+  it("still says no to an invented index", async () => {
+    await addAbility(sheet, formData({ name: "Rune Volley", srdIndex: "x-nothing-at-all" }));
+    const [row] = await abilitiesOf(sheet);
+    expect(row.srdIndex).toBeNull();
+  });
 });

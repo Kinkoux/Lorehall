@@ -5,9 +5,9 @@ import { fmt } from "@/lib/dnd";
 import type { Locale, T } from "@/lib/i18n";
 import {
   getItem,
-  getSpell,
   itemNameTr,
   itemSummary,
+  spellRef,
   spellSummary,
   srdItemBonuses,
 } from "@/lib/srd-data";
@@ -149,25 +149,49 @@ export function itemPreview(
 }
 
 /**
- * A spell line's card. The SRD is the only source a spell line can name, and
- * spell names are the one thing the app deliberately leaves untranslated (see
- * lib/srd-data.ts) — so there is no second spelling to show, and the subtitle
- * carries instead what `spellSummary` leaves out: who may cast the thing, and
- * whether it can be cast as a ritual.
+ * A spell line's card. Spell names are the one thing the app deliberately
+ * leaves untranslated (see lib/srd-data.ts) — so there is no second spelling
+ * to show, and the subtitle carries instead what `spellSummary` leaves out:
+ * who may cast the thing, and whether it can be cast as a ritual.
+ *
+ * Two shelves answer, and only one of them may be quoted. An SRD line shows
+ * the opening of the entry's own prose; a fact stub has no prose to show and
+ * says so, naming the book the reader should open instead.
+ *
+ * With one exception, and it is the point of the exception: whatever the
+ * player wrote on this line outranks both. Someone who owns Tasha's and types
+ * the wording they need into their own note gets that note on the card — which
+ * is the one legitimate way the full text of a non-SRD spell ever reaches this
+ * screen, because they put it there off a book they bought.
  */
 export function spellPreview(ability: CharacterAbility, t: T): PreviewFacts | null {
   if (!ability.srdIndex) return null;
-  const spell = getSpell(ability.srdIndex);
-  if (!spell) return null;
+  const ref = spellRef(ability.srdIndex);
+  if (!ref) return null;
+  const spell = ref.spell;
+  const summary = spellSummary(spell);
+  const extra = ref.kind === "extra" ? ref.spell.source : null;
+  // A row stocked from the compendium starts with the summary *as* its note;
+  // that is the book talking, not the player, so it does not count as writing.
+  const own = ability.notes?.trim();
+  const written = own && own !== summary ? own : null;
   return {
     art: schoolArtMid(spell.school),
     title: ability.name,
     subtitle:
-      [spell.classes.join(", ") || null, spell.ritual ? t("compendium.spells.ritual") : null]
+      [
+        spell.classes.join(", ") || null,
+        spell.ritual ? t("compendium.spells.ritual") : null,
+        extra && t("compendium.spells.sourceOf", { source: extra }),
+      ]
         .filter(Boolean)
         .join(" · ") || null,
-    summary: spellSummary(spell),
-    detail: clip(spell.desc, DETAIL_MAX),
+    summary,
+    detail:
+      ref.kind === "extra"
+        ? (clip(written, DETAIL_MAX) ??
+          t("compendium.spells.textInYourBook", { source: ref.spell.source }))
+        : clip(ref.spell.desc, DETAIL_MAX),
     bonuses: null,
     href: `/compendium/spells/${ability.srdIndex}`,
     linkLabel: t("character.sheet.openInCompendium"),

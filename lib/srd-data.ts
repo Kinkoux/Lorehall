@@ -7,6 +7,8 @@ import {
   type StatBonuses,
 } from "@/lib/world-items";
 import spellsJson from "@/lib/data/spells.json";
+import spellsExtraJson from "@/lib/data/spells-extra.json";
+import spellAliasesJson from "@/lib/data/spell-aliases.json";
 import monstersJson from "@/lib/data/monsters.json";
 import monsterImagesJson from "@/lib/data/monster-images.json";
 import monsterArtJson from "@/lib/data/monster-art.json";
@@ -18,7 +20,13 @@ import itemArtJson from "@/lib/data/item-art.json";
 import itemKindsJson from "@/lib/data/item-kinds.json";
 import { categoryArt, kindArt, kindArtMid, kindArtThumb } from "@/lib/ui-art";
 
-export type SrdSpell = {
+/**
+ * The header of a spell — the block a player reads off the top of the entry
+ * before the prose starts. Every field here is a plain mechanical fact, and
+ * that is precisely why it is its own type: the SRD's entries carry the prose
+ * as well, and the entries in `spells-extra.json` carry nothing but this.
+ */
+export type SpellFacts = {
   index: string;
   name: string;
   level: number;
@@ -30,10 +38,38 @@ export type SrdSpell = {
   concentration: boolean;
   ritual: boolean;
   classes: string[];
+};
+
+export type SrdSpell = SpellFacts & {
   subclasses: string[];
   desc: string;
   higherLevel: string | null;
 };
+
+/** The books an out-of-SRD entry can name. Expanded for readers in the dict. */
+export const SPELL_SOURCES = ["XGE", "TCE", "SCAG", "SCC", "AI"] as const;
+export type SpellSource = (typeof SPELL_SOURCES)[number];
+
+/**
+ * A spell this library knows *of* but may not print: the header facts and the
+ * book they were printed in, and deliberately not one word more.
+ *
+ * The compendium's licence covers the SRD and only the SRD (see /legal), so
+ * the rules text of a spell from Xanathar's or Tasha's cannot live here. What
+ * can is the header — a name, a level, a school, a casting time, a range, the
+ * component letters, a duration, a class list, a book. None of that is
+ * expression anyone owns; all of it is what a player at a table actually needs
+ * from a compendium at the moment they need it, which is "does this fit in the
+ * slot I have left, and which book do I open?"
+ *
+ * So an entry is a signpost, never a substitute. There is no `desc` field and
+ * no summary field either, because a paraphrase of a spell's effect is still
+ * the spell's effect; the card and the page both say plainly that the text
+ * lives in the reader's own copy, and the sheet lets them write their own note
+ * beside it — which is the one legitimate way the full text ever reaches a
+ * screen here, typed by the person who owns the book.
+ */
+export type ExtraSpell = SpellFacts & { source: SpellSource };
 
 export type SrdMonsterAction = { name: string; desc: string };
 
@@ -101,8 +137,61 @@ export type SrdItem = {
 };
 
 export const SPELLS = spellsJson as SrdSpell[];
+export const EXTRA_SPELLS = spellsExtraJson as ExtraSpell[];
 export const MONSTERS = monstersJson as SrdMonster[];
 export const ITEMS = itemsJson as SrdItem[];
+
+/**
+ * The mark that tells the two shelves apart wherever only an index survives —
+ * a stored `srd_index` on a sheet's ability row, a URL, a hidden form field.
+ * No SRD index begins with it, so a prefix is the whole of the distinction and
+ * nothing had to be migrated to gain it.
+ */
+export const EXTRA_PREFIX = "x-";
+
+/** One spell entry from either shelf, when a caller wants the union. */
+export type SpellEntry = SrdSpell | ExtraSpell;
+
+/** Which shelf an entry came off, asked of the entry rather than of an index. */
+export const isExtraSpell = (spell: SpellEntry): spell is ExtraSpell => "source" in spell;
+
+const EXTRA_SPELL_BY_INDEX = new Map(EXTRA_SPELLS.map((s) => [s.index, s] as const));
+
+export const getExtraSpell = (index: string) => EXTRA_SPELL_BY_INDEX.get(index);
+
+/**
+ * A spell named by index, from whichever shelf holds it, and *labelled* with
+ * the shelf so no caller has to guess from the string.
+ *
+ * This exists because the alternative was a scattering of `index.startsWith`
+ * checks in five files — the sheet's preview card, the compendium page, the
+ * two actions that stock a row, the lookahead — and the fifth one would have
+ * been the one written wrong. A caller asks once and is told everything: what
+ * the entry is, and whether it may print the text.
+ */
+export type SpellRef = { kind: "srd"; spell: SrdSpell } | { kind: "extra"; spell: ExtraSpell };
+
+export function spellRef(index: string): SpellRef | undefined {
+  if (index.startsWith(EXTRA_PREFIX)) {
+    const extra = EXTRA_SPELL_BY_INDEX.get(index);
+    return extra && { kind: "extra", spell: extra };
+  }
+  const srd = SPELL_BY_INDEX.get(index);
+  return srd && { kind: "srd", spell: srd };
+}
+
+/**
+ * The names a printed book gives an SRD spell — "Bigby's Hand" for the entry
+ * the SRD publishes as "Arcane Hand". The SRD strips the wizards' names out of
+ * the titles (they are the one part of those spells anybody owns), which means
+ * a player reading a character sheet built off a Player's Handbook types a
+ * name this library has never heard of and is told there is no such spell.
+ *
+ * The map answers that, and it answers it *into the SRD entry*: an alias is a
+ * second spelling of a spell we do have in full, not a stub. Keyed by the
+ * printed name and folded on the way in, so lookups are case-insensitive.
+ */
+export const SPELL_ALIASES = spellAliasesJson as Record<string, string>;
 
 /** Freely-licensed artwork (Wikimedia Commons only), matched at fetch time. */
 export type MonsterImage = { img: string; page: string; title: string };
@@ -206,8 +295,19 @@ export function srdItemArt(item: SrdItem): SrdItemArt {
   return { src, thumb: src, mid: src };
 }
 
-export const SPELL_CLASSES = [...new Set(SPELLS.flatMap((s) => s.classes))].sort();
-export const SPELL_SCHOOLS = [...new Set(SPELLS.map((s) => s.school))].sort();
+/**
+ * The dropdowns, read off both shelves together — because the list underneath
+ * them is both shelves together. Artificer reaches this list only through the
+ * fact stubs (the SRD has no artificer), and offering the filter is the honest
+ * move: the entries are there, the rows say which book they come from, and a
+ * filter that hid them would be lying about what the page holds.
+ */
+export const SPELL_CLASSES = [
+  ...new Set([...SPELLS, ...EXTRA_SPELLS].flatMap((s) => s.classes)),
+].sort();
+export const SPELL_SCHOOLS = [
+  ...new Set([...SPELLS, ...EXTRA_SPELLS].map((s) => s.school)),
+].sort();
 
 /**
  * Subclass spell-list filters. SRD entries come straight from the data
@@ -219,7 +319,7 @@ export type SubclassFilter = {
   key: string;
   label: string;
   kind: "srd" | "rule";
-  test: (spell: SrdSpell) => boolean;
+  test: (spell: SpellEntry) => boolean;
 };
 
 const SRD_SUBCLASS_PARENT: Record<string, string> = {
@@ -236,14 +336,16 @@ export const SUBCLASS_FILTERS: SubclassFilter[] = [
       key: name.toLowerCase(),
       label: `${name} (${parent})`,
       kind: "srd",
-      test: (spell) => spell.subclasses.includes(name),
+      // The subclass tags are an SRD field; a fact stub carries no such tag,
+      // and answering "no" for one is the truth rather than an omission.
+      test: (spell) => !isExtraSpell(spell) && spell.subclasses.includes(name),
     })
   ),
   {
     key: "arcane-trickster",
     label: "Arcane Trickster (Rogue)",
     kind: "rule",
-    test: (spell: SrdSpell) =>
+    test: (spell: SpellEntry) =>
       spell.classes.includes("Wizard") &&
       (spell.level === 0 || ["Enchantment", "Illusion"].includes(spell.school)),
   } satisfies SubclassFilter,
@@ -251,7 +353,7 @@ export const SUBCLASS_FILTERS: SubclassFilter[] = [
     key: "eldritch-knight",
     label: "Eldritch Knight (Fighter)",
     kind: "rule",
-    test: (spell: SrdSpell) =>
+    test: (spell: SpellEntry) =>
       spell.classes.includes("Wizard") &&
       (spell.level === 0 || ["Abjuration", "Evocation"].includes(spell.school)),
   } satisfies SubclassFilter,
@@ -405,23 +507,106 @@ export function findItemByAnyName(raw: string): SrdItem | undefined {
 export const monsterMatchesName = (monster: SrdMonster, needle: string) =>
   matchesEither(needle, monster.name, MONSTER_NAMES_TR[monster.index]);
 
+/**
+ * Every printed name that points at one SRD index, built once. Reversed from
+ * the alias map rather than stored that way round, because the question a
+ * reader asks is "what else is this called?" and the question a search asks is
+ * "who answers to this?" — and one file cannot be keyed for both.
+ */
+let ALIASES_BY_INDEX: Map<string, string[]> | null = null;
+
+function aliasIndex(): Map<string, string[]> {
+  if (!ALIASES_BY_INDEX) {
+    ALIASES_BY_INDEX = new Map();
+    for (const [name, index] of Object.entries(SPELL_ALIASES)) {
+      const held = ALIASES_BY_INDEX.get(index);
+      if (held) held.push(name);
+      else ALIASES_BY_INDEX.set(index, [name]);
+    }
+  }
+  return ALIASES_BY_INDEX;
+}
+
+/** The printed names for an SRD spell, or nothing for one that was never renamed. */
+export const spellAliases = (index: string): string[] => aliasIndex().get(index) ?? [];
+
+/**
+ * The printed name that answered this search, so a row found by typing
+ * "Bigby's Hand" can say so instead of silently calling itself Arcane Hand and
+ * leaving the reader to wonder whether they found the right spell.
+ */
+export function spellAliasHit(index: string, q: string): string | null {
+  const needle = fold(q.trim());
+  if (!needle) return null;
+  return spellAliases(index).find((alias) => fold(alias).includes(needle)) ?? null;
+}
+
+/** Does this entry answer to what was typed — under its own name or a printed one? */
+function spellMatchesName(spell: SpellEntry, needle: string) {
+  if (fold(spell.name).includes(needle)) return true;
+  return spellAliases(spell.index).some((alias) => fold(alias).includes(needle));
+}
+
+/**
+ * The compendium's spell list: the SRD and the fact stubs, filtered together
+ * and handed back in one sequence.
+ *
+ * Merged rather than appended. The SRD file is already ordered by level and
+ * then by name, and a stub belongs where its level puts it — a cantrip the
+ * reader can actually take should not be exiled to the bottom of the page
+ * behind the 9th-level spells. The sort is a no-op on the SRD half by
+ * construction (asserted in test/spells-extra.test.ts), so what it really does
+ * is thread forty-odd rows into their places.
+ */
 export function searchSpells(
   q: string,
   level: string,
   klass: string,
   school = "",
   subclass = ""
-) {
-  const needle = q.trim().toLowerCase();
+): SpellEntry[] {
+  const needle = fold(q.trim());
   const subclassFilter = SUBCLASS_FILTERS.find((f) => f.key === subclass);
-  return SPELLS.filter(
-    (s) =>
-      (!needle || s.name.toLowerCase().includes(needle)) &&
-      (!level || s.level === Number(level)) &&
-      (!klass || s.classes.includes(klass)) &&
-      (!school || s.school === school) &&
-      (!subclassFilter || subclassFilter.test(s))
-  );
+  const entries: SpellEntry[] = [...SPELLS, ...EXTRA_SPELLS];
+  return entries
+    .filter(
+      (s) =>
+        (!needle || spellMatchesName(s, needle)) &&
+        (!level || s.level === Number(level)) &&
+        (!klass || s.classes.includes(klass)) &&
+        (!school || s.school === school) &&
+        (!subclassFilter || subclassFilter.test(s))
+    )
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+}
+
+/**
+ * An exact whole-name lookup across everything a spell can be called: the
+ * SRD's own name, a fact stub's name, or the printed name of a renamed SRD
+ * entry. This is what stands behind the "add a spell" field when the hidden
+ * reference never arrived — a player who types "Tasha's Hideous Laughter" gets
+ * the SRD entry, and one who types "Booming Blade" gets the stub, and neither
+ * is left with a bare line of text that links to nothing.
+ *
+ * Built once and case-folded, the same bargain `findItemByAnyName` makes.
+ */
+let SPELL_BY_ANY_NAME: Map<string, SpellRef> | null = null;
+
+export function findSpellByAnyName(raw: string): SpellRef | undefined {
+  if (!SPELL_BY_ANY_NAME) {
+    SPELL_BY_ANY_NAME = new Map();
+    for (const spell of SPELLS) SPELL_BY_ANY_NAME.set(fold(spell.name.trim()), { kind: "srd", spell });
+    for (const spell of EXTRA_SPELLS)
+      SPELL_BY_ANY_NAME.set(fold(spell.name.trim()), { kind: "extra", spell });
+    // Last, and never over an entry's own name: an alias is a second door into
+    // a spell, not a way to rename one out from under the book that has it.
+    for (const [alias, index] of Object.entries(SPELL_ALIASES)) {
+      const key = fold(alias.trim());
+      const spell = SPELL_BY_INDEX.get(index);
+      if (spell && !SPELL_BY_ANY_NAME.has(key)) SPELL_BY_ANY_NAME.set(key, { kind: "srd", spell });
+    }
+  }
+  return SPELL_BY_ANY_NAME.get(fold(raw.trim()));
 }
 
 export function searchItems(q: string, category: string) {
@@ -655,8 +840,13 @@ export function itemSummary(item: SrdItem) {
   return parts.join(" · ");
 }
 
-/** One-line summary used when adding an SRD spell to a character sheet. */
-export function spellSummary(spell: SrdSpell) {
+/**
+ * One-line summary used when adding a spell to a character sheet. Takes the
+ * header facts and nothing else, which is why it serves both shelves: the
+ * line it writes is the same line for an SRD spell and for a fact stub,
+ * because the header is all a fact stub has and all this line ever read.
+ */
+export function spellSummary(spell: SpellFacts) {
   const parts = [
     `${spellLevelLabel(spell.level)} ${spell.school.toLowerCase()}`,
     spell.castingTime,

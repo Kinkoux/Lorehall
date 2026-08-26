@@ -52,8 +52,11 @@ const cap = (s: string, n: number) => s.slice(0, n);
 export async function addSpellToCharacter(spellIndex: string, characterId: string) {
   const user = await requireUser();
   // Lazy import keeps ~900KB of SRD JSON out of the campaign/session chunks.
-  const { getSpell, spellSummary } = await import("@/lib/srd-data");
-  const spell = getSpell(spellIndex);
+  // Either shelf: the SRD's own entries, and the fact stubs for spells printed
+  // in books this project may not reprint. What lands on the sheet is the same
+  // row either way — a name, the header summary, and the index that links back.
+  const { spellRef, spellSummary } = await import("@/lib/srd-data");
+  const spell = spellRef(spellIndex)?.spell;
   if (!spell) return;
   const character = await db.query.characters.findFirst({
     where: eq(characters.id, characterId),

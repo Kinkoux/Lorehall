@@ -258,24 +258,26 @@ export function AutocompleteInput({
 
 /**
  * What the row reads as. An SRD item in a locale that has its own word for it
- * arrives with that word in `display`; everything else — every library entry,
- * every spell — is named by the one name it has. Only the *display* moves:
- * `choose()` still writes `value.name`, because the name is what the server
- * resolves the row against when the hidden reference goes missing.
+ * arrives with that word in `display`, and so does a spell found under the
+ * name a book prints it by rather than the one the SRD files it under; a
+ * library entry has only the name it was forged with. Only the *display*
+ * moves: `choose()` still writes `value.name`, because the name is what the
+ * server resolves the row against when the hidden reference goes missing.
  */
 function label(suggestion: Suggestion) {
-  return suggestion.kind === "item"
-    ? (suggestion.value.display ?? suggestion.value.name)
-    : suggestion.value.name;
+  return suggestion.value.display ?? suggestion.value.name;
 }
 
 /** The dim right-hand line: where it comes from and what it does. */
 function meta(suggestion: Suggestion, t: ReturnType<typeof makeT>) {
   if (suggestion.kind === "spell") {
-    const { level, school } = suggestion.value;
+    const { level, school, source } = suggestion.value;
     const levelText =
       level === 0 ? t("compendium.spells.cantrip") : t("character.sheet.levelN", { n: level });
-    return `${levelText} · ${school}`;
+    // The book, where there is one to name: picking this row attaches a link
+    // to a page of facts, not to a page of rules text, and the difference is
+    // worth knowing before the pick rather than after it.
+    return [levelText, school, source].filter(Boolean).join(" · ");
   }
   const { source, category, slot, bonuses } = suggestion.value;
   return [

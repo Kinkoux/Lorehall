@@ -23,7 +23,7 @@ export const legal = {
 
     srd: {
       heading: "Game content",
-      body: "The spells, monsters, items, conditions, and rules text in the compendium come from the 5e System Reference Document 5.1, used under the Creative Commons Attribution 4.0 International licence (CC-BY-4.0), attributed to Wizards of the Coast LLC. Anything the SRD does not cover was written for this project.",
+      body: "The spells, monsters, items, conditions, and rules text in the compendium come from the 5e System Reference Document 5.1, used under the Creative Commons Attribution 4.0 International licence (CC-BY-4.0), attributed to Wizards of the Coast LLC. A handful of spells from other official books appear by name and casting details only, as references — their rules text is not reproduced here and lives in the books that print it. Anything else was written for this project.",
     },
 
     noncommercial: {
@@ -65,7 +65,7 @@ export const legal = {
 
     srd: {
       heading: "Oyun içeriği",
-      body: "Kütüphanedeki büyüler, canavarlar, eşyalar, durumlar ve kural metinleri 5e System Reference Document 5.1'den gelir; Creative Commons Atıf 4.0 Uluslararası lisansıyla (CC-BY-4.0), Wizards of the Coast LLC atfıyla kullanılır. SRD'nin kapsamadığı ne varsa bu proje için yazılmıştır.",
+      body: "Kütüphanedeki büyüler, canavarlar, eşyalar, durumlar ve kural metinleri 5e System Reference Document 5.1'den gelir; Creative Commons Atıf 4.0 Uluslararası lisansıyla (CC-BY-4.0), Wizards of the Coast LLC atfıyla kullanılır. Diğer resmî kitaplardan bir avuç büyü yalnızca adı ve teknik başlıklarıyla, referans olarak yer alır — kural metinleri burada basılmaz, bastıkları kitaplarda yaşar. Geri kalan her şey bu proje için yazılmıştır.",
     },
 
     noncommercial: {

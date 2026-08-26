@@ -76,10 +76,20 @@ export type ItemSuggestion = {
 
 export type SpellSuggestion = {
   ref: string;
+  /**
+   * The canonical name — the one this library files the spell under, and the
+   * one the field writes into the form. A row found under a printed name the
+   * SRD dropped ("Bigby's Hand") still writes the SRD's own spelling, because
+   * that is what the server resolves a nameless submission against.
+   */
   name: string;
+  /** What to *show* instead: the printed name that found it. */
+  display?: string;
   /** 0 is a cantrip; the caller words it. */
   level: number;
   school: string;
+  /** The book, for a spell whose text is not the SRD's to print. Else null. */
+  source: string | null;
 };
 
 /**
@@ -201,10 +211,16 @@ export async function searchItemsForCharacter(
 }
 
 /**
- * The same lookahead for the spells field, SRD-only: there is no homebrew
- * spell library to search (docs/design-economy.md phase 2 built one for items
- * and stopped there), so a homebrew power stays free text — which is exactly
- * how the abilities list already treats class features and traits.
+ * The same lookahead for the spells field. There is still no homebrew spell
+ * library to search (docs/design-economy.md phase 2 built one for items and
+ * stopped there), so a homebrew power stays free text — which is exactly how
+ * the abilities list already treats class features and traits.
+ *
+ * What it does now search is the whole of what the compendium knows a spell
+ * can be called: the SRD's entries, the fact stubs for spells printed in books
+ * this project may not reprint, and the printed names of SRD entries the book
+ * renamed. All three write the same shape of row, and the middle one is marked
+ * with its book so nobody picks it expecting to be shown the text.
  */
 export async function searchSpellsForCharacter(
   characterId: string,
@@ -215,12 +231,22 @@ export async function searchSpellsForCharacter(
   if (needle.length < MIN_QUERY) return [];
   if (!(await openSheet(characterId, user.id))) return [];
 
-  const { SPELLS } = await import("@/lib/srd-data");
+  const { searchSpells, isExtraSpell, spellAliasHit } = await import("@/lib/srd-data");
   const out: SpellSuggestion[] = [];
-  for (const spell of SPELLS) {
+  // One search, so the field and the compendium list can never disagree about
+  // which spells answer to a name.
+  for (const spell of searchSpells(needle, "", "")) {
     if (out.length === MAX_RESULTS) break;
-    if (!matches(spell.name, needle)) continue;
-    out.push({ ref: spell.index, name: spell.name, level: spell.level, school: spell.school });
+    const source = isExtraSpell(spell) ? spell.source : null;
+    const alias = source ? null : spellAliasHit(spell.index, needle);
+    out.push({
+      ref: spell.index,
+      name: spell.name,
+      display: alias ?? undefined,
+      level: spell.level,
+      school: spell.school,
+      source,
+    });
   }
   return out;
 }
