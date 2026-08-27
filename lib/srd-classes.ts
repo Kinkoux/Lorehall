@@ -201,7 +201,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Champion",
     subclasses: ["Champion", "Battle Master", "Eldritch Knight"],
     subclassLevel: 3,
-    // The class the improvements belong to: three more than anybody else.
+    // The class the improvements belong to: two more than anybody else.
     asiLevels: [4, 6, 8, 12, 14, 16, 19],
   },
   monk: {
