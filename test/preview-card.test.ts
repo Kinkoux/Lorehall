@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { itemPreview, spellPreview } from "@/components/character/PreviewCard";
+import { featPreview, itemPreview, spellPreview } from "@/components/character/PreviewCard";
 import type { InventoryLineShape } from "@/components/character/sheet-data";
 import type { CharacterAbility } from "@/lib/db";
 import { makeT } from "@/lib/i18n";
@@ -173,5 +173,42 @@ describe("spellPreview", () => {
       en
     );
     expect(facts?.detail).toBe(en("compendium.spells.textInYourBook", { source: "TCE" }));
+  });
+});
+
+describe("featPreview", () => {
+  const book = en("character.sheet.feat.sources.PHB");
+
+  it("leaves a line that came off no shelf alone", () => {
+    expect(featPreview(spellLine({ name: "Alert", srdIndex: null }), en)).toBeNull();
+    // A spell index is not a feat index, and the prefix is the whole test.
+    expect(featPreview(spellLine(), en)).toBeNull();
+    expect(featPreview(spellLine({ srdIndex: "f-nothing-at-all" }), en)).toBeNull();
+  });
+
+  it("states the facts it has and sends the reader to their own book", () => {
+    const facts = featPreview(
+      spellLine({ name: "War Caster", kind: "feat", srdIndex: "f-war-caster", notes: null }),
+      en
+    );
+    expect(facts?.subtitle).toContain("Spellcasting");
+    expect(facts?.subtitle).toContain(book);
+    // Nothing quoted, and nowhere to send them — there is no feat page.
+    expect(facts?.summary).toBeNull();
+    expect(facts?.href).toBeNull();
+    expect(facts?.detail).toBe(en("character.sheet.feat.textInYourBook", { source: book }));
+  });
+
+  it("lets the player's own note outrank the signpost", () => {
+    const facts = featPreview(
+      spellLine({
+        name: "Alert",
+        kind: "feat",
+        srdIndex: "f-alert",
+        notes: "+5 initiative, never surprised — p.165 of my copy.",
+      }),
+      en
+    );
+    expect(facts?.detail).toBe("+5 initiative, never surprised — p.165 of my copy.");
   });
 });

@@ -24,14 +24,15 @@ import {
   type SlotRow,
 } from "@/lib/spell-slots";
 import { CLASS_SLUGS, matchClass, type ClassSlug } from "@/lib/class-match";
-import { averageHp, classInfo, CLASSES } from "@/lib/srd-classes";
+import { averageHp, classInfo, CLASSES, DEFAULT_ASI_LEVELS } from "@/lib/srd-classes";
+import { acceptsFeatAsi, findFeatByName, getFeat } from "@/lib/srd-feats";
 import { raceBySlug } from "@/lib/srd-races";
 import { SKILLS } from "@/lib/srd";
 import { requireUser } from "@/lib/auth";
 import { getCampaignAccess } from "@/lib/perms";
 import { campaignLog } from "@/lib/campaign-log";
 import { logSheet, revalidateSheet, revalidateSheetOnly } from "@/lib/sheet-refresh";
-import { fmt, mod } from "@/lib/dnd";
+import { ABILITIES, ABILITY_LABELS, fmt, mod, type AbilityKey } from "@/lib/dnd";
 import { getT } from "@/lib/locale";
 import { deletePortraitFile, putPortraitFile } from "@/lib/storage";
 import {
@@ -1454,8 +1455,8 @@ export async function addAbility(characterId: string, formData: FormData) {
   const name = str(formData, "name");
   if (!name) return;
   const kindRaw = str(formData, "kind");
-  let kind: "spell" | "ability" | "trait" =
-    kindRaw === "spell" || kindRaw === "trait" ? kindRaw : "ability";
+  let kind: "spell" | "ability" | "trait" | "feat" =
+    kindRaw === "spell" || kindRaw === "trait" || kindRaw === "feat" ? kindRaw : "ability";
   const usesMax = int(formData, "usesMax");
   const abilityName = cap(name, 150);
 
@@ -1486,6 +1487,17 @@ export async function addAbility(characterId: string, formData: FormData) {
       summary = spellSummary(found.spell);
       // Whatever the dropdown said, a spell from the spell list is a spell.
       kind = "spell";
+    } else if (!pickedIndex) {
+      // The feat shelf answers to a name the same way, and for the same
+      // reason: somebody typing "Sentinel" into this box means the feat, and
+      // a row that knows its feat gets the chip and the card a levelled-up
+      // one gets. The lookahead is not asked — it offers spells alone — so
+      // this is the only door, and it wants the whole name.
+      const feat = findFeatByName(name);
+      if (feat) {
+        srdIndex = feat.index;
+        kind = "feat";
+      }
     }
   }
 
@@ -1835,6 +1847,22 @@ export async function restoreSpellSlot(characterId: string, level: number) {
 const MAX_CHARACTER_LEVEL = 20;
 
 /**
+ * Where an ability score improvement stops. Twenty is the book's own ceiling
+ * for this particular gift — a feature that says "increase a score by 1" says
+ * "to a maximum of 20" in the same breath — and it is *not* the ceiling on the
+ * column, which the sheet form takes to 30 for the belt of giant strength and
+ * the wish the DM allowed. So the clamp lives here, on the gift, rather than
+ * on the number.
+ */
+const ASI_SCORE_MAX = 20;
+
+/** One of the six, or nothing, read off a posted field that may say anything. */
+function abilityKey(formData: FormData, key: string): AbilityKey | null {
+  const raw = str(formData, key);
+  return (ABILITIES as readonly string[]).includes(raw) ? (raw as AbilityKey) : null;
+}
+
+/**
  * One press for the four things that happen together at the end of a session.
  *
  * A level-up is not a new fact so much as four old ones moving at once: the
@@ -1860,6 +1888,15 @@ const MAX_CHARACTER_LEVEL = 20;
  * one. Current hit points move by exactly what the maximum moved by — a
  * level-up is not a heal, but neither should it leave a character one short of
  * a full night's sleep.
+ *
+ * At the levels the class hands out an improvement, a fifth thing happens: two
+ * ability points, or a feat instead. The panel asks with a three-way radio and
+ * this reads whichever branch it named — the other branch's fields are on the
+ * form too (a server component cannot hide them), and are ignored on purpose,
+ * so a hand-built POST cannot spend points and take a feat in one press. At
+ * every other level the whole question is ignored, which is the same guard the
+ * subclass has: a level is not an improvement level because somebody said so
+ * in a form field.
  */
 export async function levelUpCharacter(characterId: string, formData: FormData) {
   const user = await requireUser();
@@ -1909,6 +1946,64 @@ export async function levelUpCharacter(characterId: string, formData: FormData) 
   // free casts.
   const slots = suggestSlots(character.klass, newLevel);
 
+  // The improvement, if this level carries one. A class the book does not
+  // speak for is levelled on the common five rather than on none — see
+  // `asiLevelsFor` — and anything posted at a level that is not on the list is
+  // dropped here, before a single field of it is read.
+  const asiLevels = info?.asiLevels ?? DEFAULT_ASI_LEVELS;
+  const advanceRaw = str(formData, "advance");
+  const advance =
+    asiLevels.includes(newLevel) && (advanceRaw === "asi" || advanceRaw === "feat")
+      ? advanceRaw
+      : "skip";
+
+  /**
+   * The points as they are spent: banked here rather than written one at a
+   * time, so that two points into the same ability are two increments of the
+   * same running number and the ceiling is checked against both.
+   *
+   * A blank score takes nothing. Half of a level 1 sheet is blank while its
+   * player is still deciding, and a +1 written into an empty Dexterity box
+   * would read as a Dexterity of 1 — a fact invented out of a gift.
+   */
+  const raised = new Map<AbilityKey, number>();
+  const spendPoint = (key: AbilityKey | null) => {
+    if (!key) return;
+    const current = raised.get(key) ?? character[key];
+    if (current === null || current >= ASI_SCORE_MAX) return;
+    raised.set(key, current + 1);
+  };
+
+  if (advance === "asi") {
+    spendPoint(abilityKey(formData, "asiA"));
+    spendPoint(abilityKey(formData, "asiB"));
+  }
+
+  // A feat is a name on the sheet and nothing more: no text, not even for the
+  // one the SRD carries. What was written by hand wins over what the list
+  // offered, the way the subclass question is settled just above.
+  const featCustom = cap(str(formData, "featCustom"), 80);
+  const listed = featCustom ? undefined : getFeat(str(formData, "feat"));
+  const featName = featCustom || listed?.name || "";
+  const takesFeat = advance === "feat" && featName !== "";
+  if (takesFeat && listed) {
+    // Half a feat is a +1, and the feat itself says which abilities it may go
+    // to. A posted key the feat does not offer is dropped rather than argued
+    // with — and a feat written by hand is a feat this app knows nothing
+    // about, so it grants nothing here and its player writes the score in.
+    const key = abilityKey(formData, "featAsi");
+    if (key && acceptsFeatAsi(listed, key)) spendPoint(key);
+  }
+
+  // What the feed will say the level cost or bought, in the app's own shorthand
+  // — "+2 DEX", "+1 STR, +1 CON". Only what actually landed is named: a point
+  // that met the ceiling is not a point, and saying otherwise would have the
+  // sheet and the history disagree about a number.
+  const gain = [...raised]
+    .map(([key, value]) => `+${value - (character[key] ?? 0)} ${ABILITY_LABELS[key]}`)
+    .join(", ");
+  const scores = Object.fromEntries(raised) as Partial<Record<AbilityKey, number>>;
+
   // One write: a character who gained a level but not the slots that come
   // with it is a sheet the player has to repair before they can play. The
   // arithmetic is done in JavaScript rather than in SQL because this is a
@@ -1917,15 +2012,32 @@ export async function levelUpCharacter(characterId: string, formData: FormData) 
   await db.transaction(async (tx) => {
     await tx
       .update(characters)
-      .set({ level: newLevel, maxHp, currentHp, subclass, updatedAt: Date.now() })
+      .set({ level: newLevel, maxHp, currentHp, subclass, ...scores, updatedAt: Date.now() })
       .where(eq(characters.id, characterId));
     if (slots && slots.length > 0) await applySlotRows(tx, characterId, slots);
+    if (takesFeat) {
+      await tx.insert(characterAbilities).values({
+        id: nanoid(12),
+        characterId,
+        name: cap(featName, 150),
+        kind: "feat",
+        // Deliberately empty. The row is a reference to a page in a book the
+        // player owns; the note is theirs to paste in off that page.
+        notes: null,
+        usesMax: null,
+        usesLeft: null,
+        srdIndex: listed?.index ?? null,
+        createdAt: Date.now(),
+      });
+    }
   });
 
-  await logSheet(character, user.id, "leveledUp", {
-    character: character.name,
-    n: newLevel,
-  });
+  await logSheet(
+    character,
+    user.id,
+    takesFeat ? "leveledUpFeat" : gain ? "leveledUpAsi" : "leveledUp",
+    { character: character.name, n: newLevel, name: featName, gain }
+  );
   // Wider than the sheet: proficiency rises on the fours, and the hub and the
   // party list both print numbers computed from it.
   revalidateSheet(character);

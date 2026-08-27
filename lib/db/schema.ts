@@ -423,16 +423,19 @@ export const characterAbilities = pgTable("character_abilities", {
     .notNull()
     .references(() => characters.id),
   name: text("name").notNull(),
-  kind: text("kind", { enum: ["spell", "ability", "trait"] })
+  // "feat" joined the three on 2026-08-27, when levelling learned to hand one
+  // out. The column is plain TEXT with no CHECK behind it, so the widening is
+  // a type here and nothing at all in the database.
+  kind: text("kind", { enum: ["spell", "ability", "trait", "feat"] })
     .notNull()
     .default("ability"),
   notes: text("notes"),
   usesMax: integer("uses_max"),
   usesLeft: integer("uses_left"),
-  // The SRD spell this line was stamped from, when it came from the
-  // compendium — the sheet links back to the full text instead of reprinting
-  // it. NULL for a hand-typed spell, a class feature or a homebrew power;
-  // there is no homebrew spell library to reference.
+  // What this line was stamped from, when it came from a shelf rather than a
+  // keyboard: an SRD spell index, an `x-` spell stub's, or an `f-` feat's. The
+  // sheet reads the prefix to know which reader to ask. NULL for a hand-typed
+  // spell, a class feature or a homebrew power.
   srdIndex: text("srd_index"),
   createdAt: ms("created_at").notNull(),
 });

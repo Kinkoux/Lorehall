@@ -90,7 +90,26 @@ export type ClassInfo = {
    * becomes a per-class column again.
    */
   subclassLevel: number;
+  /**
+   * The levels at which this class is handed an ability score improvement —
+   * two points to spend, or a feat instead.
+   *
+   * Ten of the twelve share one list, and the two that do not are the reason
+   * this is a column rather than a constant: a fighter is given three extra
+   * ones and a rogue one, and a table told "your improvements come at 4, 8,
+   * 12, 16 and 19" would have their fighter miss two of them. Unlike the
+   * subclass level above, this one is *not* flattened into a house rule —
+   * the extra improvements are a large part of what those two classes are,
+   * and there is no learnability to be bought by taking them away.
+   */
+  asiLevels: readonly number[];
 };
+
+/**
+ * What ten of the twelve classes do, and what a class nothing recognises is
+ * held to: the improvements the game hands out at 4, 8, 12, 16 and 19.
+ */
+export const DEFAULT_ASI_LEVELS: readonly number[] = [4, 8, 12, 16, 19];
 
 export const CLASSES: Record<ClassSlug, ClassInfo> = {
   barbarian: {
@@ -105,6 +124,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Path of the Berserker",
     subclasses: ["Path of the Berserker", "Path of the Totem Warrior"],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   bard: {
     name: "Bard",
@@ -116,6 +136,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "College of Lore",
     subclasses: ["College of Lore", "College of Valor"],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   cleric: {
     name: "Cleric",
@@ -134,6 +155,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
       "War Domain",
     ],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   druid: {
     name: "Druid",
@@ -156,6 +178,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Circle of the Land",
     subclasses: ["Circle of the Land", "Circle of the Moon"],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   fighter: {
     name: "Fighter",
@@ -178,6 +201,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Champion",
     subclasses: ["Champion", "Battle Master", "Eldritch Knight"],
     subclassLevel: 3,
+    // The class the improvements belong to: three more than anybody else.
+    asiLevels: [4, 6, 8, 12, 14, 16, 19],
   },
   monk: {
     name: "Monk",
@@ -191,6 +216,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Way of the Open Hand",
     subclasses: ["Way of the Open Hand", "Way of Shadow", "Way of the Four Elements"],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   paladin: {
     name: "Paladin",
@@ -204,6 +230,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Oath of Devotion",
     subclasses: ["Oath of Devotion", "Oath of the Ancients", "Oath of Vengeance"],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   ranger: {
     name: "Ranger",
@@ -226,6 +253,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Hunter",
     subclasses: ["Hunter", "Beast Master"],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   rogue: {
     name: "Rogue",
@@ -251,6 +279,8 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Thief",
     subclasses: ["Thief", "Assassin", "Arcane Trickster"],
     subclassLevel: 3,
+    // One extra, at tenth.
+    asiLevels: [4, 8, 10, 12, 16, 19],
   },
   sorcerer: {
     name: "Sorcerer",
@@ -264,6 +294,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "Draconic Bloodline",
     subclasses: ["Draconic Bloodline", "Wild Magic"],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   warlock: {
     name: "Warlock",
@@ -285,6 +316,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
     srdSubclass: "The Fiend",
     subclasses: ["The Archfey", "The Fiend", "The Great Old One"],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
   wizard: {
     name: "Wizard",
@@ -307,6 +339,7 @@ export const CLASSES: Record<ClassSlug, ClassInfo> = {
       "School of Transmutation",
     ],
     subclassLevel: 3,
+    asiLevels: DEFAULT_ASI_LEVELS,
   },
 };
 
@@ -323,6 +356,21 @@ export function classInfo(klass: string | null | undefined): ClassInfo | null {
 export function castingAbilityFor(klass: string | null | undefined): AbilityKey | null {
   return classInfo(klass)?.castingAbility ?? null;
 }
+
+/**
+ * The improvement levels a written class line comes with — its own, where the
+ * book has an opinion, and the common five where it has none. A homebrew class
+ * is levelled like everybody else rather than like nobody at all: the panel
+ * has to ask the question at *some* level, and the ten-class answer is the one
+ * a table will recognise.
+ */
+export function asiLevelsFor(klass: string | null | undefined): readonly number[] {
+  return classInfo(klass)?.asiLevels ?? DEFAULT_ASI_LEVELS;
+}
+
+/** "Does this class get its two points on the way to this level?" */
+export const isAsiLevel = (klass: string | null | undefined, level: number): boolean =>
+  asiLevelsFor(klass).includes(level);
 
 /** What a spell save and a spell attack come to, and which ability said so. */
 export type Spellcasting = { ability: AbilityKey; dc: number; attack: number };

@@ -11,6 +11,7 @@ import {
   spellSummary,
   srdItemBonuses,
 } from "@/lib/srd-data";
+import { getFeat, isFeatIndex } from "@/lib/srd-feats";
 import { categoryArtMid, schoolArtMid } from "@/lib/ui-art";
 import { STAT_LABELS, statBonusEntries } from "@/lib/world-items";
 import { itemArtSrc, slotCategory } from "@/components/character/item-art";
@@ -57,8 +58,13 @@ export type PreviewFacts = {
   detail: string | null;
   /** The stored `stat_bonuses` shape, drawn as the gold strip. */
   bonuses: string | null;
-  /** The full entry this is a miniature of. */
-  href: string;
+  /**
+   * The full entry this is a miniature of, or null when there is no fuller
+   * entry to reach: a feat, whose text lives in a book the hall may not
+   * reprint and therefore has no page here. A card with no destination shows
+   * no way through, and the plain-link fallback becomes plain text.
+   */
+  href: string | null;
   /** What the way through is called — the compendium, or a world's library. */
   linkLabel: string;
 };
@@ -198,6 +204,41 @@ export function spellPreview(ability: CharacterAbility, t: T): PreviewFacts | nu
   };
 }
 
+/**
+ * A feat line's card — the thinnest of the three, and thin on purpose.
+ *
+ * A feat is the one thing on this sheet the hall holds by name alone: the
+ * shelf behind it (lib/data/feats.json) carries the prerequisite, the book,
+ * and whether taking it lifts a score, and carries no description at all
+ * because a feat's text is the Player's Handbook's. So there is nothing to
+ * quote and nowhere to send the reader — no compendium page exists — and the
+ * card says the two facts it has and then names the book.
+ *
+ * The player's own note outranks that, exactly as it does for a spell stub,
+ * and for the same reason: somebody who owns the book and typed the wording
+ * they need onto their own line put it there off a copy they bought.
+ */
+export function featPreview(ability: CharacterAbility, t: T): PreviewFacts | null {
+  if (!isFeatIndex(ability.srdIndex)) return null;
+  const feat = getFeat(ability.srdIndex!);
+  if (!feat) return null;
+  const source = t(`character.sheet.feat.sources.${feat.source}`);
+  return {
+    art: null,
+    title: ability.name,
+    subtitle:
+      [t("character.sheet.kind.feat"), feat.prerequisite, source].filter(Boolean).join(" · ") ||
+      null,
+    summary: null,
+    detail:
+      clip(ability.notes, DETAIL_MAX) ??
+      t("character.sheet.feat.textInYourBook", { source }),
+    bonuses: null,
+    href: null,
+    linkLabel: "",
+  };
+}
+
 /** The face a row's name wears, whether it opens a card or merely links. */
 export const NAME_CLASS =
   "text-parchment-100 underline decoration-ink-600 underline-offset-2 transition hover:text-gold-300 hover:decoration-gold-500";
@@ -256,9 +297,19 @@ export function PreviewLink({
       >
         {name}
       </button>
-      <Link href={facts.href} title={linkTitle} data-preview-fallback="" className={NAME_CLASS}>
-        {name}
-      </Link>
+      {facts.href ? (
+        <Link href={facts.href} title={linkTitle} data-preview-fallback="" className={NAME_CLASS}>
+          {name}
+        </Link>
+      ) : (
+        // Nothing to link to, so the floor under the card is the name and its
+        // one-line `title` — which is the whole of what a feat row has to say
+        // anyway. Still marked as the fallback, so a browser that can draw
+        // cards hides this one exactly as it hides the others.
+        <span title={linkTitle} data-preview-fallback="" className="text-parchment-100">
+          {name}
+        </span>
+      )}
 
       <div
         id={cardId}
@@ -315,12 +366,18 @@ export function PreviewLink({
         )}
 
         <div className="mt-1 flex items-center justify-between gap-2">
-          <Link
-            href={facts.href}
-            className="inline-flex min-h-11 items-center text-xs font-bold text-gold-300 underline decoration-gold-500/50 underline-offset-2 transition hover:text-gold-400"
-          >
-            {facts.linkLabel}
-          </Link>
+          {facts.href ? (
+            <Link
+              href={facts.href}
+              className="inline-flex min-h-11 items-center text-xs font-bold text-gold-300 underline decoration-gold-500/50 underline-offset-2 transition hover:text-gold-400"
+            >
+              {facts.linkLabel}
+            </Link>
+          ) : (
+            // The row keeps its shape with nothing in the left half: the close
+            // knob stays where the thumb already expects to find it.
+            <span />
+          )}
           {/* Light dismiss covers a mouse, and Escape covers a keyboard; this
               knob is for the thumb already holding the phone by its edge, and
               for anybody who would rather be told the card can be put away. */}

@@ -1,0 +1,338 @@
+[
+  {
+    "index": "f-actor",
+    "name": "Actor",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["cha"]
+  },
+  {
+    "index": "f-alert",
+    "name": "Alert",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-athlete",
+    "name": "Athlete",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["str", "dex"]
+  },
+  {
+    "index": "f-charger",
+    "name": "Charger",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-crossbow-expert",
+    "name": "Crossbow Expert",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-defensive-duelist",
+    "name": "Defensive Duelist",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Dex 13",
+    "asi": null
+  },
+  {
+    "index": "f-dual-wielder",
+    "name": "Dual Wielder",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-dungeon-delver",
+    "name": "Dungeon Delver",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-durable",
+    "name": "Durable",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["con"]
+  },
+  {
+    "index": "f-elemental-adept",
+    "name": "Elemental Adept",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Spellcasting",
+    "asi": null
+  },
+  {
+    "index": "f-grappler",
+    "name": "Grappler",
+    "source": "PHB",
+    "srd": true,
+    "prerequisite": "Str 13",
+    "asi": null
+  },
+  {
+    "index": "f-great-weapon-master",
+    "name": "Great Weapon Master",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-healer",
+    "name": "Healer",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-heavily-armored",
+    "name": "Heavily Armored",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Medium armor proficiency",
+    "asi": ["str"]
+  },
+  {
+    "index": "f-heavy-armor-master",
+    "name": "Heavy Armor Master",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Heavy armor proficiency",
+    "asi": ["str"]
+  },
+  {
+    "index": "f-inspiring-leader",
+    "name": "Inspiring Leader",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Cha 13",
+    "asi": null
+  },
+  {
+    "index": "f-keen-mind",
+    "name": "Keen Mind",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["intel"]
+  },
+  {
+    "index": "f-lightly-armored",
+    "name": "Lightly Armored",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["str", "dex"]
+  },
+  {
+    "index": "f-linguist",
+    "name": "Linguist",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["intel"]
+  },
+  {
+    "index": "f-lucky",
+    "name": "Lucky",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-mage-slayer",
+    "name": "Mage Slayer",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-magic-initiate",
+    "name": "Magic Initiate",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-martial-adept",
+    "name": "Martial Adept",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-medium-armor-master",
+    "name": "Medium Armor Master",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Medium armor proficiency",
+    "asi": null
+  },
+  {
+    "index": "f-mobile",
+    "name": "Mobile",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-moderately-armored",
+    "name": "Moderately Armored",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Light armor proficiency",
+    "asi": ["str", "dex"]
+  },
+  {
+    "index": "f-mounted-combatant",
+    "name": "Mounted Combatant",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-observant",
+    "name": "Observant",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["intel", "wis"]
+  },
+  {
+    "index": "f-polearm-master",
+    "name": "Polearm Master",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-resilient",
+    "name": "Resilient",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": "any"
+  },
+  {
+    "index": "f-ritual-caster",
+    "name": "Ritual Caster",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Int 13 or Wis 13",
+    "asi": null
+  },
+  {
+    "index": "f-savage-attacker",
+    "name": "Savage Attacker",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-sentinel",
+    "name": "Sentinel",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-sharpshooter",
+    "name": "Sharpshooter",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-shield-master",
+    "name": "Shield Master",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-skilled",
+    "name": "Skilled",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-skulker",
+    "name": "Skulker",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Dex 13",
+    "asi": null
+  },
+  {
+    "index": "f-spell-sniper",
+    "name": "Spell Sniper",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Spellcasting",
+    "asi": null
+  },
+  {
+    "index": "f-tavern-brawler",
+    "name": "Tavern Brawler",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["str", "con"]
+  },
+  {
+    "index": "f-tough",
+    "name": "Tough",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": null
+  },
+  {
+    "index": "f-war-caster",
+    "name": "War Caster",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": "Spellcasting",
+    "asi": null
+  },
+  {
+    "index": "f-weapon-master",
+    "name": "Weapon Master",
+    "source": "PHB",
+    "srd": false,
+    "prerequisite": null,
+    "asi": ["str", "dex"]
+  }
+]

@@ -250,4 +250,22 @@ describe("addAbility resolves a spell by name", () => {
     const [row] = await abilitiesOf(sheet);
     expect(row.srdIndex).toBeNull();
   });
+
+  // The feat shelf answers to a typed name the same way the spell shelves do
+  // — and it answers second, so a name on both lists is read as the spell.
+  it("recognises a feat typed into the same box", async () => {
+    await addAbility(sheet, formData({ name: "sentinel", kind: "ability" }));
+    const [row] = await abilitiesOf(sheet);
+    expect(row.srdIndex).toBe("f-sentinel");
+    expect(row.kind).toBe("feat");
+    // No note: a feat's wording is the book's, and the row is a reference.
+    expect(row.notes).toBeNull();
+  });
+
+  it("leaves a homebrew feat name alone when “custom” is ticked", async () => {
+    await addAbility(sheet, formData({ name: "Sentinel", kind: "trait", custom: "1" }));
+    const [row] = await abilitiesOf(sheet);
+    expect(row.srdIndex).toBeNull();
+    expect(row.kind).toBe("trait");
+  });
 });

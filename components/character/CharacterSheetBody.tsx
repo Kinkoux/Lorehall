@@ -52,7 +52,12 @@ import { AttacksCard, SpellcastingCard } from "@/components/character/AttacksCar
 import { PersonalityCard } from "@/components/character/PersonalityCard";
 import { DragItem, InventoryDrop } from "@/components/character/DragEquip";
 import { itemArtSrc, slotCategory } from "@/components/character/item-art";
-import { itemPreview, PreviewLink, spellPreview } from "@/components/character/PreviewCard";
+import {
+  featPreview,
+  itemPreview,
+  PreviewLink,
+  spellPreview,
+} from "@/components/character/PreviewCard";
 import type { InventoryLineShape } from "@/components/character/sheet-data";
 import { IconHourglass, IconMoon, IconSkull } from "@/components/Icons";
 import {
@@ -80,6 +85,7 @@ const KIND_STYLES: Record<string, string> = {
   spell: "bg-sky-100 text-sky-900 border-sky-700/50",
   ability: "bg-amber-100 text-amber-900 border-amber-700/50",
   trait: "bg-purple-100 text-purple-900 border-purple-700/50",
+  feat: "bg-emerald-100 text-emerald-900 border-emerald-700/50",
 };
 
 /**
@@ -705,6 +711,7 @@ export function CharacterSheetBody({
                       <option value="spell">{t("character.sheet.kind.spell")}</option>
                       <option value="ability">{t("character.sheet.kind.ability")}</option>
                       <option value="trait">{t("character.sheet.kind.trait")}</option>
+                      <option value="feat">{t("character.sheet.kind.feat")}</option>
                     </Select>
                     <Input name="usesMax" type="number" min={1} max={99} placeholder={t("character.sheet.usesPh")} className="!w-20" />
                   </div>
@@ -963,11 +970,15 @@ function ItemName({
   );
 }
 
-/** Same rule for a spell line — the SRD is the only source one can name. */
+/**
+ * Same rule for a line in the powers list, whichever shelf stamped it: the
+ * spell readers answer for a spell, the feat shelf for a feat, and a row that
+ * came off neither keeps the plain name it already had.
+ */
 function AbilityName({ ability, t }: { ability: CharacterAbility; t: T }) {
-  const facts = spellPreview(ability, t);
+  const facts = featPreview(ability, t) ?? spellPreview(ability, t);
   if (!facts) return <>{ability.name}</>;
-  const preview = ability.notes?.trim() || facts.summary;
+  const preview = ability.notes?.trim() || facts.summary || facts.detail;
   return (
     <PreviewLink
       id={ability.id}

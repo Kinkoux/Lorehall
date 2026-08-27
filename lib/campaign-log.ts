@@ -36,6 +36,11 @@ const KIND_BY_EVENT = {
   statusChanged: "status",
   characterCreated: "character",
   leveledUp: "character",
+  // The same step, said in more detail when the level bought something: two
+  // ability points, or a feat. Three keys rather than one line with holes in
+  // it, because a template cannot leave out a clause it was not given.
+  leveledUpAsi: "character",
+  leveledUpFeat: "character",
   characterApproved: "character",
   characterRejected: "character",
   goldChanged: "gold",
